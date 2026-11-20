@@ -307,13 +307,17 @@ async function stepTask(body) {
 
 function stepMethod(body) {
   const w = S.wizard;
-  body.append(
-    h("div", { class: "section-title" }, "方法"),
-    h("div", { class: "choice-grid" }, S.config.methods.map((m) => h("button", {
-      class: `choice${w.method === m.id ? " selected" : ""}`, "aria-pressed": String(w.method === m.id),
-      onclick: () => { w.method = m.id; route(); },
-    }, h("span", { class: "title" }, m.label),
-    h("span", { class: "desc" }, m.description)))));
+  const groups = [["direct", "仅 Agent"], ["hybrid", "Agent + Policy"]];
+  for (const [profile, label] of groups) {
+    const methods = S.config.methods.filter((m) => m.action_profile === profile);
+    body.append(h("section", { class: "method-group" },
+      h("h2", { class: "section-title" }, label),
+      methods.length ? h("div", { class: "choice-grid" }, methods.map((m) => h("button", {
+        class: `choice${w.method === m.id ? " selected" : ""}`, "aria-pressed": String(w.method === m.id),
+        onclick: () => { w.method = m.id; route(); },
+      }, h("span", { class: "title" }, m.label), h("span", { class: "desc" }, m.description))))
+        : h("p", { class: "muted small" }, "当前评测集暂无可用方法。")));
+  }
 }
 
 async function stepModel(body) {
@@ -919,6 +923,15 @@ async function openTasks(bench, p) {
     groups.get(task.suite).push(task);
   }
   const list = h("div", {});
+  let selectedTask = null;
+  const selection = h("div", { class: "task-selection", hidden: true });
+  const selectedName = h("span", { "aria-live": "polite" });
+  if (p.launchable) {
+    selection.append(selectedName, h("button", { class: "btn primary", onclick: () => {
+      close(); startWith(bench, p, selectedTask);
+    } }, "新建运行"));
+    drawer.append(selection);
+  }
   const search = h("input", { class: "input", type: "search", placeholder: "搜索任务或任务组", "aria-label": "搜索任务或任务组",
     oninput: () => render() });
   function suiteName(suite) {
@@ -931,7 +944,17 @@ async function openTasks(bench, p) {
   }
   function taskRow(task) {
     const name = task.instruction || task.task;
-    const row = h("div", { class: "suite-task" }, h("span", { title: task.task }, name));
+    const text = h("span", { title: task.task }, name);
+    const row = h("div", { class: "suite-task" });
+    if (p.launchable) {
+      const radio = h("input", { type: "radio", name: "drawer-task", checked: selectedTask?.task === task.task,
+        onchange: () => {
+          selectedTask = task;
+          selectedName.textContent = `${suiteName(task.suite)} · ${name}`;
+          selection.hidden = false;
+        } });
+      row.append(h("label", {}, radio, text));
+    } else row.append(text);
     if (task.demo_url) {
       const demo = h("details", { class: "expert-demo" }, h("summary", {}, "专家演示"));
       demo.addEventListener("toggle", () => {
@@ -947,9 +970,6 @@ async function openTasks(bench, p) {
       });
       row.append(demo);
     }
-    if (p.launchable) row.append(h("button", { class: "btn small", onclick: () => {
-      close(); startWith(bench, p, task);
-    } }, "以此任务新建运行"));
     return row;
   }
   function render() {

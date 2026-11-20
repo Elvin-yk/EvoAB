@@ -167,6 +167,5 @@ step. Repeating the same setup command verifies cached clips and resumes missing
 downloads. Studio serves installed clips from its own host, including offline.
 Missing clips hide the preview action and the task remains available to run. Each preview is one external-camera episode from the LeRobot conversion
 of LIBERO, identified by its exact suite and task. Perturbation entries do not
-share these previews. Creating a run from a task carries that selection into the
-method step. Only the confirmation step submits a run. Studio offers Agentic
-Policy (a persistent agent using robot tools); the CLI tool-profile ID is `direct`.
+share these previews. Selecting a task reveals a single drawer action to create a run with that task. Only the confirmation step submits a run. Studio offers Agentic
+Policy under Agent only (one persistent agent session using robot tools). LIBERO-PRO currently has no Studio method pairing the agent with a separate learned action policy; the CLI tool-profile ID is `direct`.
