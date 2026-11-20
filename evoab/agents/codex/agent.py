@@ -291,9 +291,9 @@ class CodexAgent(CodexConfig):
             if tb := state.get("traceback"):
                 logger.debug("traceback:\n%s", tb)
 
-        success = finish_request is not None
+        success = finish_request is not None and not error
         if code_policy:
-            success = success and bool(state.get("completed")) and not error and not state.get("stop_reason")
+            success = success and bool(state.get("completed")) and not state.get("stop_reason")
 
         result = AgentResult(
             success=success,
@@ -416,6 +416,20 @@ def _consume_main_turn(
         )
 
         if method == "turn/completed":
+            finished_turn = _get(payload, "turn")
+            status = _get(finished_turn, "status")
+            status = getattr(status, "value", status)
+            if status == "failed":
+                error = _get(finished_turn, "error")
+                state["error"] = _get(error, "message") or "Codex turn failed"
+                if "model_not_found" in state["error"]:
+                    logger.warning(
+                        "This model may require a newer Codex CLI. "
+                        "Check the model ID and account access."
+                    )
+                return
+            if status != "completed":
+                return
             state["completed"] = True
             if state["pending_reasoning"]:
                 logger.warning(
