@@ -50,6 +50,7 @@ function pageRun(main, key) {
     renderLaunchLog(run);
     return;
   }
+  if (!RV.trace) put($("rvBody"), h("div", { class: "card empty" }, "读取运行记录…"));
   loadTrace();
   renderLaunchLog(run);
 }
