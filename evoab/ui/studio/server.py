@@ -153,7 +153,11 @@ def create_app(runs_root: Path) -> FastAPI:
     @app.get("/api/runs")
     def run_list() -> dict[str, Any]:
         items = scan_runs(runs_root)
+        registered = providers.load_providers()
         for run in items:
+            provider = registered.get(run.get("provider_id"))
+            if provider is not None:
+                run["provider"] = provider.label
             if run["status"] == "running" and run.get("monitor_id"):
                 run["live"] = live_progress(collection, run["monitor_id"])
         return {"runs": items, "totals": usage_totals(items)}

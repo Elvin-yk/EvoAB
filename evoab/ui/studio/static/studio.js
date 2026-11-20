@@ -122,7 +122,7 @@ async function loadModels(providerId, force = false) {
   return S.models[providerId];
 }
 const findRun = (key) =>
-  S.runs.find((r) => r.key === key) ||
+  S.runs.find((r) => r.key === key || r.id === key) ||
   (key.startsWith("launch/") && S.runs.find((r) => r.launch_id === key.slice(7)));
 
 // -- routing -----------------------------------------------------------------
@@ -130,8 +130,9 @@ const findRun = (key) =>
 let current = { page: null, arg: null };
 function route() {
   const hash = location.hash.slice(1) || "new";
-  const [page, ...rest] = hash.split("/");
-  const arg = rest.join("/");
+  const [section, ...rest] = hash.split("/");
+  const page = section === "launch" ? "run" : section;
+  const arg = section === "launch" ? hash : rest.join("/");
   const same = current.page === page && current.arg === arg;
   current = { page, arg };
   for (const link of document.querySelectorAll(".nav a")) {
@@ -545,7 +546,7 @@ function pageRun(main, key) {
       h("a", { class: "btn small", href: "#history" }, "返回历史记录"))));
     return;
   }
-  if (run.key !== key) history.replaceState(null, "", `#${run.key}`);
+  if (run.id && location.hash !== `#${run.key}`) history.replaceState(null, "", `#${run.key}`);
   let page = main.querySelector(".page[data-run]");
   if (!page || page.dataset.run !== run.key) {
     page = h("div", { class: "page wide", "data-run": run.key },
