@@ -19,6 +19,16 @@ from evoab.integrations import load_integration
 from evoab.integrations.composition import canonical_tool_profile
 
 
+WORKBENCH_COMMANDS = {
+    "runs": "List, launch, trace and stop runs (same as Studio)",
+    "providers": "Manage model API providers and probe models",
+    "benchmarks": "List benchmarks and tasks; prepare runtimes",
+    "usage": "Token usage by API and model",
+    "settings": "Show or change Studio defaults",
+    "studio": "Start the Studio web client",
+}
+
+
 def _add_doctor_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--json",
@@ -234,6 +244,9 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         "tui", parents=[common], allow_abbrev=False, help="Interactive TUI"
     )
     tui.set_defaults(episode_timeout_s=0, instruction=None)
+    # Resource commands are dispatched before this parser runs (see main); listed here for --help.
+    for name, text in WORKBENCH_COMMANDS.items():
+        subparsers.add_parser(name, help=text, add_help=False)
     return parser
 
 
@@ -243,6 +256,10 @@ def main(argv=None, *, _supervised=False) -> None:
     # it needs no integration, model or credential and must not import runtimes.
     if argv and argv[0] == "doctor":
         raise SystemExit(_run_doctor(argv[1:]))
+    # Same operations as Studio; they need no integration or run configuration.
+    if argv and argv[0] in WORKBENCH_COMMANDS:
+        from evoab.workbench.cli import main as workbench_main
+        raise SystemExit(workbench_main(argv))
     integration_name = _probe_integration_name(argv)
     try:
         integration_spec = (

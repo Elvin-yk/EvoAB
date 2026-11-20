@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Studio's operations move to `evoab/workbench/` and are exposed as
+  `evoab runs | providers | benchmarks | usage | settings | studio` commands
+  with `--json`; Studio's HTTP routes call the same methods. `evoab studio`
+  replaces `python -m evoab.ui.studio` (which still works).
+
 - Codex robot agents no longer receive `AGENTS.md` project docs or Codex's
   bundled skills (`project_doc_max_bytes=0`, bundled skills and skill
   instructions disabled), and start in the run's `scratch` directory instead of

@@ -9,9 +9,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from evoab.ui.studio import benchmarks, jobs
-from evoab.ui.studio.providers import Provider
-from evoab.ui.studio.runs import STUDIO_DIR
+from evoab.workbench import benchmarks, jobs
+from evoab.workbench.providers import Provider
+from evoab.workbench.runs import STUDIO_DIR
 
 REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh")
 # The runtime tool-profile ID is retained for compatibility with saved launches.

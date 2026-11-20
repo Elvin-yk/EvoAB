@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from evoab.ui.studio import jobs
+from evoab.workbench import jobs
 
 #: A run without result.json whose files changed this recently counts as running.
 RUNNING_WINDOW_S = 180

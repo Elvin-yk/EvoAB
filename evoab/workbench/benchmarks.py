@@ -20,7 +20,7 @@ from typing import Any
 
 import yaml
 
-from evoab.ui.studio import jobs
+from evoab.workbench import jobs
 
 #: Integrations Studio can launch runs for today (others are listed for setup only).
 LAUNCHABLE = ("libero_pro",)

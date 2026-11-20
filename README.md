@@ -67,7 +67,24 @@ tracking running jobs, and reviewing run outcomes, token usage, and replays.
 The Benchmark page lists other integrations and their setup requirements.
 
 ```bash
-python -m evoab.ui.studio --runs-root ./runs --port 8770
+evoab studio --runs-root ./runs --port 8770
+```
+
+Everything Studio does is also a command, backed by the same code
+(`evoab/workbench/`). Add `--json` for the exact payload the Studio API
+returns; the HTTP API is described at `/openapi.json`.
+
+```bash
+evoab benchmarks tasks libero_pro --suite libero_object
+evoab runs launch --task libero_object/pick_up_the_alphabet_soup_and_place_it_in_the_basket \
+  --provider boden-pro --model claude-sonnet-5
+evoab runs list
+evoab runs trace 721e018e          # rounds, tool calls, results and why the run ended
+evoab runs trace 721e018e --round 4   # full input and output of one model request
+evoab runs stop 721e018e
+evoab providers add my-api --base-url https://host/v1 --key-env MY_API_KEY
+evoab providers probe my-api some-model
+evoab usage
 ```
 
 For an unreleased build, set the matching runtime wheel's path on the Studio
@@ -76,7 +93,8 @@ setup. See [local deployment](docs/deployment.md) for runtime wheel details.
 
 Manage API providers and probe model capabilities under Settings (设置). The
 server stores provider definitions and keys outside the repository under
-`~/.config/evoab/` by default. The browser displays masked keys.
+`~/.config/evoab/` by default. The browser displays masked keys; the CLI reads
+keys from standard input or an environment variable, never from arguments.
 
 ## Repository layout
 
