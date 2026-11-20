@@ -890,30 +890,56 @@ async function openTasks(bench, p) {
   const close = () => { backdrop.remove(); drawer.remove(); };
   const backdrop = h("div", { class: "drawer-backdrop", onclick: close });
   const body = h("div", { class: "drawer-body" }, h("div", { class: "muted" }, "加载任务…"));
-  const drawer = h("div", { class: "drawer" },
-    h("div", { class: "drawer-head" }, h("h2", {}, `${bench.title} / ${p.profile}`), h("span", { class: "tag" }, `${p.task_count} 个任务`),
+  const title = p.profile === "default" ? bench.title : `${bench.title} / ${p.profile}`;
+  const drawer = h("div", { class: "drawer", role: "dialog", "aria-label": title },
+    h("div", { class: "drawer-head" }, h("h2", {}, title), h("span", { class: "tag" }, `${p.task_count} 个评测条目`),
       h("span", { class: "spacer" }), h("button", { class: "btn small", onclick: close }, "关闭")), body);
   document.body.append(backdrop, drawer);
-  const tasks = await loadTasks(bench, p.profile, true);
-  let query = "";
-  const table = h("div", {});
-  const draw = () => {
-    const q = query.toLowerCase();
-    const shown = tasks.filter((t) => !q || t.task.toLowerCase().includes(q) || (t.instruction || "").toLowerCase().includes(q) || t.suite.includes(q));
-    put(table, h("div", { class: "card table-wrap" }, h("table", { class: "table" },
-      h("thead", {}, h("tr", {}, h("th", {}, "任务"), h("th", {}, "评测集"), h("th", {}, "本体"), h("th", { class: "num" }, "步数上限"), h("th", {}, ""))),
-      h("tbody", {}, shown.map((t) => h("tr", {},
-        h("td", { style: "white-space:normal" }, h("div", { class: "mono" }, t.task), h("div", { class: "muted small" }, t.instruction)),
-        h("td", {}, t.suite), h("td", {}, t.embodiment), h("td", { class: "num" }, t.max_steps ?? "—"),
-        h("td", {}, p.launchable ? h("button", { class: "btn small", onclick: () => {
-          selectBenchmark(bench, p);
-          Object.assign(S.wizard, { task: t, step: 3 });
-          close(); location.hash = "#new"; route();
-        } }, "运行") : null)))))));
-  };
-  put(body, h("div", { class: "toolbar" }, h("input", { class: "input", type: "search", placeholder: "搜索…", style: "width:260px",
-    oninput: (e) => { query = e.target.value; draw(); } })), table);
-  draw();
+  let tasks;
+  try {
+    tasks = await loadTasks(bench, p.profile, true);
+  } catch (error) {
+    put(body, h("div", { class: "notice error" }, `任务加载失败：${error.message}`));
+    return;
+  }
+  const groups = new Map();
+  for (const task of tasks) {
+    if (!groups.has(task.suite)) groups.set(task.suite, []);
+    groups.get(task.suite).push(task);
+  }
+  const list = h("div", {});
+  const search = h("input", { class: "input", type: "search", placeholder: "搜索任务或任务组", "aria-label": "搜索任务或任务组",
+    oninput: () => render() });
+  function suiteName(suite) {
+    if (bench.integration !== "libero_pro") return suite;
+    const match = /^libero_(10|goal|object|spatial)(?:_(env|lan|object|swap|task))?$/.exec(suite);
+    if (!match) return suite;
+    const family = { "10": "长程", goal: "目标", object: "物体", spatial: "空间" }[match[1]];
+    const variant = { env: "环境变化", lan: "指令改写", object: "物体变化", swap: "位置变化", task: "任务变化" }[match[2]] || "原始任务";
+    return `${family} · ${variant}`;
+  }
+  function render() {
+    const query = search.value.trim().toLowerCase();
+    const sections = [];
+    for (const [suite, entries] of groups) {
+      const label = suiteName(suite);
+      const matches = (label.toLowerCase().includes(query) || suite.toLowerCase().includes(query)) ? entries :
+        entries.filter((t) => `${t.task} ${t.instruction}`.toLowerCase().includes(query));
+      if (!matches.length) continue;
+      sections.push(h("details", { class: "task-suite", open: Boolean(query) },
+        h("summary", { title: suite }, label, h("span", { class: "muted small" }, `（${matches.length}）`)),
+        matches.map((t) => h("div", { class: "suite-task" },
+          h("span", { title: t.task }, t.instruction || t.task),
+          p.launchable ? h("button", { class: "btn small", onclick: () => {
+            selectBenchmark(bench, p);
+            Object.assign(S.wizard, { task: t, step: 3 });
+            close(); location.hash = "#new"; route();
+          } }, "选择任务") : null))));
+    }
+    put(list, ...(sections.length ? sections : [h("div", { class: "empty" }, "没有匹配的任务")]));
+  }
+  put(body, h("div", { class: "toolbar" }, search), list);
+  render();
 }
 
 // -- settings ----------------------------------------------------------------
