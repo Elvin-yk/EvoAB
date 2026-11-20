@@ -1,0 +1,162 @@
+{
+  "libero_10/KITCHEN_SCENE3_turn_on_the_stove_and_put_the_moka_pot_on_it": {
+    "sha256": "602c80443d542a6b8af6ba2677ebab1605f3f2ffce99cd8854aa9604e9f86074",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000006.mp4"
+  },
+  "libero_10/KITCHEN_SCENE4_put_the_black_bowl_in_the_bottom_drawer_of_the_cabinet_and_close_it": {
+    "sha256": "43b4130faafa039740f2e08b18467c15aa03d595dd619c931aacaeb48009fcb8",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000014.mp4"
+  },
+  "libero_10/KITCHEN_SCENE6_put_the_yellow_and_white_mug_in_the_microwave_and_close_it": {
+    "sha256": "e2674c62d7e74f64e894258663a9e874410ff63846a017775010178182254890",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000002.mp4"
+  },
+  "libero_10/KITCHEN_SCENE8_put_both_moka_pots_on_the_stove": {
+    "sha256": "e7ccb1dd2f68a11772d4e543f3d380e3e0142f40861b144955df5d560d35fe2d",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000010.mp4"
+  },
+  "libero_10/LIVING_ROOM_SCENE1_put_both_the_alphabet_soup_and_the_cream_cheese_box_in_the_basket": {
+    "sha256": "d202196370b50c019e5e6abf7d504aa62820db9417c1a60965fa9a6973162646",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000007.mp4"
+  },
+  "libero_10/LIVING_ROOM_SCENE2_put_both_the_alphabet_soup_and_the_tomato_sauce_in_the_basket": {
+    "sha256": "500764cd110d0c87a16ec12f00772a17ca6bc6944ccc8da09e2605361460c3b2",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000008.mp4"
+  },
+  "libero_10/LIVING_ROOM_SCENE2_put_both_the_cream_cheese_box_and_the_butter_in_the_basket": {
+    "sha256": "6e974c37d243616e9663e3357ea98ce0b45dddc8012504e341517a7442725c23",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000012.mp4"
+  },
+  "libero_10/LIVING_ROOM_SCENE5_put_the_white_mug_on_the_left_plate_and_put_the_yellow_and_white_mug_on_the_right_plate": {
+    "sha256": "0566fd0b9e4e2442d3591ab674d09ad4d5eaea3c6e9cb2a5f0c7c8c4d82e4e7b",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000000.mp4"
+  },
+  "libero_10/LIVING_ROOM_SCENE6_put_the_white_mug_on_the_plate_and_put_the_chocolate_pudding_to_the_right_of_the_plate": {
+    "sha256": "4114732beaa481709733977b4ed7154fa4ffbaece25f42ab87b5cabcb097a9b0",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000001.mp4"
+  },
+  "libero_10/STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy": {
+    "sha256": "276ee537c5781ef10fd7d5e79163b37959155411026a3f62c19713bd23176e5b",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_10_no_noops_lerobot_v21/resolve/537f5fe35f0878d17ee606200473e255c1357ade/videos/chunk-000/observation.images.image/episode_000027.mp4"
+  },
+  "libero_goal/open_the_middle_drawer_of_the_cabinet": {
+    "sha256": "80d3b58aa7edabbad1f9ddaf99966b4b8971a25ce0421a02cd4e147ffabebe77",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000020.mp4"
+  },
+  "libero_goal/open_the_top_drawer_and_put_the_bowl_inside": {
+    "sha256": "67aadf50fe6e939391aeb7346a9667c103d2f7bf8543c92434182ca1db262cb3",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000003.mp4"
+  },
+  "libero_goal/push_the_plate_to_the_front_of_the_stove": {
+    "sha256": "b98a1ea31f0906fcdf185b0cfd6efdda4c3454fbfef8a2e5014f3e18adf0a960",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000007.mp4"
+  },
+  "libero_goal/put_the_bowl_on_the_plate": {
+    "sha256": "32c098775ad090df1c63e350a67f3c8f9e0c5126fabe314b9132de638e91de46",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000000.mp4"
+  },
+  "libero_goal/put_the_bowl_on_the_stove": {
+    "sha256": "303e3a16dbe372a21c993897dd12c2d93f116c960d815c340a2313a489478bb6",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000013.mp4"
+  },
+  "libero_goal/put_the_bowl_on_top_of_the_cabinet": {
+    "sha256": "b73fa6b3d3599eb687aeb5111204e4fb00fbcd4afc0c524379460a72b94ff38b",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000019.mp4"
+  },
+  "libero_goal/put_the_cream_cheese_in_the_bowl": {
+    "sha256": "46025aca82daff7aaf93334f5a87c527503e4b7ea4e83bb21e974bcf7017ff86",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000005.mp4"
+  },
+  "libero_goal/put_the_wine_bottle_on_the_rack": {
+    "sha256": "d96de3bb28adabd4cd268d5717334403ff3487de79a728fb24877f7166ab700e",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000001.mp4"
+  },
+  "libero_goal/put_the_wine_bottle_on_top_of_the_cabinet": {
+    "sha256": "2333aa3c3e96c53920dc91ef353aa2da4ac6590711a1bd2c7390845de23689a0",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000006.mp4"
+  },
+  "libero_goal/turn_on_the_stove": {
+    "sha256": "197eb26a92889be82b9b0832ade02fadc69d5cbdcb3e84de9d1b6961db30dd57",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_goal_no_noops_lerobot_v21/resolve/64ba2c431233f1869d398580cda1a76fbd7ad2e7/videos/chunk-000/observation.images.image/episode_000009.mp4"
+  },
+  "libero_object/pick_up_the_alphabet_soup_and_place_it_in_the_basket": {
+    "sha256": "3f9481fbe4335d35ac1334f9e12315fdfb0871e1155bc19d8115c685a749d80f",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000006.mp4"
+  },
+  "libero_object/pick_up_the_bbq_sauce_and_place_it_in_the_basket": {
+    "sha256": "709e6c6042924eb67d7b9ac7ee9eacc0c3d700b7984b7047410b258043a6dc4f",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000004.mp4"
+  },
+  "libero_object/pick_up_the_butter_and_place_it_in_the_basket": {
+    "sha256": "74056bce41a6c630fb80c84d1b5d6a5a0ea074bb8bfc4547b28046cd237f776b",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000012.mp4"
+  },
+  "libero_object/pick_up_the_chocolate_pudding_and_place_it_in_the_basket": {
+    "sha256": "ab27b0994e26590e2f517192d3f8679fef0eeb7fbc9100c561cd8b926c1c12f1",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000016.mp4"
+  },
+  "libero_object/pick_up_the_cream_cheese_and_place_it_in_the_basket": {
+    "sha256": "74c05002d01acfca920cf7b1bdacf96835cc9020c697925645ce3fe364d73a73",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000003.mp4"
+  },
+  "libero_object/pick_up_the_ketchup_and_place_it_in_the_basket": {
+    "sha256": "cb686c0c5396c59d63f058b244553811e10961d04a28b674d0c928ef6a638010",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000001.mp4"
+  },
+  "libero_object/pick_up_the_milk_and_place_it_in_the_basket": {
+    "sha256": "3fd4a6e007a20d3961f351d31ad68d1455fdede1117cf638fb83d129ecb0844c",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000007.mp4"
+  },
+  "libero_object/pick_up_the_orange_juice_and_place_it_in_the_basket": {
+    "sha256": "23f086a5f0080fe37fff64471f38c8b784ddb5ecf84e90e55855a7e576e3e66f",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000000.mp4"
+  },
+  "libero_object/pick_up_the_salad_dressing_and_place_it_in_the_basket": {
+    "sha256": "89b3b80622cbfe8b7116c592a1a5b8359c977044e842706b07191ace254c5f9a",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000009.mp4"
+  },
+  "libero_object/pick_up_the_tomato_sauce_and_place_it_in_the_basket": {
+    "sha256": "0d475981cc6b05e048c6bc8aa9172e7f7217ec08da22bfa0d93aa43037c501b2",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_object_no_noops_lerobot_v21/resolve/815cca86696cf749cd405728c0893b9285b4a288/videos/chunk-000/observation.images.image/episode_000014.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_between_the_plate_and_the_ramekin_and_place_it_on_the_plate": {
+    "sha256": "4e36c9bd17828143f15b5a29ff16e943d1c9c963d8ad17d792ec32b1e50b19ee",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000011.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_from_table_center_and_place_it_on_the_plate": {
+    "sha256": "62b1f487620bcc490f67e9d20c657321820e46b47d2971bcd3a62b9d2b004c28",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000022.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_in_the_top_drawer_of_the_wooden_cabinet_and_place_it_on_the_plate": {
+    "sha256": "163e3755a96dc93995dc0a1a1377ad84a66af3514110979a451127f33aa57bb0",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000001.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_next_to_the_cookie_box_and_place_it_on_the_plate": {
+    "sha256": "5c78625d4e1da43766b9ab76754cfe516a2e8e11c04da9718c33a167bbe05b72",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000000.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_next_to_the_plate_and_place_it_on_the_plate": {
+    "sha256": "d645aef38a39b497addefe518c56a392b1cd8a95b820b74bf6ff98f5919c8737",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000019.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_next_to_the_ramekin_and_place_it_on_the_plate": {
+    "sha256": "9038cfc441997e00add498bbaeffbc3b3bdba0d6b316c0dfb29a47ed1d7e82eb",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000020.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_on_the_cookie_box_and_place_it_on_the_plate": {
+    "sha256": "5948b919f5e41a450c3c849c7d46eac134a30238e8c9d99c6edfabc99262b948",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000017.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_on_the_ramekin_and_place_it_on_the_plate": {
+    "sha256": "e9a270c70b077d8473037394fc895f4f1fe3bc0c60b6fb8737f87eef2d16bec5",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000003.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_on_the_stove_and_place_it_on_the_plate": {
+    "sha256": "42f2d4358b7edfb006eb023d52bec8023cea22d58d6c018aa1f9589463615dda",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000006.mp4"
+  },
+  "libero_spatial/pick_up_the_black_bowl_on_the_wooden_cabinet_and_place_it_on_the_plate": {
+    "sha256": "a1f2ae8486307550bb3c0b1edaa07d1f2d3121f2d198dba1809e2828102517dd",
+    "url": "https://huggingface.co/datasets/aopolin-lv/libero_spatial_no_noops_lerobot_v21/resolve/bfe55b41cc3103d672ad7204257c9bdc547410cb/videos/chunk-000/observation.images.image/episode_000029.mp4"
+  }
+}

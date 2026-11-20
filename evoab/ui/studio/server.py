@@ -90,6 +90,14 @@ def create_app(runs_root: Path) -> FastAPI:
     def benchmark_tasks(integration: str, profile: str) -> list[dict[str, Any]]:
         return benchmarks.tasks_for(integration, profile)
 
+    @app.get("/api/benchmarks/{integration}/{profile}/demos/{task:path}")
+    def benchmark_demo(integration: str, profile: str, task: str) -> FileResponse:
+        for runtime in benchmarks.prepared_runtimes():
+            if runtime.integration == integration and runtime.profile == profile:
+                if path := benchmarks.demo_file(runtime, task):
+                    return FileResponse(path, media_type="video/mp4")
+        raise HTTPException(404, "Expert preview is not installed")
+
     @app.post("/api/benchmarks/{integration}/{profile}/setup")
     def benchmark_setup(integration: str, profile: str) -> dict[str, Any]:
         try:

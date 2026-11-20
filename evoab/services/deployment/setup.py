@@ -5,6 +5,7 @@ from dataclasses import replace
 
 from collections.abc import Callable
 from email.parser import BytesParser
+from http.client import HTTPException
 import hashlib
 import json
 from pathlib import Path
@@ -159,6 +160,21 @@ def validate_runtime_wheel(path):
                          f"received {metadata['Name']}=={metadata['Version']}")
 
 
+def _prepare_previews(args, adapter, runtime, report):
+    download = getattr(adapter, 'prepare_previews', None)
+    if download is None or getattr(args, 'skip_demo_download', False):
+        return
+    try:
+        download(runtime)
+    except (OSError, HTTPException) as error:
+        message = f'Expert preview download incomplete ({error}). Rerun setup to resume.'
+        if report is None:
+            import logging
+            logging.getLogger(__name__).warning(message)
+        else:
+            report(message)
+
+
 def prepare(args, adapter, *, report=print):
     if args.wheel:
         validate_runtime_wheel(args.wheel)
@@ -189,6 +205,7 @@ def prepare(args, adapter, *, report=print):
                 runtime = refreshed
             else:
                 adapter.verify(runtime)
+            _prepare_previews(args, adapter, runtime, report)
             if report is not None:
                 report(f'Runtime ready (reused): {root}')
             return runtime
@@ -225,6 +242,7 @@ def prepare(args, adapter, *, report=print):
             write_json_atomic(root / 'setup_failure.json', dict(error=str(error), type=type(error).__name__,
                                                               elapsed_s=time.time()-started))
             raise
+        _prepare_previews(args, adapter, runtime, report)
         if report is not None:
             report(f'Runtime ready: {root}')
         return runtime

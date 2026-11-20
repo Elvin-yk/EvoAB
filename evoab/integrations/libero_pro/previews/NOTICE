@@ -1,0 +1,9 @@
+LIBERO expert demonstration previews
+
+Original demonstrations: LIBERO (Lifelong-Robot-Learning/LIBERO),
+https://huggingface.co/datasets/yifengzhu-hf/LIBERO-datasets
+LeRobot video conversions: aopolin-lv, Hugging Face, Apache License 2.0.
+sources.json records the pinned source clip for each suite/task.
+
+Setup downloads one original converted external-camera MP4 per task (AV1).
+The source videos are hosted by the dataset publisher.

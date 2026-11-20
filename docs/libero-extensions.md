@@ -159,3 +159,14 @@ effort together before reviewing the launch. Each run
 starts a fresh native episode at initial-state index 0, validates its identity,
 and shuts down its service when the run ends. With the CLI use
 `--deploy local --runtime-profile SUITE --task TASK_NAME`.
+
+LIBERO-PRO setup downloads the available original-task previews from pinned
+Hugging Face dataset revisions into `<runtime cache>/demos/<suite>/` (40 clips
+when all base suites are installed). Use `--skip-demo-download` to skip this
+step. Repeating the same setup command verifies cached clips and resumes missing
+downloads. Studio serves installed clips from its own host, including offline.
+Missing clips hide the preview action and the task remains available to run. Each preview is one external-camera episode from the LeRobot conversion
+of LIBERO, identified by its exact suite and task. Perturbation entries do not
+share these previews. Creating a run from a task carries that selection into the
+method step. Only the confirmation step submits a run. Studio offers Agentic
+Policy (a persistent agent using robot tools); the CLI tool-profile ID is `direct`.

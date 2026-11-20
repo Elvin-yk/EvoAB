@@ -191,6 +191,7 @@ class SetupConfig(RuntimeConfig):
 
     python: str | None = None
     wheel: Path | None = None
+    skip_demo_download: bool = False
     setup_timeout_s: float = Field(default=14400, gt=0, allow_inf_nan=False)
 
 

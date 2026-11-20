@@ -14,13 +14,12 @@ from evoab.ui.studio.providers import Provider
 from evoab.ui.studio.runs import STUDIO_DIR
 
 REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh")
-#: Methods Studio can launch today: the Codex agent with Direct or Clean tools.
+# The runtime tool-profile ID is retained for compatibility with saved launches.
 METHODS = (
-    {"id": "direct", "agent": "codex", "action_profile": "direct", "label": "Direct tools",
-     "description": "Full direct tool set: gripper motion, scene capture and queries, skills, finish."},
-    {"id": "clean", "agent": "codex", "action_profile": "direct", "label": "Clean (4 tools)",
-     "description": "Minimal baseline: move, hold, capture_scene and finish; no initial state dump."},
+    {"id": "direct", "agent": "codex", "action_profile": "direct", "label": "Agentic Policy",
+     "description": "智能体在同一会话中观察场景、调用机器人动作，并根据执行反馈决定下一步。"},
 )
+
 
 
 @dataclass(frozen=True)
@@ -47,7 +46,6 @@ def build_command(request: LaunchRequest, provider: Provider, output_root: Path)
         "--runtime-profile", profile,
         "--task", task,
         "--tool-profile", method["id"],
-        *(["--no-depth"] if method["id"] == "clean" else []),
         "--no-sam3",
         "--agent", method["agent"],
         "--model", request.model,

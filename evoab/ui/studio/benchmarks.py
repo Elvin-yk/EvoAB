@@ -244,10 +244,22 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
     return items
 
 
+def demo_file(runtime: PreparedRuntime, task: str) -> Path | None:
+    if runtime.integration == "libero_pro" and task in runtime.tasks:
+        from evoab.integrations.libero_pro.demo_assets import preview_path
+        return preview_path(runtime.root, task)
+    return None
+
+
 def tasks_for(integration: str, profile: str) -> list[dict[str, Any]]:
     for runtime in prepared_runtimes():
         if runtime.integration == integration and runtime.profile == profile:
-            return sorted(runtime.tasks.values(), key=lambda t: (t["suite"], t["task"]))
+            rows = []
+            for task, entry in runtime.tasks.items():
+                if demo_file(runtime, task):
+                    entry = {**entry, "demo_url": f"/api/benchmarks/{integration}/{profile}/demos/{task}"}
+                rows.append(entry)
+            return sorted(rows, key=lambda t: (t["suite"], t["task"]))
     return []
 
 

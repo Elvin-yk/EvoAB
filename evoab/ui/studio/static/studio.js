@@ -210,7 +210,6 @@ function wizardSummary() {
   const provider = selectedProvider();
   const method = selectedMethod();
   const row = (k, v) => [h("dt", { text: k }), h("dd", {}, v || h("span", { class: "faint" }, "未选择"))];
-  const launchBtn = h("button", { class: "btn primary", disabled: !wizardReady(4), onclick: launchRun }, "启动运行");
   return h("div", { class: "card card-pad summary" },
     h("h2", { text: "本次运行" }),
     h("dl", {},
@@ -218,12 +217,10 @@ function wizardSummary() {
       row("环境", w.bench && benchmarkName(w.bench, w.bench.profile)),
       row("任务", w.task && w.task.task),
       row("本体", w.task && w.task.embodiment),
-      row("方法", method && `${method.agent} · ${method.label}`),
+      row("方法", method?.label),
       row("API", provider && provider.label),
       row("模型", w.model),
-      w.step >= 4 && row("推理强度", w.effort)),
-    launchBtn,
-    h("p", { class: "small muted", style: "margin:10px 0 0" }, "启动后环境准备约 30 秒，运行进度在“运行中”查看。"));
+      w.step >= 4 && row("推理强度", w.effort)));
 }
 
 function stepKind(body) {
@@ -315,7 +312,7 @@ function stepMethod(body) {
     h("div", { class: "choice-grid" }, S.config.methods.map((m) => h("button", {
       class: `choice${w.method === m.id ? " selected" : ""}`, "aria-pressed": String(w.method === m.id),
       onclick: () => { w.method = m.id; route(); },
-    }, h("span", { class: "title" }, m.label, h("span", { class: "tag" }, m.agent)),
+    }, h("span", { class: "title" }, m.label),
     h("span", { class: "desc" }, m.description)))));
 }
 
@@ -391,7 +388,7 @@ function commandPreview() {
   return [
     "evoab run", `--integration ${w.bench.integration}`, "--deploy local", `--runtime-profile ${profile}`,
     `--task ${task}`, `--tool-profile ${method.id}`,
-    ...(method.id === "clean" ? ["--no-depth"] : []), "--no-sam3", `--agent ${method.agent}`,
+    "--no-sam3", `--agent ${method.agent}`,
     `--model ${w.model}`, `--reasoning-effort ${w.effort}`, `--provider-url ${provider.base_url}`,
     `--provider-profile ${provider.profile}`, "--codex-web-search disabled", "--monitor",
   ].join(" \\\n  ");
@@ -408,7 +405,7 @@ function stepConfirm(body) {
   const rows = [
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["评测集", w.task.suite], ["任务", w.task.task],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
-    ["方法", `${method.agent} · ${method.label}`], ["推理强度", w.effort], ["API", `${provider.label}（${provider.profile}）`],
+    ["方法", method.label], ["推理强度", w.effort], ["API", `${provider.label}（${provider.profile}）`],
     ["模型", w.model],
   ];
   body.append(
@@ -880,9 +877,9 @@ function selectBenchmark(bench, p) {
   Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile, title: bench.title }, task: null, suite: "all", query: "" });
 }
 
-function startWith(bench, p) {
+function startWith(bench, p, task = null) {
   selectBenchmark(bench, p);
-  S.wizard.step = 2;
+  Object.assign(S.wizard, { task, step: task ? 3 : 2 });
   location.hash = "#new";
 }
 
@@ -932,6 +929,29 @@ async function openTasks(bench, p) {
     const variant = { env: "环境变化", lan: "指令改写", object: "物体变化", swap: "位置变化", task: "任务变化" }[match[2]] || "原始任务";
     return `${family} · ${variant}`;
   }
+  function taskRow(task) {
+    const name = task.instruction || task.task;
+    const row = h("div", { class: "suite-task" }, h("span", { title: task.task }, name));
+    if (task.demo_url) {
+      const demo = h("details", { class: "expert-demo" }, h("summary", {}, "专家演示"));
+      demo.addEventListener("toggle", () => {
+        if (!demo.open) {
+          demo.querySelector("video")?.pause();
+          return;
+        }
+        if (demo.querySelector("video")) return;
+        const video = h("video", { src: task.demo_url, controls: true, playsinline: true,
+          preload: "metadata", "aria-label": `${name} · 专家演示`,
+          onerror: () => { video.replaceWith(h("span", { role: "alert" }, "视频加载失败，请重新打开任务列表。")); } });
+        demo.append(video);
+      });
+      row.append(demo);
+    }
+    if (p.launchable) row.append(h("button", { class: "btn small", onclick: () => {
+      close(); startWith(bench, p, task);
+    } }, "以此任务新建运行"));
+    return row;
+  }
   function render() {
     const query = search.value.trim().toLowerCase();
     const sections = [];
@@ -942,13 +962,7 @@ async function openTasks(bench, p) {
       if (!matches.length) continue;
       sections.push(h("details", { class: "task-suite", open: Boolean(query) },
         h("summary", { title: suite }, label, h("span", { class: "muted small" }, `（${matches.length}）`)),
-        matches.map((t) => h("div", { class: "suite-task" },
-          h("span", { title: t.task }, t.instruction || t.task),
-          p.launchable ? h("button", { class: "btn small", onclick: () => {
-            selectBenchmark(bench, p);
-            Object.assign(S.wizard, { task: t, step: 3 });
-            close(); location.hash = "#new"; route();
-          } }, "选择任务") : null))));
+        matches.map(taskRow)));
     }
     put(list, ...(sections.length ? sections : [h("div", { class: "empty" }, "没有匹配的任务")]));
   }
@@ -1241,7 +1255,7 @@ function settingsGeneral(body) {
 function applyDefaults(force = false) {
   const s = S.config.settings || {};
   const w = S.wizard;
-  if (s.default_method && (force || !w.touched)) w.method = s.default_method;
+  if (force || !w.touched) w.method = S.config.methods.find((m) => m.id === s.default_method)?.id || S.config.methods[0].id;
   if (s.default_effort && (force || !w.touched)) w.effort = s.default_effort;
   if (s.default_provider && (force || !w.provider)) w.provider = s.default_provider;
   if (s.default_model && (force || !w.model)) w.model = s.default_model;

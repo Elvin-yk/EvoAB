@@ -5,6 +5,7 @@ from pathlib import Path
 
 from evoab.services.deployment.config import LaunchPlan, Recipe
 from evoab.services.deployment.runtime import query_python
+from .demo_assets import prepare_previews as prepare_previews
 from .server import BUDGETS, REVISION, SUITES
 
 
