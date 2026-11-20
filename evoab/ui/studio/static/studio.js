@@ -200,27 +200,7 @@ function pageNew(main) {
     h("button", { class: "btn", onclick: () => { w.step -= 1; route(); } }, "上一步"),
     w.step < 5 && h("button", { class: "btn primary", disabled: !wizardReady(w.step), onclick: () => { w.step += 1; route(); } }, "下一步"));
   put(main, h("div", { class: "page wide" },
-    h("div", { class: `wizard${w.step < 2 ? " intro" : ""}` },
-      h("div", {}, steps, body, foot),
-      w.step >= 2 && wizardSummary())));
-}
-
-function wizardSummary() {
-  const w = S.wizard;
-  const provider = selectedProvider();
-  const method = selectedMethod();
-  const row = (k, v) => [h("dt", { text: k }), h("dd", {}, v || h("span", { class: "faint" }, "未选择"))];
-  return h("div", { class: "card card-pad summary" },
-    h("h2", { text: "本次运行" }),
-    h("dl", {},
-      row("类型", KINDS[w.kind]),
-      row("环境", w.bench && benchmarkName(w.bench, w.bench.profile)),
-      row("任务", w.task && w.task.task),
-      row("本体", w.task && w.task.embodiment),
-      row("方法", method?.label),
-      row("API", provider && provider.label),
-      row("模型", w.model),
-      w.step >= 4 && row("推理强度", w.effort)));
+    h("div", { class: "wizard" }, steps, body, foot)));
 }
 
 function stepKind(body) {
