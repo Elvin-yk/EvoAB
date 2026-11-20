@@ -1,0 +1,111 @@
+[project]
+name = "evoab"
+version = "0.2.0"
+description = "A unified harness for robot-use agents, with CLI, Python SDK, and live monitoring"
+readme = "docs/pypi.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["robotics", "agents", "mcp", "embodied-ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "rich>=13.0.0",
+    "huggingface-hub>=0.28,<2",
+    "numpy>=1.24",
+    "pillow>=10",
+    "pydantic>=2,<3",
+    "jsonschema>=4.18",
+    "httpx>=0.28,<1",
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.29,<1",
+    "openai-codex==0.147.0",
+    "claude-agent-sdk==0.2.165",
+    "textual>=0.70.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/Elvin-yk/EvoAB/tree/main/docs"
+Homepage = "https://github.com/Elvin-yk/EvoAB"
+
+[project.optional-dependencies]
+antigravity = ["google-antigravity==0.1.23"]
+benchmarks = ["scipy>=1.10", "PyYAML>=6,<7"]
+xpolicylab = ["websockets>=14,<18", "msgpack>=1,<2", "msgpack-numpy==0.4.8"]
+# Compatibility extras: the base package already includes these features.
+tui = []
+codex = []
+claude = []
+dev = ["build>=1", "twine>=6", "tomli-w>=1"]
+# OpenCV 5 removed calibrateHandEye, which the ARX ONE hand-eye solvers use.
+arx_one = ["scipy>=1.10", "opencv-python-headless>=4.8,<5", "pyyaml>=6"]
+piper_x = ["scipy>=1.10", "opencv-python-headless>=4.8,<5", "python-fcl>=0.7,<0.8", "pyrealsense2>=2.55,<3; sys_platform == 'linux'"]
+robolab = ["scipy>=1.10", "trimesh>=4,<5", "python-fcl>=0.7,<0.8"]
+robodojo = [
+    "trimesh>=4,<5",
+    "imageio>=2.0",
+    "scipy>=1.10",
+    "imageio-ffmpeg>=0.4",
+]
+
+[project.entry-points."robouse.backends"]
+evoab_worker = "evoab.integrations.robouse.environment.backends.worker_backend:WorkerBackend"
+
+[project.scripts]
+evoab = "evoab.cli:main"
+
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["evoab*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"evoab.agents.opencode" = ["bridge.js"]
+"evoab.agents.gemini_cli" = ["robotBridge.ts"]
+"evoab.ui.web" = ["static/*.html", "static/*.js", "static/*.css"]
+"evoab" = ["py.typed"]
+"evoab.resources" = ["prompts/**/*.md", "prompts/robodojo/task_requirements.json", "prompts/robodojo/instruction_supplements.json", "skills/**/*.md"]
+"evoab.integrations.robolab" = ["SOURCE.md"]
+"evoab.integrations.piper_x" = ["templates/*.json", "SOURCE.md", "README.md"]
+"evoab.integrations.dexjoco" = ["deployment.toml", "SOURCE.md"]
+"evoab.integrations.behavior" = ["deployment.toml", "SOURCE.md"]
+"evoab.integrations.isaaclab_arena" = ["deployment.toml", "SOURCE.md"]
+"evoab.integrations.navila" = ["deployment.toml", "SOURCE.md"]
+"evoab.integrations.robodojo" = ["deployment.toml", "SOURCE.md", "UPSTREAM_LICENSE", "environment/*.urdf"]
+
+# Native sources, ROS packages, models and templates travel with the integration. Local
+# third-party copies and measured calibration are ignored by Git and excluded below as well.
+"evoab.integrations.arx_one" = [
+    "**/*.md", "**/*.json", "**/*.sh", "**/*.txt", "**/*.urdf", "**/*.toml", "**/*.yaml",
+    "**/*.cpp", "**/*.hpp", "**/*.h", "**/*.msg", "**/*.srv", "**/package.xml", "**/SHA256SUMS",
+    "**/LICENSE", "**/NOTICE",
+]
+"evoab.integrations.robouse" = ["recipes/*.toml"]
+"evoab.services.actor" = ["recipes/*.toml"]
+"evoab.services.perception" = ["recipes/*.toml"]
+
+[tool.setuptools.exclude-package-data]
+"evoab.integrations.arx_one" = [
+    "deploy/configs/calibration/*/**", "body/drivers/*/sdk/**", "body/drivers/can/**",
+    "body/drivers/third_party/**", "body/drivers/arx_x5/models/arx_x5_2025/meshes/**",
+]
+
+# Native services run in separate environments without planner/UI dependencies.
+[tool.evoab.runtime]
+exclude-dependencies = ["openai-codex", "claude-agent-sdk", "textual"]
