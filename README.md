@@ -61,6 +61,20 @@ Replay saved runs with `evoab monitor --run-dir ./runs`. See
 [docs/getting-started.md](docs/getting-started.md) and
 [docs/running.md](docs/running.md) for more.
 
+## Studio
+
+EvoAB Studio is a local web page for launching simulation runs and reviewing
+them: choose the prepared environment, benchmark and task, the model API and
+model, then follow the run's outcome, token usage and replay.
+
+```bash
+python -m evoab.ui.studio --runs-root ./runs --port 8770 --monitor-port 8771
+```
+
+Providers are configured outside the repository in
+`~/.config/evoab/providers.json` (see `evoab/ui/studio/providers.py`); keys are
+read on the server and never sent to the browser.
+
 ## Repository layout
 
 ```text

@@ -79,6 +79,7 @@ namespaces = false
 "evoab.agents.opencode" = ["bridge.js"]
 "evoab.agents.gemini_cli" = ["robotBridge.ts"]
 "evoab.ui.web" = ["static/*.html", "static/*.js", "static/*.css"]
+"evoab.ui.studio" = ["static/*.html", "static/*.js", "static/*.css"]
 "evoab" = ["py.typed"]
 "evoab.resources" = ["prompts/**/*.md", "prompts/robodojo/task_requirements.json", "prompts/robodojo/instruction_supplements.json", "skills/**/*.md"]
 "evoab.integrations.robolab" = ["SOURCE.md"]
