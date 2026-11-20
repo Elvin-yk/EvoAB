@@ -80,8 +80,8 @@ const RUN_STATUS = {
   failed: "启动失败", interrupted: "已中断",
 };
 const BENCH_STATUS = {
-  ready: "已就绪", not_prepared: "未准备", preparing: "准备中", setup_failed: "准备失败",
-  external: "需外部运行时", real: "真机",
+  ready: "已就绪", not_prepared: "未安装", preparing: "安装中", setup_failed: "安装失败",
+  external: "需手动配置", real: "真机",
 };
 const pill = (status, labels = RUN_STATUS) => h("span", { class: `pill ${status}` }, labels[status] || status);
 const isLive = (run) => run && (run.status === "running" || run.status === "starting");
@@ -813,11 +813,11 @@ function stopPlay() {
 const PROJECT_SOURCES = {
   robodojo: { repo: "RoboDojo-Benchmark/RoboDojo", paper: "2607.04434" },
   libero: { repo: "Lifelong-Robot-Learning/LIBERO", paper: "2306.03310" },
-  libero_pro: { repo: "Zxy-MLlab/LIBERO-PRO", paper: "2510.03827" },
+  libero_pro: { repo: "Zxy-MLlab/LIBERO-PRO", paper: "2510.03827", guide: "libero-extensions.md#libero-pro" },
   metaworld: { repo: "Farama-Foundation/Metaworld", paper: "1910.10897" },
-  libero_plus: { repo: "sylvestf/LIBERO-plus", paper: "2510.13626" },
-  robotwin: { repo: "RoboTwin-Platform/RoboTwin", paper: "2506.18088" },
-  calvin: { repo: "mees/calvin", paper: "2112.03227" },
+  libero_plus: { repo: "sylvestf/LIBERO-plus", paper: "2510.13626", guide: "libero-extensions.md#prepare-a-native-runtime" },
+  robotwin: { repo: "RoboTwin-Platform/RoboTwin", paper: "2506.18088", guide: "robotwin.md#prepare-and-run" },
+  calvin: { repo: "mees/calvin", paper: "2112.03227", guide: "calvin.md#prepare-a-native-service" },
 };
 
 function projectLinks(bench) {
@@ -831,43 +831,35 @@ function projectLinks(bench) {
 }
 
 function pageBenchmarks(main) {
-  const expanded = new Set(Array.from(main.querySelectorAll("details[open]"), (el) => el.dataset.integration));
   const profileRow = (bench, p) => {
-    const canPrepare = bench.setup === "auto" && ["not_prepared", "setup_failed"].includes(p.status);
-    const canRefresh = bench.setup === "auto" && p.status === "ready";
-    const suites = Object.entries(p.suites || {}).map(([s, n]) => `${s} ${n}`).join(" · ");
+    const guide = PROJECT_SOURCES[bench.integration]?.guide;
+    const canInstall = bench.setup === "auto" && ["not_prepared", "setup_failed"].includes(p.status);
     return [
       h("div", { class: "profile-row" },
-        h("span", { class: "mono" }, p.profile === "default" ? "默认环境" : p.profile),
-        h("span", {}, pill(p.status, BENCH_STATUS)),
-        h("span", { class: "suites", title: suites }, p.status === "ready" ? `${p.task_count} 个任务${suites ? ` · ${suites}` : ""}` :
-          bench.setup === "external" ? bench.requirements : bench.setup === "real" ? "需要连接实体机器人与设备进程" :
-          p.status === "preparing" ? "正在准备，日志见下方" : bench.requirements || "运行一键准备以安装运行时与资源"),
+        h("strong", {}, p.profile === "default" ? "运行环境" : `运行环境 · ${p.profile}`),
+        pill(p.status, BENCH_STATUS),
         h("span", { class: "acts" },
-          p.status === "ready" ? h("button", { class: "btn small", onclick: () => openTasks(bench, p) }, "浏览任务") : null,
-          p.launchable ? h("button", { class: "btn small", onclick: () => startWith(bench, p) }, "用它新建运行") : null,
-          canPrepare || canRefresh ? h("button", { class: "btn small", onclick: (e) => prepare(bench, p, e.currentTarget, canRefresh) }, canRefresh ? "重新准备" : "一键准备") : null)),
-      p.setup_log && p.status !== "ready" ? h("div", { class: "profile-row" }, h("div", { class: "profile-log" }, h("pre", { class: "log" }, p.setup_log))) : null,
+          canInstall ? h("button", { class: "btn small", onclick: (e) => prepare(bench, p, e.currentTarget) },
+            p.status === "setup_failed" ? "重试安装" : "安装环境") : null,
+          p.status === "external" && guide ? h("a", { class: "btn small", target: "_blank", rel: "noopener noreferrer",
+            href: `https://github.com/Elvin-yk/EvoAB/blob/main/docs/${guide}` }, "配置指南") : null,
+          p.status === "ready" && p.task_count > 0 ? h("button", { class: "btn small", onclick: () => openTasks(bench, p) },
+            `浏览任务（${p.task_count}）`) : null,
+          p.launchable ? h("button", { class: "btn small", onclick: () => startWith(bench, p) }, "新建运行") : null)),
+      p.setup_log && ["preparing", "setup_failed"].includes(p.status) ? h("pre", { class: "profile-log log" }, p.setup_log) : null,
     ];
   };
   put(main, h("div", { class: "page wide" },
     pageHead("评测集", null,
       h("button", { class: "btn", onclick: async (e) => { e.currentTarget.disabled = true; await loadBenchmarks(); route(); toast("已重新检查"); } }, "重新检查")),
-    S.benchmarks.map((b) => {
-      const ready = b.profiles.filter((p) => p.status === "ready").length;
-      const id = b.integration;
-      return h("article", { class: "card bench" },
-        h("div", { class: "bench-head" },
-          h("h2", { class: "t" }, b.title),
-          h("div", { class: "d" }, b.description),
-          h("div", { class: "m" }, h("span", {}, `仿真器：${b.simulator}`),
-            h("span", {}, `本体：${b.embodiment}`)),
-          projectLinks(b)),
-        !b.profiles.length ? h("div", { class: "runtime-unavailable" }, "当前 Studio 尚未接入运行环境") :
-        h("details", { class: "profiles", "data-integration": id, open: expanded.has(id) },
-          h("summary", {}, "运行环境", h("span", { class: "muted small" }, `${ready} / ${b.profiles.length} 已就绪`)),
-          b.profiles.map((p) => profileRow(b, p))));
-    })));
+    S.benchmarks.map((b) => h("article", { class: "card bench" },
+      h("div", { class: "bench-head" },
+        h("h2", { class: "t" }, b.title),
+        h("div", { class: "m" }, h("span", {}, `仿真器：${b.simulator}`),
+          h("span", {}, `本体：${b.embodiment}`)),
+        projectLinks(b)),
+      b.profiles.length ? b.profiles.map((p) => profileRow(b, p)) :
+        h("div", { class: "profile-row" }, h("strong", {}, "运行环境"), h("span", { class: "muted" }, "仅收录资料，暂不支持运行"))))));
 }
 
 function selectBenchmark(bench, p) {
@@ -880,13 +872,13 @@ function startWith(bench, p) {
   location.hash = "#new";
 }
 
-async function prepare(bench, p, button, again) {
-  const what = `${bench.title} / ${p.profile}`;
-  if (!confirm(`${again ? "重新" : ""}准备 ${what}？\n会在服务器上运行 evoab setup，下载依赖与资源，可能需要较长时间。`)) return;
+async function prepare(bench, p, button) {
+  const what = p.profile === "default" ? bench.title : `${bench.title} / ${p.profile}`;
+  if (!confirm(`在 Studio 服务器上安装 ${what} 环境？\n将下载仿真器依赖和任务资源。`)) return;
   button.disabled = true;
   try {
     await api(`/api/benchmarks/${bench.integration}/${p.profile}/setup`, { method: "POST" });
-    toast(`已开始准备 ${what}`);
+    toast(`已开始安装 ${what}`);
   } catch (error) {
     toast(`无法开始：${error.message}`, true);
   }
@@ -1193,7 +1185,7 @@ function settingsGeneral(body) {
       field("默认方法", select("default_method", S.config.methods.map((m) => [m.id, m.label]))),
       field("默认推理强度", select("default_effort", S.config.reasoning_efforts.map((e) => [e, e]))),
       field("运行时 wheel", h("input", { class: "input mono", value: s.runtime_wheel || "", placeholder: "~/dist/evoab_runtime-0.2.0-py3-none-any.whl",
-        oninput: (e) => (s.runtime_wheel = e.target.value || null) }), "评测集一键准备时安装到隔离运行时的 evoab-runtime wheel（服务器路径）；由 scripts/release/prepare.py 生成。"),
+        oninput: (e) => (s.runtime_wheel = e.target.value || null) }), "安装评测环境时安装到隔离运行时的 evoab-runtime wheel（服务器路径）；由 scripts/release/prepare.py 生成。"),
       h("div", { class: "form-foot", style: "display:flex;gap:8px" }, h("button", { class: "btn primary", onclick: async () => {
         try {
           S.config.settings = await api("/api/settings", { method: "PUT", json: s });
