@@ -111,7 +111,26 @@ async function loadRuns() {
   $("runningBadge").textContent = live;
 }
 const loadProviders = async () => (S.providers = await api("/api/providers"));
-const loadBenchmarks = async () => (S.benchmarks = await api("/api/benchmarks"));
+async function loadBenchmarks() {
+  const integrations = await api("/api/benchmarks");
+  const catalog = [];
+  for (const bench of integrations) {
+    if (bench.kind !== "simulation" || !PROJECT_SOURCES[bench.integration]) continue;
+    if (bench.integration !== "robouse") {
+      catalog.push(bench);
+      continue;
+    }
+    // Display LIBERO independently, using its actual RoboUse runtime for setup and launch.
+    catalog.push({ ...bench, profiles: bench.profiles.filter((p) => p.profile !== "libero") });
+    catalog.push({
+      ...bench, catalogId: "libero", title: "LIBERO", simulator: "MuJoCo（robosuite）", embodiment: "Franka Panda",
+      description: "官方终身机器人学习评测集，测试跨任务的知识迁移。本机通过 RoboUse 的 LIBERO 环境接入。",
+      profiles: bench.profiles.filter((p) => p.profile === "libero"),
+    });
+  }
+  S.benchmarks = catalog;
+  return catalog;
+}
 async function loadTasks(integration, profile, force = false) {
   const key = `${integration}/${profile}`;
   if (!S.tasks[key] || force) S.tasks[key] = await api(`/api/benchmarks/${integration}/${profile}/tasks`);
@@ -234,8 +253,7 @@ function stepBench(body) {
     for (const p of bench.profiles.filter((profile) => profile.launchable)) {
       const selected = w.bench?.integration === bench.integration && w.bench.profile === p.profile;
       const mujoco = bench.integration === "robouse" && p.profile === "mujoco";
-      const description = mujoco ? "机器人操作任务集，例如让机械臂把红色方块放进白碗。" :
-        bench.integration === "libero_pro" ? "改变指令措辞或物体位置，评测机械臂能否完成同一任务。" : bench.description;
+      const description = mujoco ? "机器人操作任务集，例如用夹爪把红色方块放进白碗。" : bench.description;
       const runtime = mujoco ? "MuJoCo 物理仿真" : p.profile === "default" ? bench.simulator : p.profile;
       cards.push(h("button", { class: `choice bench-choice${selected ? " selected" : ""}`,
         onclick: () => {
@@ -799,33 +817,24 @@ function stopPlay() {
 
 // -- benchmarks --------------------------------------------------------------
 
-// Project publications cited by the upstream maintainers. Hardware links point to drivers.
+// Simulation projects included in the Studio catalog, with upstream citations.
 const PROJECT_SOURCES = {
   robouse: { repo: "benchflow-ai/robouse" },
   robodojo: { repo: "RoboDojo-Benchmark/RoboDojo", paper: "2607.04434" },
-  libero_pro: { repo: "Zxy-MLlab/LIBERO-PRO", paper: "2510.03827" },
+  libero: { repo: "Lifelong-Robot-Learning/LIBERO", paper: "2306.03310" },
   libero_plus: { repo: "sylvestf/LIBERO-plus", paper: "2510.13626" },
   robotwin: { repo: "RoboTwin-Platform/RoboTwin", paper: "2506.18088" },
-  rmbench: { repo: "RoboTwin-Platform/RMBench", paper: "2603.01229" },
   calvin: { repo: "mees/calvin", paper: "2112.03227" },
-  robolab: { repo: "NVlabs/RoboLab", paper: "2604.09860" },
-  dexjoco: { repo: "brave-eai/dexjoco", paper: "2605.16257" },
-  behavior: { repo: "StanfordVL/BEHAVIOR-1K", paper: "2403.09227" },
-  isaaclab_arena: { repo: "isaac-sim/IsaacLab-Arena", relatedPaper: "2511.04831" },
-  navila: { repo: "yang-zj1026/NaVILA-Bench", paper: "2412.04453", paperLabel: "NaVILA 论文" },
-  arx_one: { repo: "ARXroboticsX/ARX_X5" },
-  piper_x: { repo: "agilexrobotics/pyAgxArm" },
 };
 
 function projectLinks(bench) {
-  const source = PROJECT_SOURCES[bench.integration];
+  const source = PROJECT_SOURCES[bench.catalogId || bench.integration];
   if (!source) return null;
   const link = (url, label) => h("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, label);
   return h("div", { class: "project-links" },
-    link(`https://github.com/${source.repo}`, bench.kind === "real" ? "GitHub 驱动" : "GitHub 代码"),
-    source.paper ? link(`https://arxiv.org/abs/${source.paper}`, source.paperLabel || "arXiv 论文") :
-      h("span", {}, bench.kind === "real" ? "硬件平台 · 暂未查到独立论文" : "暂未查到独立 arXiv 论文"),
-    source.relatedPaper && link(`https://arxiv.org/abs/${source.relatedPaper}`, "Isaac Lab 基础框架论文"));
+    link(`https://github.com/${source.repo}`, "GitHub 代码"),
+    source.paper ? link(`https://arxiv.org/abs/${source.paper}`, "arXiv 论文") :
+      h("span", {}, "暂未查到独立 arXiv 论文"));
 }
 
 function pageBenchmarks(main) {
@@ -855,18 +864,18 @@ function pageBenchmarks(main) {
       h("button", { class: "btn", onclick: async (e) => { e.currentTarget.disabled = true; await loadBenchmarks(); route(); toast("已重新检查"); } }, "重新检查")),
     S.benchmarks.map((b) => {
       const ready = b.profiles.filter((p) => p.status === "ready").length;
-      const description = b.integration === "robouse"
+      const id = b.catalogId || b.integration;
+      const description = id === "robouse"
         ? "把不同的机器人任务集接入同一套评测流程。智能体操作模拟机器人，系统按场景中的实际结果评分。"
         : b.description;
       return h("article", { class: "card bench" },
         h("div", { class: "bench-head" },
           h("h2", { class: "t" }, b.title),
-          b.kind === "real" && h("span", { class: "tag" }, "真机平台"),
           h("div", { class: "d" }, description),
-          h("div", { class: "m" }, b.kind !== "real" && h("span", {}, `仿真器：${b.simulator}`),
+          h("div", { class: "m" }, h("span", {}, `仿真器：${b.simulator}`),
             h("span", {}, `本体：${b.embodiment}`)),
           projectLinks(b)),
-        h("details", { class: "profiles", "data-integration": b.integration, open: expanded.has(b.integration) },
+        h("details", { class: "profiles", "data-integration": id, open: expanded.has(id) },
           h("summary", {}, "运行环境", h("span", { class: "muted small" }, `${ready} / ${b.profiles.length} 已就绪`)),
           b.profiles.map((p) => profileRow(b, p))));
     })));
