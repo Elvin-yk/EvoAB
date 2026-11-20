@@ -215,13 +215,13 @@ function wizardSummary() {
     h("h2", { text: "本次运行" }),
     h("dl", {},
       row("类型", KINDS[w.kind]),
-      row("环境", w.bench && `${w.bench.title} / ${w.bench.profile}`),
+      row("环境", w.bench && benchmarkName(w.bench, w.bench.profile)),
       row("任务", w.task && w.task.task),
       row("本体", w.task && w.task.embodiment),
       row("方法", method && `${method.agent} · ${method.label}`),
-      row("推理强度", w.effort),
       row("API", provider && provider.label),
-      row("模型", w.model)),
+      row("模型", w.model),
+      w.step >= 4 && row("推理强度", w.effort)),
     launchBtn,
     h("p", { class: "small muted", style: "margin:10px 0 0" }, "启动后环境准备约 30 秒，运行进度在“运行中”查看。"));
 }
@@ -240,21 +240,34 @@ function stepKind(body) {
         h("span", { class: "choice-arrow", "aria-hidden": "true" }, "→")))));
 }
 
+// The catalog and run picker share the same benchmark identity and hardware fields.
+function benchmarkIdentity(bench, titleTag) {
+  return [
+    h(titleTag, { class: "bench-title" }, bench.title),
+    h("span", { class: "bench-specs" },
+      [ ["仿真器", bench.simulator], ["本体", bench.embodiment] ]
+        .filter(([, value]) => value && value !== "—")
+        .map(([label, value]) => h("span", {}, `${label}：${value}`))),
+  ];
+}
+
+function benchmarkName(bench, profile) {
+  return profile === "default" ? bench.title : `${bench.title} / ${profile}`;
+}
+
 function stepBench(body) {
   const w = S.wizard;
   const cards = [];
   for (const bench of S.benchmarks.filter((b) => b.kind === w.kind)) {
     for (const p of bench.profiles.filter((profile) => profile.launchable)) {
       const selected = w.bench?.integration === bench.integration && w.bench.profile === p.profile;
-      const runtime = p.profile === "default" ? bench.simulator : p.profile;
       cards.push(h("button", { class: `choice bench-choice${selected ? " selected" : ""}`,
         onclick: () => {
           if (!selected) selectBenchmark(bench, p);
           w.step = 2; route();
         } },
-        h("span", { class: "title" }, bench.title),
-        h("span", { class: "desc" }, bench.description),
-        h("span", { class: "meta" }, [runtime, `${p.task_count} 个任务`].filter((v) => v && v !== "—").join(" · "))));
+        benchmarkIdentity(bench, "span"),
+        h("span", { class: "meta" }, [p.profile !== "default" && p.profile, `${p.task_count} 个评测条目`].filter(Boolean).join(" · "))));
     }
   }
   body.append(
@@ -299,13 +312,11 @@ function stepMethod(body) {
   const w = S.wizard;
   body.append(
     h("div", { class: "section-title" }, "方法"),
-    h("div", { class: "choice-grid", style: "margin-bottom:22px" }, S.config.methods.map((m) => h("div", {
-      class: `choice${w.method === m.id ? " selected" : ""}`, onclick: () => { w.method = m.id; route(); },
-    }, h("div", { class: "title" }, m.label, h("span", { class: "tag" }, m.agent)), h("div", { class: "desc" }, m.description)))),
-    h("div", { class: "section-title" }, "推理强度"),
-    h("div", { class: "segmented" }, S.config.reasoning_efforts.map((e) =>
-      h("button", { class: w.effort === e ? "active" : "", onclick: () => { w.effort = e; route(); } }, e))),
-    h("p", { class: "muted small" }, "更多方法（Hybrid VLA、Code as Policy、多智能体等）接入后会出现在这里。"));
+    h("div", { class: "choice-grid" }, S.config.methods.map((m) => h("button", {
+      class: `choice${w.method === m.id ? " selected" : ""}`, "aria-pressed": String(w.method === m.id),
+      onclick: () => { w.method = m.id; route(); },
+    }, h("span", { class: "title" }, m.label, h("span", { class: "tag" }, m.agent)),
+    h("span", { class: "desc" }, m.description)))));
 }
 
 async function stepModel(body) {
@@ -344,7 +355,7 @@ async function stepModel(body) {
     const unknown = info.models.filter((m) => !caps[m] && match(m));
     const item = (m) => {
       const c = caps[m];
-      return h("div", { class: `list-item${w.model === m ? " selected" : ""}`, onclick: () => { w.model = m; w.step = 5; route(); } },
+      return h("div", { class: `list-item${w.model === m ? " selected" : ""}`, onclick: () => { w.model = m; route(); } },
         h("div", { class: "t mono" }, m),
         c ? h("span", {}, h("span", { class: `tag ${c.vision ? "good" : "bad"}` }, c.vision ? "图像 ✓" : "图像 ✗"), " ",
           h("span", { class: `tag ${c.tools ? "good" : "bad"}` }, c.tools ? "工具 ✓" : "工具 ✗"))
@@ -363,7 +374,12 @@ async function stepModel(body) {
         oninput: (e) => { w.modelQuery = e.target.value; renderList(); } }),
       h("span", { class: "spacer" }),
       h("a", { class: "btn small", href: "#settings/models" }, "模型能力探测")),
-    list);
+    list,
+    h("div", { class: "model-effort" },
+      h("div", { class: "section-title", id: "effort-label" }, "推理强度"),
+      h("div", { class: "segmented", role: "group", "aria-labelledby": "effort-label" },
+        S.config.reasoning_efforts.map((e) => h("button", { class: w.effort === e ? "active" : "",
+          "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; route(); } }, e)))));
   renderList();
 }
 
@@ -390,7 +406,7 @@ function stepConfirm(body) {
   const provider = selectedProvider();
   const method = selectedMethod();
   const rows = [
-    ["环境", `${w.bench.title} / ${w.bench.profile}（${KINDS[w.kind]}）`], ["评测集", w.task.suite], ["任务", w.task.task],
+    ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["评测集", w.task.suite], ["任务", w.task.task],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.agent} · ${method.label}`], ["推理强度", w.effort], ["API", `${provider.label}（${provider.profile}）`],
     ["模型", w.model],
@@ -854,9 +870,7 @@ function pageBenchmarks(main) {
       h("button", { class: "btn", onclick: async (e) => { e.currentTarget.disabled = true; await loadBenchmarks(); route(); toast("已重新检查"); } }, "重新检查")),
     S.benchmarks.map((b) => h("article", { class: "card bench" },
       h("div", { class: "bench-head" },
-        h("h2", { class: "t" }, b.title),
-        h("div", { class: "m" }, h("span", {}, `仿真器：${b.simulator}`),
-          h("span", {}, `本体：${b.embodiment}`)),
+        benchmarkIdentity(b, "h2"),
         projectLinks(b)),
       b.profiles.length ? b.profiles.map((p) => profileRow(b, p)) :
         h("div", { class: "profile-row" }, h("strong", {}, "运行环境"), h("span", { class: "muted" }, "仅收录资料，暂不支持运行"))))));
@@ -873,7 +887,7 @@ function startWith(bench, p) {
 }
 
 async function prepare(bench, p, button) {
-  const what = p.profile === "default" ? bench.title : `${bench.title} / ${p.profile}`;
+  const what = benchmarkName(bench, p.profile);
   if (!confirm(`在 Studio 服务器上安装 ${what} 环境？\n将下载仿真器依赖和任务资源。`)) return;
   button.disabled = true;
   try {
@@ -890,7 +904,7 @@ async function openTasks(bench, p) {
   const close = () => { backdrop.remove(); drawer.remove(); };
   const backdrop = h("div", { class: "drawer-backdrop", onclick: close });
   const body = h("div", { class: "drawer-body" }, h("div", { class: "muted" }, "加载任务…"));
-  const title = p.profile === "default" ? bench.title : `${bench.title} / ${p.profile}`;
+  const title = benchmarkName(bench, p.profile);
   const drawer = h("div", { class: "drawer", role: "dialog", "aria-label": title },
     h("div", { class: "drawer-head" }, h("h2", {}, title), h("span", { class: "tag" }, `${p.task_count} 个评测条目`),
       h("span", { class: "spacer" }), h("button", { class: "btn small", onclick: close }, "关闭")), body);

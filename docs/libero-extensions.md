@@ -149,7 +149,13 @@ evoab setup --integration libero_pro --runtime-python /path/to/native/bin/python
 ```
 
 Under Benchmark, choose LIBERO-PRO and select a suite and task. Studio lists
-tasks from the native task map with both BDDL and initial-state files. Each run
+tasks from the native task map with both BDDL and initial-state files. These files
+define evaluation episodes. The [original LIBERO demonstrations](https://huggingface.co/datasets/yifengzhu-hf/LIBERO-datasets)
+are a separate training download. The [official PRO perturbation release](https://huggingface.co/datasets/zhouxueyang/LIBERO-Pro)
+provides task definitions and initial states for evaluation.
+
+Choose a tool profile in the method step, then select the model and reasoning
+effort together before reviewing the launch. Each run
 starts a fresh native episode at initial-state index 0, validates its identity,
 and shuts down its service when the run ends. With the CLI use
 `--deploy local --runtime-profile SUITE --task TASK_NAME`.
