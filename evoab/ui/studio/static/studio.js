@@ -96,7 +96,7 @@ const S = {
   totals: null,
   tasks: {}, // "integration/profile" -> task list
   models: {}, // provider id -> {models, capabilities, recommended}
-  wizard: { step: 1, bench: null, task: null, suite: "all", query: "", method: "direct", effort: "low",
+  wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: "direct", effort: "low",
             provider: null, model: null, modelQuery: "" },
   history: { query: "", status: "all", bench: "all", model: "all", selected: new Set(), compare: false },
   replay: null,
@@ -153,12 +153,13 @@ function pageHead(title, subtitle, ...actions) {
 
 // -- new run (wizard) --------------------------------------------------------
 
-const STEPS = ["Benchmark", "任务", "方法", "API 与模型", "确认"];
+const KINDS = { simulation: "仿真", real: "真机" };
+const STEPS = ["类型", "评测集", "任务", "方法", "模型", "确认"];
 
 function wizardReady(upTo) {
   const w = S.wizard;
-  const checks = [!!w.bench, !!w.task, !!w.method, !!(w.provider && w.model)];
-  return checks.slice(0, upTo).every(Boolean);
+  const checks = [!!w.kind, !!w.bench, !!w.task, !!w.method, !!(w.provider && w.model)];
+  return checks.slice(0, upTo + 1).every(Boolean);
 }
 function selectedProvider() {
   return S.providers.find((p) => p.id === S.wizard.provider);
@@ -169,25 +170,26 @@ function selectedMethod() {
 
 function pageNew(main) {
   const w = S.wizard;
-  const steps = h("div", { class: "steps" }, STEPS.map((name, i) => {
-    const n = i + 1;
+  const steps = h("nav", { class: "steps", "aria-label": "新建运行步骤" }, STEPS.map((name, i) => {
+    const done = i < w.step;
     return h("button", {
-      class: `step-tab${w.step === n ? " active" : ""}${n < w.step && wizardReady(n) ? " done" : ""}`,
-      disabled: !wizardReady(n - 1) && n !== 1,
-      onclick: () => { w.step = n; route(); },
-    }, h("span", { class: "n" }, n < w.step && wizardReady(n) ? "✓" : n), name);
+      class: `step-tab${done ? " done" : ""}`,
+      "aria-current": i === w.step ? "step" : null,
+      "aria-label": `第 ${i + 1} 步，${name}${done ? "，已完成" : ""}`,
+      disabled: !wizardReady(i - 1),
+      onclick: () => { w.step = i; route(); },
+    }, h("span", { class: "n", "aria-hidden": "true" }, done ? "✓" : i + 1), name);
   }));
   const body = h("div", { class: "step-body" });
-  const renderers = [stepBench, stepTask, stepMethod, stepModel, stepConfirm];
-  renderers[w.step - 1](body);
-  const foot = h("div", { class: "step-foot" },
-    h("button", { class: "btn", disabled: w.step === 1, onclick: () => { w.step -= 1; route(); } }, "上一步"),
-    w.step < 5 ? h("button", { class: "btn primary", disabled: !wizardReady(w.step), onclick: () => { w.step += 1; route(); } }, "下一步") : h("span"));
+  const renderers = [stepKind, stepBench, stepTask, stepMethod, stepModel, stepConfirm];
+  renderers[w.step](body);
+  const foot = w.step > 0 && h("div", { class: "step-foot" },
+    h("button", { class: "btn", onclick: () => { w.step -= 1; route(); } }, "上一步"),
+    w.step < 5 && h("button", { class: "btn primary", disabled: !wizardReady(w.step), onclick: () => { w.step += 1; route(); } }, "下一步"));
   put(main, h("div", { class: "page wide" },
-    pageHead("新建运行", "选择 Benchmark、任务、方法和模型后启动一次仿真评测"),
-    h("div", { class: "wizard" },
+    h("div", { class: `wizard${w.step < 2 ? " intro" : ""}` },
       h("div", {}, steps, body, foot),
-      wizardSummary())));
+      w.step >= 2 && wizardSummary())));
 }
 
 function wizardSummary() {
@@ -199,7 +201,7 @@ function wizardSummary() {
   return h("div", { class: "card card-pad summary" },
     h("h2", { text: "本次运行" }),
     h("dl", {},
-      row("类型", "仿真"),
+      row("类型", KINDS[w.kind]),
       row("环境", w.bench && `${w.bench.title} / ${w.bench.profile}`),
       row("任务", w.task && w.task.task),
       row("本体", w.task && w.task.embodiment),
@@ -211,41 +213,46 @@ function wizardSummary() {
     h("p", { class: "small muted", style: "margin:10px 0 0" }, "启动后环境准备约 30 秒，运行进度在“运行中”查看。"));
 }
 
+function stepKind(body) {
+  const w = S.wizard;
+  body.append(h("h1", { class: "wizard-title" }, "选择运行类型"),
+    h("div", { class: "mode-grid" }, Object.entries(KINDS).map(([kind, label]) =>
+      h("button", { class: `choice mode-choice${kind === w.kind ? " selected" : ""}`,
+        onclick: () => {
+          if (kind !== w.kind) Object.assign(w, { kind, bench: null, task: null, suite: "all", query: "" });
+          w.step = 1; route();
+        } },
+        h("span", { class: "title" }, label),
+        h("span", { class: "desc" }, kind === "simulation" ? "在模拟器中运行任务" : "在实体机器人上运行任务"),
+        h("span", { class: "choice-arrow", "aria-hidden": "true" }, "→")))));
+}
+
 function stepBench(body) {
   const w = S.wizard;
   const cards = [];
-  const others = [];
-  for (const bench of S.benchmarks.filter((b) => b.kind === "simulation")) {
-    const blocked = [];
-    for (const profile of bench.profiles) {
-      if (!profile.launchable) { blocked.push(profile); continue; }
-      const selected = w.bench && w.bench.integration === bench.integration && w.bench.profile === profile.profile;
-      cards.push(h("div", {
-        class: `choice${selected ? " selected" : ""}`,
+  for (const bench of S.benchmarks.filter((b) => b.kind === w.kind)) {
+    for (const p of bench.profiles.filter((profile) => profile.launchable)) {
+      const selected = w.bench?.integration === bench.integration && w.bench.profile === p.profile;
+      const mujoco = bench.integration === "robouse" && p.profile === "mujoco";
+      const description = mujoco ? "机器人操作任务集，例如让机械臂把红色方块放进白碗。" :
+        bench.integration === "libero_pro" ? "改变指令措辞或物体位置，评测机械臂能否完成同一任务。" : bench.description;
+      const runtime = mujoco ? "MuJoCo 物理仿真" : p.profile === "default" ? bench.simulator : p.profile;
+      cards.push(h("button", { class: `choice bench-choice${selected ? " selected" : ""}`,
         onclick: () => {
-          if (!selected) { w.bench = { integration: bench.integration, profile: profile.profile, title: bench.title }; w.task = null; w.suite = "all"; }
+          if (!selected) selectBenchmark(bench, p);
           w.step = 2; route();
-        },
-      },
-        pill(profile.status, BENCH_STATUS),
-        h("div", { class: "title" }, bench.title, h("span", { class: "tag" }, profile.profile)),
-        h("div", { class: "desc" }, bench.description),
-        h("div", { class: "meta" }, `${profile.task_count} 个任务 · ${bench.simulator}`)));
+        } },
+        h("span", { class: "title" }, bench.title),
+        h("span", { class: "desc" }, description),
+        h("span", { class: "meta" }, [runtime, `${p.task_count} 个任务`].filter((v) => v && v !== "—").join(" · "))));
     }
-    if (blocked.length) others.push([bench, blocked]);
   }
   body.append(
-    h("div", { class: "section-title" }, "可启动的环境"),
+    h("div", { class: "toolbar benchmark-heading" },
+      h("h1", { class: "wizard-title" }, `可启动的${KINDS[w.kind]}环境`),
+      h("a", { class: "btn small", href: "#benchmarks" }, "Benchmark 管理")),
     cards.length ? h("div", { class: "choice-grid" }, cards)
-      : h("div", { class: "card empty" }, h("b", {}, "还没有准备好的环境"), "在 Benchmark 页面一键准备后即可在这里选择。"),
-    h("div", { class: "toolbar", style: "margin-top:26px" }, h("div", { class: "section-title", style: "margin:0" }, "其他环境"),
-      h("span", { class: "muted small" }, "需要先准备，或暂不支持从网页启动"),
-      h("span", { class: "spacer" }), h("a", { class: "btn small", href: "#benchmarks" }, "管理 Benchmark")),
-    h("div", { class: "card table-wrap" }, h("table", { class: "table" }, h("tbody", {}, others.map(([bench, profiles]) => h("tr", {},
-      h("td", { style: "width:160px;font-weight:550" }, bench.title),
-      h("td", { style: "white-space:normal" }, h("div", { class: "chips" }, profiles.map((p) => h("span", { class: "dim" },
-        h("b", {}, p.profile === "default" ? bench.integration : p.profile), BENCH_STATUS[p.status] + (p.status === "ready" ? " · 暂不支持网页启动" : ""))))),
-      h("td", { class: "muted small", style: "white-space:normal" }, bench.simulator)))))));
+      : h("p", { class: "card empty" }, `目前没有可从网页启动的${KINDS[w.kind]}环境。`));
 }
 
 async function stepTask(body) {
@@ -373,7 +380,7 @@ function stepConfirm(body) {
   const provider = selectedProvider();
   const method = selectedMethod();
   const rows = [
-    ["环境", `${w.bench.title} / ${w.bench.profile}（仿真）`], ["Benchmark", w.task.suite], ["任务", w.task.task],
+    ["环境", `${w.bench.title} / ${w.bench.profile}（${KINDS[w.kind]}）`], ["Benchmark", w.task.suite], ["任务", w.task.task],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.agent} · ${method.label}`], ["推理强度", w.effort], ["API", `${provider.label}（${provider.profile}）`],
     ["模型", w.model],
@@ -825,8 +832,13 @@ function pageBenchmarks(main) {
         h("div", { class: "profiles" }, b.profiles.map((p) => profileRow(b, p)))))))));
 }
 
+function selectBenchmark(bench, p) {
+  Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile, title: bench.title }, task: null, suite: "all", query: "" });
+}
+
 function startWith(bench, p) {
-  Object.assign(S.wizard, { bench: { integration: bench.integration, profile: p.profile, title: bench.title }, task: null, suite: "all", step: 2 });
+  selectBenchmark(bench, p);
+  S.wizard.step = 2;
   location.hash = "#new";
 }
 
@@ -864,7 +876,8 @@ async function openTasks(bench, p) {
         h("td", { style: "white-space:normal" }, h("div", { class: "mono" }, t.task), h("div", { class: "muted small" }, t.instruction)),
         h("td", {}, t.suite), h("td", {}, t.embodiment), h("td", { class: "num" }, t.max_steps ?? "—"),
         h("td", {}, p.launchable ? h("button", { class: "btn small", onclick: () => {
-          Object.assign(S.wizard, { bench: { integration: bench.integration, profile: p.profile, title: bench.title }, task: t, step: 3 });
+          selectBenchmark(bench, p);
+          Object.assign(S.wizard, { task: t, step: 3 });
           close(); location.hash = "#new"; route();
         } }, "运行") : null)))))));
   };

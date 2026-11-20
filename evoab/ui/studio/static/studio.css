@@ -157,18 +157,30 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 
 /* -- new run wizard ------------------------------------------------------- */
 .wizard { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
-.steps { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.wizard.intro { grid-template-columns: minmax(0, 760px); }
+.steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; margin-bottom: 28px; }
 .step-tab {
-  display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; border: 1px solid var(--line);
-  background: var(--panel); cursor: pointer; color: var(--muted);
+  display: flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 0;
+  border: 0; border-bottom: 3px solid var(--line); background: transparent; color: var(--muted); cursor: pointer;
 }
-.step-tab .n {
-  width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11.5px; background: var(--sunk);
+.step-tab .n { font: 12px var(--mono); }
+.step-tab.done { border-color: var(--accent); }
+.step-tab.done .n { color: var(--accent); }
+.step-tab[aria-current="step"] { border-color: var(--accent); background: var(--accent-soft); color: var(--text); font-weight: 650; }
+.step-tab:disabled { cursor: default; }
+.wizard-title { font-size: 20px; line-height: 1.4; margin: 0 0 14px; }
+.benchmark-heading { justify-content: space-between; }
+.benchmark-heading .wizard-title { margin: 0; }
+.mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.mode-grid .mode-choice { padding: 18px; gap: 6px; }
+.mode-choice .title { font-size: 18px; }
+.choice-arrow { position: absolute; right: 14px; top: 16px; color: var(--muted); }
+.bench-choice .meta { margin-top: auto; padding-top: 8px; }
+.wizard.intro .step-body { min-height: 0; }
+@media (max-width: 600px) {
+  .step-tab { flex-direction: column; gap: 2px; }
+  .mode-grid .mode-choice { padding: 14px; }
 }
-.step-tab.done .n { background: var(--ok-soft); color: var(--ok); }
-.step-tab.active { border-color: var(--text); color: var(--text); }
-.step-tab.active .n { background: var(--text); color: var(--bg); }
-.step-tab:disabled { cursor: default; opacity: 0.55; }
 .step-body { min-height: 380px; }
 .step-foot { display: flex; justify-content: space-between; margin-top: 16px; }
 .choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
