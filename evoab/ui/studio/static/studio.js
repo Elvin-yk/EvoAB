@@ -121,11 +121,6 @@ async function loadBenchmarks() {
     integration: "metaworld", kind: "simulation", title: "MetaWorld MT50", simulator: "MuJoCo",
     embodiment: "Sawyer", profiles: [], description: "50 个单臂桌面操作任务。",
   });
-  catalog.push({
-    integration: "robocasa_gr1", kind: "simulation", title: "RoboCasa GR-1 Tabletop",
-    simulator: "MuJoCo（robosuite）", embodiment: "GR-1", profiles: [],
-    description: "RoboScope Kit 论文使用的 24 个桌面操作任务。",
-  });
   S.benchmarks = catalog;
   return catalog;
 }
@@ -820,7 +815,6 @@ const PROJECT_SOURCES = {
   libero: { repo: "Lifelong-Robot-Learning/LIBERO", paper: "2306.03310" },
   libero_pro: { repo: "Zxy-MLlab/LIBERO-PRO", paper: "2510.03827" },
   metaworld: { repo: "Farama-Foundation/Metaworld", paper: "1910.10897" },
-  robocasa_gr1: { repo: "robocasa/robocasa-gr1-tabletop-tasks", paper: "2503.14734" },
   libero_plus: { repo: "sylvestf/LIBERO-plus", paper: "2510.13626" },
   robotwin: { repo: "RoboTwin-Platform/RoboTwin", paper: "2506.18088" },
   calvin: { repo: "mees/calvin", paper: "2112.03227" },
