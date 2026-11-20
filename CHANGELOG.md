@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Studio run review rebuilt around a reconstructed trace (`/api/trace/<run>`):
+  fixed harness stages, one round per model request (trigger, new input, full
+  context on demand, latency, retries, tokens, output) and every tool execution
+  with arguments, timing, environment effect, result and the round that used it.
+  Handles Codex code mode (`exec` scripts calling robot tools) and context
+  compaction, and states why each run ended. Cameras play side by side over one
+  shared time axis. The old embedded replay view is removed.
+
 - Removed the RoboUse integration, CLI and Studio launch entries, native workers and setup recipes. LIBERO-PRO and LIBERO-Plus use their own Panda controller.
 
 - Rename the package, CLI and environment variables to `evoab`, `evoab` and

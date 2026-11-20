@@ -8,7 +8,9 @@ Studio draws the replay from them.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -16,17 +18,24 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from evoab.ui.studio import benchmarks, jobs, providers
+from evoab.ui.studio import benchmarks, jobs, providers, trace
 from evoab.ui.studio.launcher import METHODS, REASONING_EFFORTS, LaunchRequest, launch, validate
 from evoab.ui.studio.monitor import RescanningCollection, live_progress
 from evoab.ui.studio.runs import STUDIO_DIR, load_launches, scan_runs, usage_totals
-from evoab.ui.web.server import create_monitor_app
+from evoab.ui.web.server import create_monitor_app, preview_image
 
 STATIC = Path(__file__).parent / "static"
 SETTING_KEYS = ("default_provider", "default_model", "default_effort", "default_method", "runtime_wheel")
+
+
+def _digest(name: str) -> str:
+    try:
+        return hashlib.sha256((STATIC / name).read_bytes()).hexdigest()[:10]
+    except OSError:
+        return "0"
 
 
 def settings_path() -> Path:
@@ -56,7 +65,10 @@ def create_app(runs_root: Path) -> FastAPI:
 
     @app.get("/")
     def index() -> FileResponse:
-        return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+        # Version each asset URL by its content so browsers never run stale scripts.
+        page = (STATIC / "index.html").read_text(encoding="utf-8")
+        page = re.sub(r'/static/([\w.\-]+\.(?:js|css))"', lambda m: f'/static/{m.group(1)}?v={_digest(m.group(1))}"', page)
+        return HTMLResponse(page, headers={"Cache-Control": "no-cache"})
 
     # -- configuration --------------------------------------------------------
 
@@ -201,6 +213,44 @@ def create_app(runs_root: Path) -> FastAPI:
     def run_log(launch_id: str) -> dict[str, Any]:
         _launch(launch_id)
         return {"log": jobs.log_tail(runs_root / STUDIO_DIR / f"{launch_id}.json", 200)}
+
+    # -- trace: step-by-step reconstruction of one run ------------------------
+
+    def _run_dir(run_id: str) -> Path:
+        if not re.fullmatch(r"[\w.\-]+", run_id) or run_id == STUDIO_DIR:
+            raise HTTPException(404, "unknown run")
+        path = runs_root / run_id
+        if not path.is_dir():
+            raise HTTPException(404, "unknown run")
+        return path
+
+    @app.get("/api/trace/{run_id}")
+    def run_trace(run_id: str) -> dict[str, Any]:
+        return trace.build_trace(_run_dir(run_id))
+
+    @app.get("/api/trace/{run_id}/rounds/{index}")
+    def run_round(run_id: str, index: int) -> dict[str, Any]:
+        try:
+            return trace.round_detail(_run_dir(run_id), index)
+        except IndexError as error:
+            raise HTTPException(404, "unknown round") from error
+
+    @app.get("/api/trace/{run_id}/files/{relative:path}")
+    def run_file(run_id: str, relative: str, width: int | None = None) -> Response:
+        try:
+            path = trace.run_file(_run_dir(run_id), relative)
+        except (PermissionError, FileNotFoundError) as error:
+            raise HTTPException(404, "file unavailable") from error
+        headers = {"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"}
+        if width is not None and path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+            if width not in (320, 960):
+                raise HTTPException(400, "unsupported preview size")
+            return Response(preview_image(str(path), path.stat().st_mtime_ns, width),
+                            media_type="image/jpeg", headers=headers)
+        if path.suffix in (".md", ".json"):
+            headers["Cache-Control"] = "no-cache"
+            return FileResponse(path, media_type="text/plain; charset=utf-8", headers=headers)
+        return FileResponse(path, headers=headers)
 
     return app
 

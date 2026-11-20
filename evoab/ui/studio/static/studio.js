@@ -551,262 +551,21 @@ function compareTable(runs) {
     h("tbody", {}, rows.map(([label, fn]) => h("tr", {}, h("td", {}, label), runs.map((r) => h("td", {}, fn(r))))))));
 }
 
-// -- run detail and replay ---------------------------------------------------
-
-function pageRun(main, key) {
-  const run = findRun(key);
-  if (!run) {
-    put(main, h("div", { class: "page" }, h("div", { class: "card empty" }, h("b", {}, "找不到这次运行"),
-      h("a", { class: "btn small", href: "#history" }, "返回历史记录"))));
-    return;
-  }
-  if (run.id && location.hash !== `#${run.key}`) history.replaceState(null, "", `#${run.key}`);
-  let page = main.querySelector(".page[data-run]");
-  if (!page || page.dataset.run !== run.key) {
-    page = h("div", { class: "page wide", "data-run": run.key },
-      h("div", { id: "runTop" }), h("div", { id: "runReplay" }), h("div", { id: "runLog" }));
-    put(main, page);
-    current.arg = run.key;
-  }
-  renderRunTop(run);
-  if (run.monitor_id) openReplay(run);
-  else put($("runReplay"), h("div", { class: "card empty" }, h("b", {}, run.status === "starting" ? "环境准备中" : "没有回放数据"),
-    run.status === "starting" ? "运行目录创建后会自动显示画面和工具调用。" : "这次运行没有生成运行目录。"));
-  renderLaunchLog(run);
-}
-
-function renderRunTop(run) {
-  const u = run.usage || {};
-  const replay = S.replay && S.replay.runKey === run.key ? S.replay.state : null;
-  const dims = [
-    ["类型", run.simulated === false ? "真机" : "仿真"], ["环境", `${run.integration || "—"} / ${run.profile || "—"}`],
-    ["评测集", run.benchmark], ["本体", run.embodiment], ["任务", run.task], ["方法", run.method],
-    ["模型", run.model && `${run.provider ? `${run.provider} · ` : ""}${run.model}${run.reasoning_effort ? ` · ${run.reasoning_effort}` : ""}`],
-    ["第几次", `第 ${run.attempt} 次`],
-  ];
-  const budget = (replay && replay.max_steps) || run.max_steps;
-  const steps = replay && replay.steps != null ? replay.steps : run.environment_steps;
-  const metric = (k, v, cls = "", sub = null) => h("div", { class: "card metric" }, h("div", { class: "k" }, k),
-    h("div", { class: `v ${cls}`, title: String(v) }, v), sub ? h("div", { class: "sub" }, sub) : null);
-  const message = run.error || run.agent_message;
-  put($("runTop"),
-    h("div", { class: "detail-head" },
-      h("button", { class: "back", title: "返回", onclick: () => history.length > 1 ? history.back() : (location.hash = "#history") }, "←"),
-      h("div", { style: "flex:1;min-width:0" }, h("h1", {}, run.task || "—"),
-        h("p", {}, (replay && replay.instruction) || "")),
-      h("div", { class: "row" }, pill(run.status),
-        isLive(run) && run.launch_id ? h("button", { class: "btn small danger", onclick: (e) => stopRun(run, e.currentTarget) }, "停止") : null)),
-    h("div", { class: "dims" }, dims.filter(([, v]) => v).map(([k, v]) => h("span", { class: "dim" }, h("b", {}, k), v))),
-    h("div", { class: "metrics" },
-      metric("结果", RUN_STATUS[run.status] || run.status, run.status),
-      metric("用时", fmtDuration(run.elapsed_s)),
-      metric("环境步数", `${steps ?? "—"}${budget ? ` / ${budget}` : ""}`),
-      metric("工具调用", fmtInt(replay ? replay.total_calls : null)),
-      metric("模型请求", fmtInt(u.requests)),
-      metric("输入 tokens", fmtTokens(u.input_tokens), "", u.cached_input_tokens ? `缓存命中 ${fmtTokens(u.cached_input_tokens)}` : null),
-      metric("输出 tokens", fmtTokens(u.output_tokens), "", u.reasoning_tokens ? `推理 ${fmtTokens(u.reasoning_tokens)}` : null),
-      metric("总 tokens", fmtTokens(u.total_tokens))),
-    message ? h("div", { class: `notice ${run.error ? "error" : "info"}` }, `${run.error ? "错误：" : "Agent 总结："}${message}`) : null);
-}
+// -- run detail: see run.js -----------------------------------------------
 
 async function renderLaunchLog(run) {
-  const holder = $("runLog");
-  if (!run.launch_id) { put(holder, ); return; }
+  const holder = $("rvLog");
+  if (!holder) return;
+  if (!run.launch_id) { put(holder); return; }
   let log = "";
   try { ({ log } = await api(`/api/runs/${run.launch_id}/log`)); } catch { return; }
-  if (!$("runLog")) return;
+  if (!$("rvLog")) return;
   const open = holder.querySelector("details")?.open ?? (!run.monitor_id);
   put(holder, h("details", { class: "card", style: "margin-top:14px", open },
     h("summary", { class: "card-pad", style: "cursor:pointer;font-weight:600" }, "启动日志"),
     h("div", { style: "padding:0 16px 16px" }, h("pre", { class: "log" }, log || "（空）"))));
 }
 
-// Replay: frames, tool calls, messages and model requests from the run monitor's
-// read-only API (mounted at /replay), drawn in Studio's own layout.
-
-function closeReplay() {
-  if (!S.replay) return;
-  if (S.replay.source) S.replay.source.close();
-  clearInterval(S.replay.timer);
-  S.replay = null;
-}
-
-function openReplay(run) {
-  if (S.replay && S.replay.runKey === run.key) return;
-  closeReplay();
-  const R = (S.replay = { runKey: run.key, monitorId: run.monitor_id, state: null, camera: null, index: 0,
-    follow: true, playing: false, timer: null, tab: "calls", openCall: null, source: null });
-  put($("runReplay"), h("div", { class: "card empty" }, "加载回放…"));
-  const apply = (state) => {
-    if (S.replay !== R) return;
-    R.state = state;
-    drawReplay();
-    const latest = findRun(R.runKey);
-    if (latest) renderRunTop(latest);
-  };
-  if (isLive(run)) {
-    R.source = new EventSource(`/replay/api/runs/${run.monitor_id}/events`);
-    R.source.addEventListener("state", (e) => apply(JSON.parse(e.data)));
-    R.source.onerror = () => {};
-  } else {
-    api(`/replay/api/runs/${run.monitor_id}`).then(apply).catch((error) => {
-      put($("runReplay"), h("div", { class: "notice error" }, `回放加载失败：${error.message}`));
-    });
-  }
-}
-
-function replayFrames() {
-  const R = S.replay;
-  const frames = R.state.frames || [];
-  const cameras = [...new Set(frames.map((f) => f.camera))];
-  if (!R.camera || !cameras.includes(R.camera)) R.camera = cameras[0] || null;
-  return { cameras, frames: frames.filter((f) => f.camera === R.camera) };
-}
-
-function drawReplay() {
-  const R = S.replay;
-  const st = R.state;
-  const { cameras, frames } = replayFrames();
-  if (R.follow || R.index >= frames.length) R.index = Math.max(0, frames.length - 1);
-  const t0 = st.started_at || (frames[0] && frames[0].timestamp) || 0;
-  const t1 = Math.max(st.finished_at || 0, frames.length ? frames[frames.length - 1].timestamp : 0, t0 + 1);
-  const frame = frames[R.index];
-
-  let root = $("runReplay").querySelector(".replay");
-  if (!root) {
-    root = h("div", { class: "replay" },
-      h("div", { class: "card viewer-card" },
-        h("div", { class: "viewer-top", id: "rpCams" }),
-        h("div", { class: "stage", id: "rpStage" }),
-        h("div", { class: "scrub" },
-          h("div", { class: "ticks", id: "rpTicks" }),
-          h("div", { class: "scrub-row" },
-            h("button", { class: "btn small", id: "rpPlay", onclick: togglePlay }, "▶"),
-            h("input", { type: "range", id: "rpSlider", min: 0, max: 0, value: 0, oninput: (e) => {
-              R.index = Number(e.target.value); R.follow = R.index === Number(e.target.max); stopPlay(); drawReplay();
-            } }),
-            h("span", { class: "mono faint", id: "rpTime" })))),
-      h("div", { class: "card side-card" }, h("div", { class: "tabs", id: "rpTabs" }), h("div", { class: "feed", id: "rpFeed" })));
-    put($("runReplay"), root);
-  }
-  // cameras
-  put($("rpCams"),
-    h("span", { class: "small muted" }, "相机"),
-    ...cameras.map((c) => h("button", { class: `chip-btn${c === R.camera ? " active" : ""}`, onclick: () => { R.camera = c; R.follow = true; drawReplay(); } }, c)),
-    h("span", { class: "spacer" }),
-    h("span", { class: "small faint" }, `${frames.length} 帧`),
-    isLive(findRun(R.runKey)) ? h("button", { class: `chip-btn${R.follow ? " active" : ""}`, onclick: () => { R.follow = !R.follow; drawReplay(); } }, "跟随最新") : null);
-  // stage
-  const stage = $("rpStage");
-  if (frame) {
-    let img = stage.querySelector("img");
-    const src = `/replay${frame.url}?width=960`;
-    if (!img) { put(stage, img = h("img", { alt: "机器人观测" }), h("span", { class: "stamp" })); }
-    if (img.getAttribute("src") !== src) img.src = src;
-    stage.querySelector(".stamp").textContent = `${fmtClock(frame.timestamp - t0)} · ${frame.association || ""}`;
-  } else {
-    put(stage, h("div", { class: "empty" }, "还没有画面"));
-  }
-  // slider and ticks
-  const slider = $("rpSlider");
-  slider.max = Math.max(0, frames.length - 1);
-  slider.value = R.index;
-  $("rpTime").textContent = `${fmtClock(frame ? frame.timestamp - t0 : 0)} / ${fmtClock(t1 - t0)}`;
-  const calls = (st.calls || []).filter((c) => c.timestamp);
-  const span = t1 - t0;
-  put($("rpTicks"), ...calls.map((c) => h("i", {
-    class: `call${c.status === "failed" ? " failed" : ""}`, title: c.name, style: `left:${(100 * (c.timestamp - t0)) / span}%`,
-  })));
-  // side tabs
-  const tabs = [["calls", "工具调用", st.total_calls], ["messages", "Agent 消息", (st.messages || []).length], ["models", "模型请求", (st.models || []).length]];
-  put($("rpTabs"), ...tabs.map(([id, label, count]) => h("button", { class: R.tab === id ? "active" : "", onclick: () => { R.tab = id; drawReplay(); } },
-    label, h("span", { class: "count" }, count ?? 0))));
-  drawFeed(frame, t0, span);
-}
-
-function drawFeed(frame, t0, span) {
-  const R = S.replay;
-  const st = R.state;
-  const feed = $("rpFeed");
-  const keepScroll = feed.scrollTop;
-  const now = frame ? frame.timestamp : Infinity;
-  const jump = (t) => {
-    const { frames } = replayFrames();
-    const i = frames.findIndex((f) => f.timestamp >= t);
-    R.index = i < 0 ? frames.length - 1 : i;
-    R.follow = false; stopPlay(); drawReplay();
-  };
-  let items = [];
-  if (R.tab === "calls") {
-    const calls = [...(st.calls || [])].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-    const currentId = calls.filter((c) => (c.timestamp || 0) <= now).pop()?.id;
-    items = calls.map((c) => {
-      const open = R.openCall === c.id;
-      return h("div", { class: `event${c.id === currentId ? " current" : ""}${open ? " open" : ""}`, onclick: () => {
-        R.openCall = open ? null : c.id; if (c.timestamp) jump(c.timestamp); else drawReplay();
-      } },
-        h("div", { class: "head" }, h("span", { class: "name" }, c.name || "tool"),
-          h("span", { class: `pill ${c.status === "failed" ? "bad" : c.status === "completed" ? "ok" : "running"}` }, c.status),
-          h("span", { class: "time" }, c.timestamp ? fmtClock(c.timestamp - t0) : "")),
-        open ? [h("pre", {}, `参数\n${c.arguments || "{}"}`), c.output ? h("pre", {}, `输出\n${typeof c.output === "string" ? c.output : JSON.stringify(c.output, null, 2)}`) : null]
-          : h("div", { class: "text" }, (c.arguments || "").replace(/\s+/g, " ").slice(0, 160)));
-    });
-    if (st.history_limited) items.unshift(h("div", { class: "event muted small" }, "记录较多，仅显示最近的调用。"));
-  } else if (R.tab === "messages") {
-    items = (st.messages || []).map((m) => h("div", { class: "event open", onclick: () => m.timestamp && jump(m.timestamp) },
-      h("div", { class: "head" }, h("span", { class: "name" }, { AssistantText: "Agent", ReasoningSummary: "推理摘要", ErrorEvent: "错误" }[m.type] || m.type),
-        h("span", { class: "time" }, m.timestamp ? fmtClock(m.timestamp - t0) : "")),
-      h("div", { class: "text" }, m.text)));
-  } else {
-    const models = (st.models || []).filter((m) => m.started_at);
-    const execs = (st.calls || []).filter((c) => c.started_at && c.finished_at);
-    const bar = (list, cls) => h("div", { class: "lane-bar" }, list.map((m) => h("i", {
-      class: cls(m), title: `${fmtClock(m.started_at - t0)} · ${((m.finished_at || m.started_at) - m.started_at).toFixed(1)}s`,
-      style: `left:${(100 * (m.started_at - t0)) / span}%;width:${(100 * ((m.finished_at || Date.now() / 1000) - m.started_at)) / span}%`,
-    })));
-    const durations = models.filter((m) => m.finished_at).map((m) => m.finished_at - m.started_at);
-    const avg = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
-    items = [h("div", { class: "lanes" },
-      h("div", { class: "small muted" }, `模型请求 ${models.length} 次${avg ? ` · 平均 ${avg.toFixed(1)}s · 最长 ${Math.max(...durations).toFixed(1)}s` : ""}`),
-      bar(models, (m) => (m.success === false ? "fail" : "")),
-      execs.length ? [h("div", { class: "small muted" }, `工具执行 ${execs.length} 次`), bar(execs, () => "exec")] : null,
-      h("div", { class: "small faint" }, "横轴为整次运行时间；请求时长包含传输、排队与重试。")),
-      ...models.slice().reverse().slice(0, 200).map((m) => h("div", { class: "event", onclick: () => jump(m.started_at) },
-        h("div", { class: "head" }, h("span", { class: "name" }, m.id),
-          h("span", { class: `pill ${m.success === false ? "bad" : m.finished_at ? "ok" : "running"}` }, m.finished_at ? `${(m.finished_at - m.started_at).toFixed(1)}s` : "进行中"),
-          h("span", { class: "time" }, fmtClock(m.started_at - t0)))))];
-  }
-  put(feed, ...(items.length ? items : [h("div", { class: "empty" }, "暂无记录")]));
-  feed.scrollTop = keepScroll;
-}
-
-function togglePlay() {
-  const R = S.replay;
-  if (!R) return;
-  if (R.playing) { stopPlay(); return; }
-  const { frames } = replayFrames();
-  if (R.index >= frames.length - 1) R.index = 0;
-  R.playing = true;
-  R.follow = false;
-  $("rpPlay").textContent = "❚❚";
-  R.timer = setInterval(() => {
-    const total = replayFrames().frames.length;
-    if (R.index >= total - 1) { stopPlay(); return; }
-    R.index += 1;
-    drawReplay();
-  }, 200);
-}
-function stopPlay() {
-  const R = S.replay;
-  if (!R || !R.playing) return;
-  R.playing = false;
-  clearInterval(R.timer);
-  if ($("rpPlay")) $("rpPlay").textContent = "▶";
-}
-
-// -- benchmarks --------------------------------------------------------------
-
-// Simulation projects included in the Studio catalog, with upstream citations.
 const PROJECT_SOURCES = {
   robodojo: { repo: "RoboDojo-Benchmark/RoboDojo", paper: "2607.04434" },
   libero: { repo: "Lifelong-Robot-Learning/LIBERO", paper: "2306.03310" },
@@ -1270,17 +1029,7 @@ async function refresh() {
   else if (page === "history" && pageHistory.refresh) pageHistory.refresh();
   else if (page === "run") {
     const run = findRun(current.arg);
-    if (run) {
-      renderRunTop(run);
-      if (run.monitor_id && (!S.replay || S.replay.runKey !== run.key)) route();
-      else if (!run.monitor_id) renderLaunchLog(run);
-      if (S.replay && !isLive(run) && S.replay.source) {
-        // The run finished: load the final state once and stop streaming.
-        S.replay.source.close();
-        S.replay.source = null;
-        api(`/replay/api/runs/${run.monitor_id}`).then((state) => { if (S.replay) { S.replay.state = state; drawReplay(); } }).catch(() => {});
-      }
-    }
+    if (run) refreshRun(run);
   } else if (page === "benchmarks" && S.benchmarks.some((b) => b.profiles.some((p) => p.status === "preparing"))) {
     await loadBenchmarks();
     route();
