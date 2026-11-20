@@ -250,7 +250,7 @@ function stepBench(body) {
   body.append(
     h("div", { class: "toolbar benchmark-heading" },
       h("h1", { class: "wizard-title" }, `可启动的${KINDS[w.kind]}环境`),
-      h("a", { class: "btn small", href: "#benchmarks" }, "Benchmark 管理")),
+      h("a", { class: "btn small", href: "#benchmarks" }, "评测集管理")),
     cards.length ? h("div", { class: "choice-grid" }, cards)
       : h("p", { class: "card empty" }, `目前没有可从网页启动的${KINDS[w.kind]}环境。`));
 }
@@ -380,7 +380,7 @@ function stepConfirm(body) {
   const provider = selectedProvider();
   const method = selectedMethod();
   const rows = [
-    ["环境", `${w.bench.title} / ${w.bench.profile}（${KINDS[w.kind]}）`], ["Benchmark", w.task.suite], ["任务", w.task.task],
+    ["环境", `${w.bench.title} / ${w.bench.profile}（${KINDS[w.kind]}）`], ["评测集", w.task.suite], ["任务", w.task.task],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.agent} · ${method.label}`], ["推理强度", w.effort], ["API", `${provider.label}（${provider.profile}）`],
     ["模型", w.model],
@@ -484,7 +484,7 @@ function pageHistory(main) {
   const renderTable = () => {
     const runs = filteredRuns();
     put(tableHolder, runs.length ? h("div", { class: "card table-wrap" }, h("table", { class: "table" },
-      h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "Benchmark"), h("th", {}, "方法"),
+      h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "评测集"), h("th", {}, "方法"),
         h("th", {}, "模型"), h("th", { class: "num" }, "第几次"), h("th", { class: "num" }, "步数"), h("th", { class: "num" }, "用时"),
         h("th", { class: "num" }, "tokens"), h("th", {}, "开始时间"))),
       h("tbody", {}, runs.map((r) => h("tr", { class: "clickable", onclick: () => (location.hash = `#${r.key}`) },
@@ -573,7 +573,7 @@ function renderRunTop(run) {
   const replay = S.replay && S.replay.runKey === run.key ? S.replay.state : null;
   const dims = [
     ["类型", run.simulated === false ? "真机" : "仿真"], ["环境", `${run.integration || "—"} / ${run.profile || "—"}`],
-    ["Benchmark", run.benchmark], ["本体", run.embodiment], ["任务", run.task], ["方法", run.method],
+    ["评测集", run.benchmark], ["本体", run.embodiment], ["任务", run.task], ["方法", run.method],
     ["模型", run.model && `${run.provider ? `${run.provider} · ` : ""}${run.model}${run.reasoning_effort ? ` · ${run.reasoning_effort}` : ""}`],
     ["第几次", `第 ${run.attempt} 次`],
   ];
@@ -799,15 +799,46 @@ function stopPlay() {
 
 // -- benchmarks --------------------------------------------------------------
 
+// Project publications cited by the upstream maintainers. Hardware links point to drivers.
+const PROJECT_SOURCES = {
+  robouse: { repo: "benchflow-ai/robouse" },
+  robodojo: { repo: "RoboDojo-Benchmark/RoboDojo", paper: "2607.04434" },
+  libero_pro: { repo: "Zxy-MLlab/LIBERO-PRO", paper: "2510.03827" },
+  libero_plus: { repo: "sylvestf/LIBERO-plus", paper: "2510.13626" },
+  robotwin: { repo: "RoboTwin-Platform/RoboTwin", paper: "2506.18088" },
+  rmbench: { repo: "RoboTwin-Platform/RMBench", paper: "2603.01229" },
+  calvin: { repo: "mees/calvin", paper: "2112.03227" },
+  robolab: { repo: "NVlabs/RoboLab", paper: "2604.09860" },
+  dexjoco: { repo: "brave-eai/dexjoco", paper: "2605.16257" },
+  behavior: { repo: "StanfordVL/BEHAVIOR-1K", paper: "2403.09227" },
+  isaaclab_arena: { repo: "isaac-sim/IsaacLab-Arena", relatedPaper: "2511.04831" },
+  navila: { repo: "yang-zj1026/NaVILA-Bench", paper: "2412.04453", paperLabel: "NaVILA 论文" },
+  arx_one: { repo: "ARXroboticsX/ARX_X5" },
+  piper_x: { repo: "agilexrobotics/pyAgxArm" },
+};
+
+function projectLinks(bench) {
+  const source = PROJECT_SOURCES[bench.integration];
+  if (!source) return null;
+  const link = (url, label) => h("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, label);
+  return h("div", { class: "project-links" },
+    link(`https://github.com/${source.repo}`, bench.kind === "real" ? "GitHub 驱动" : "GitHub 代码"),
+    source.paper ? link(`https://arxiv.org/abs/${source.paper}`, source.paperLabel || "arXiv 论文") :
+      h("span", {}, bench.kind === "real" ? "硬件平台 · 暂未查到独立论文" : "暂未查到独立 arXiv 论文"),
+    source.relatedPaper && link(`https://arxiv.org/abs/${source.relatedPaper}`, "Isaac Lab 基础框架论文"));
+}
+
 function pageBenchmarks(main) {
-  const groups = [["simulation", "仿真"], ["real", "真机"]];
+  const expanded = new Set(Array.from(main.querySelectorAll("details[open]"), (el) => el.dataset.integration));
   const profileRow = (bench, p) => {
     const canPrepare = bench.setup === "auto" && ["not_prepared", "setup_failed"].includes(p.status);
     const canRefresh = bench.setup === "auto" && p.status === "ready";
     const suites = Object.entries(p.suites || {}).map(([s, n]) => `${s} ${n}`).join(" · ");
     return [
       h("div", { class: "profile-row" },
-        h("span", { class: "mono" }, p.profile),
+        h("span", { class: "mono" }, { mujoco: "MuJoCo", libero: "LIBERO", robocasa: "RoboCasa",
+          maniskill_cpu: "ManiSkill · CPU", maniskill_gpu: "ManiSkill · GPU", genesis: "Genesis",
+          default: "默认环境" }[p.profile] || p.profile),
         h("span", {}, pill(p.status, BENCH_STATUS)),
         h("span", { class: "suites", title: suites }, p.status === "ready" ? `${p.task_count} 个任务${suites ? ` · ${suites}` : ""}` :
           bench.setup === "external" ? bench.requirements : bench.setup === "real" ? "需要连接实体机器人与设备进程" :
@@ -820,16 +851,25 @@ function pageBenchmarks(main) {
     ];
   };
   put(main, h("div", { class: "page wide" },
-    pageHead("Benchmark", "已接入的仿真环境与真机平台，以及每个运行时配置的准备状态",
+    pageHead("评测集", null,
       h("button", { class: "btn", onclick: async (e) => { e.currentTarget.disabled = true; await loadBenchmarks(); route(); toast("已重新检查"); } }, "重新检查")),
-    groups.map(([kind, label]) => h("div", { class: "bench-group" }, h("h2", {}, label),
-      S.benchmarks.filter((b) => b.kind === kind).map((b) => h("div", { class: "card bench" },
+    S.benchmarks.map((b) => {
+      const ready = b.profiles.filter((p) => p.status === "ready").length;
+      const description = b.integration === "robouse"
+        ? "把不同的机器人任务集接入同一套评测流程。智能体操作模拟机器人，系统按场景中的实际结果评分。"
+        : b.description;
+      return h("article", { class: "card bench" },
         h("div", { class: "bench-head" },
-          h("div", { class: "t" }, b.title, h("span", { class: "tag" }, b.integration)),
-          h("div", {}, { auto: h("span", { class: "tag" }, "一键准备"), external: h("span", { class: "tag" }, "外部运行时"), real: h("span", { class: "tag" }, "真机") }[b.setup]),
-          h("div", { class: "d" }, b.description),
-          h("div", { class: "m" }, h("span", {}, `仿真器：${b.simulator}`), h("span", {}, `本体：${b.embodiment}`))),
-        h("div", { class: "profiles" }, b.profiles.map((p) => profileRow(b, p)))))))));
+          h("h2", { class: "t" }, b.title),
+          b.kind === "real" && h("span", { class: "tag" }, "真机平台"),
+          h("div", { class: "d" }, description),
+          h("div", { class: "m" }, b.kind !== "real" && h("span", {}, `仿真器：${b.simulator}`),
+            h("span", {}, `本体：${b.embodiment}`)),
+          projectLinks(b)),
+        h("details", { class: "profiles", "data-integration": b.integration, open: expanded.has(b.integration) },
+          h("summary", {}, "运行环境", h("span", { class: "muted small" }, `${ready} / ${b.profiles.length} 已就绪`)),
+          b.profiles.map((p) => profileRow(b, p))));
+    })));
 }
 
 function selectBenchmark(bench, p) {
@@ -871,7 +911,7 @@ async function openTasks(bench, p) {
     const q = query.toLowerCase();
     const shown = tasks.filter((t) => !q || t.task.toLowerCase().includes(q) || (t.instruction || "").toLowerCase().includes(q) || t.suite.includes(q));
     put(table, h("div", { class: "card table-wrap" }, h("table", { class: "table" },
-      h("thead", {}, h("tr", {}, h("th", {}, "任务"), h("th", {}, "Benchmark"), h("th", {}, "本体"), h("th", { class: "num" }, "步数上限"), h("th", {}, ""))),
+      h("thead", {}, h("tr", {}, h("th", {}, "任务"), h("th", {}, "评测集"), h("th", {}, "本体"), h("th", { class: "num" }, "步数上限"), h("th", {}, ""))),
       h("tbody", {}, shown.map((t) => h("tr", {},
         h("td", { style: "white-space:normal" }, h("div", { class: "mono" }, t.task), h("div", { class: "muted small" }, t.instruction)),
         h("td", {}, t.suite), h("td", {}, t.embodiment), h("td", { class: "num" }, t.max_steps ?? "—"),
@@ -1155,7 +1195,7 @@ function settingsGeneral(body) {
       field("默认方法", select("default_method", S.config.methods.map((m) => [m.id, m.label]))),
       field("默认推理强度", select("default_effort", S.config.reasoning_efforts.map((e) => [e, e]))),
       field("运行时 wheel", h("input", { class: "input mono", value: s.runtime_wheel || "", placeholder: "~/dist/evoab_runtime-0.2.0-py3-none-any.whl",
-        oninput: (e) => (s.runtime_wheel = e.target.value || null) }), "Benchmark 一键准备时安装到隔离运行时的 evoab-runtime wheel（服务器路径）；由 scripts/release/prepare.py 生成。"),
+        oninput: (e) => (s.runtime_wheel = e.target.value || null) }), "评测集一键准备时安装到隔离运行时的 evoab-runtime wheel（服务器路径）；由 scripts/release/prepare.py 生成。"),
       h("div", { class: "form-foot", style: "display:flex;gap:8px" }, h("button", { class: "btn primary", onclick: async () => {
         try {
           S.config.settings = await api("/api/settings", { method: "PUT", json: s });
