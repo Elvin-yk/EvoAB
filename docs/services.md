@@ -94,7 +94,7 @@ evoab/
 │       ├── server.py
 │       └── backends/sam3.py
 ├── integrations/               # specs, tool compositions, physical bindings and native adapters
-│   ├── robodojo/, robouse/, robolab/
+│   ├── robodojo/, robolab/
 │   ├── dexjoco/                 # dexterous arm/hand
 │   └── behavior/, isaaclab_arena/, navila/  # mobile embodiments
 ├── tools/

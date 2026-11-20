@@ -42,8 +42,8 @@ and queries are redacted.
 | `EVOAB_OUTPUT_DIR` | Default output parent directory |
 | `EVOAB_SKILLS_DIR` | Optional complete external skills root; required for skill writing |
 
-Script settings such as `PYTHON`, `SIM_PYTHON`, `ACTION_MODEL_PYTHON`,
-`HARNESS_PYTHON`, `ROBOUSE_PYTHON` and `ROBOUSE_WORKER_PYTHON` select interpreters.
+Script settings such as `PYTHON`, `SIM_PYTHON`, `ACTION_MODEL_PYTHON` and
+`HARNESS_PYTHON` select interpreters.
 Pass native source and checkpoint paths through the service CLI or TOML
 configuration. These settings do not configure agent budgets.
 Native SDK authentication and simulator-specific environment variables remain
@@ -96,7 +96,6 @@ Choose an integration to see its complete help:
 
 ```bash
 evoab run --integration robodojo --help
-evoab run --integration robouse --help
 ```
 
 `run` exposes tools for one task attempt. `tui` exposes interactive tools
@@ -108,7 +107,7 @@ create the owned environment before the agent connects.
 
 | Option | Default | Purpose |
 |---|---|---|
-| `--integration` | Required | Explicit environment integration, such as `robodojo` or `robouse` |
+| `--integration` | Required | Explicit environment integration, such as `robodojo` |
 | `--agent` | `codex` | `codex` or `claude_code` |
 | `--model` | Required | Provider model ID |
 | `--max-turns` | `0` | Agent turn limit; `0` disables it |
@@ -120,7 +119,7 @@ create the owned environment before the agent connects.
 | `--observation-profile` | `none` | Integration observation profile; requires matching integration and per-resource scheduling |
 | `--skill-writing` | Disabled | Enable writing Markdown experience within the integration's skill namespace |
 | `--env-url` | Environment or required in connection mode | Existing endpoint; conflicts with `--deploy local` |
-| `--deploy local` | Disabled | `run` only: own a prepared RoboDojo/RoboUse environment |
+| `--deploy local` | Disabled | `run` only: own a prepared RoboDojo environment |
 | `--monitor` | Disabled | `run` only: start a local Web console |
 | `--monitor-port` | `8765` | Live monitor port; `0` selects an available port |
 | `--action-model-url` | Environment or unset | Action-model endpoint required for hybrid actions |
@@ -242,14 +241,14 @@ for the console and TUI. This is SDK event handling; there is no separate
 
 Select an integration-declared composition with `--tool-profile`. All included
 integrations default to `direct`, which assembles skills, scene, gripper and
-episode modules. `robodojo`, `robouse` and `robolab` also declare `hybrid`,
+episode modules. `robodojo` and `robolab` also declare `hybrid`,
 which adds actor collaboration; the selected environment/controller and actor
 must still satisfy their binding contract. `robotwin`, `libero_plus`,
 `libero_pro`, `rmbench` and `calvin` declare `direct` and `clean`.
-All eight integrations support `clean`.
+All seven gripper integrations support `clean`.
 
 ```bash
-evoab run --integration robouse --model MODEL \
+evoab run --integration libero_pro --model MODEL \
   --env-url http://localhost:18760 --no-sam3 \
   --tool-profile direct --tool-return-mode immediate
 ```
@@ -433,7 +432,6 @@ and agent completion are recorded separately. See [result inspection](getting-st
 | Integration | Episode configuration |
 |---|---|
 | `robodojo` | Shared gripper tools plus optional pinned task requirements; RoboDojo Pi0.5 requires an action-model URL and checkpoint SHA256 |
-| `robouse` | Direct tasks and admitted LIBERO/RoboCasa Hybrid controllers; local deployment selects the native runtime profile |
 | `robolab` | Direct and joint-policy Hybrid DROID tasks; connect to a prepared RoboLab/Isaac environment |
 
 All three integrations accept `--action-profile direct|hybrid` (default `direct`).
@@ -441,8 +439,7 @@ Hybrid adds the independent `actor_act` tool and requires an actor URL and
 `--action-model-checkpoint-sha256`. The binding defaults to the prepared environment
 and can be selected with `--action-model-binding`; the SDK equivalent is
 `integration_options["action_model_binding"]`. RoboDojo accepts `robodojo_pi05` or
-`robodojo_x5_joint`, RoboLab accepts `robolab_droid_joint`, and RoboUse accepts
-`robouse_cartesian` on its admitted controllers. Complete profile and environment
+`robodojo_x5_joint`, and RoboLab accepts `robolab_droid_joint`. Complete profile and environment
 compatibility checks happen at session setup. See [Hybrid](hybrid.md) and the
 [bridge deployment contract](services.md#xpolicylab-bridge).
 
@@ -451,7 +448,7 @@ Only RoboDojo supplies a task-requirements loader for
 `resources/prompts/robodojo/instruction_supplements.json`. The full
 `task_requirements.json` is retained as a reference and is not loaded by default.
 Use `--no-include-extra-task-requirements` to disable the supplements. Both
-forms are RoboDojo-only options; RoboUse and RoboLab reject them.
+forms are RoboDojo-only options; RoboLab rejects them.
 
 ### Actor execution budgets
 
@@ -464,7 +461,7 @@ to `min(H, 40)`. Explicit values above that limit are rejected before inference.
 | Binding | Current service output length | Default `actions_per_chunk` | Default `max_chunks` |
 |---|---|---|---|
 | RoboDojo Pi0.5 | 50 actions | 25 | 6 |
-| X5, DROID or admitted RoboUse binding | Declared `H` actions | `min(25,H,40)` | 6 |
+| X5 or DROID | Declared `H` actions | `min(25,H,40)` | 6 |
 
 `max_chunks` accepts any positive integer; there is no shared ten-chunk cap.
 The call stops at its requested chunk budget or earlier when the native episode
@@ -523,15 +520,14 @@ continuing, because native state or model RNG may already have advanced.
 |---|---|
 | [RoboDojo episode](../scripts/evaluation/robodojo/run_episode.sh) | Supply `--integration robodojo` and forward the episode CLI |
 | [RoboDojo readiness wrapper](../scripts/evaluation/robodojo/run_when_ready.sh) | Wait for required endpoints, then run; `--startup-timeout-s` defaults to 360 |
-| [Direct examples](../examples/README.md) | Prepare and run one RoboDojo, RoboLab or RoboUse task |
+| [Direct examples](../examples/README.md) | Prepare and run one RoboDojo or RoboLab task |
 | [RoboDojo Hybrid example](../examples/robodojo_hybrid.sh) | Connect to prepared environment and actor services with an explicit model and checkpoint hash |
 | [RoboDojo environment](../scripts/deploy/services/robodojo/start_environment.sh) | Start the official environment with `SIM_PYTHON` and explicit `--native-root` |
 | [Actor service](../scripts/deploy/services/action_model/start_service.sh) | Start RoboDojo Pi0.5 with `ACTION_MODEL_PYTHON` and a service TOML configuration |
 | [SAM3 service](../scripts/deploy/services/perception/start_sam3.sh) | Start perception in its prepared inference environment |
 
 Configure service interpreters with `SIM_PYTHON`, `ACTION_MODEL_PYTHON` or
-`PYTHON`. The [RoboUse launchers](../scripts/robouse/README.md) cover its supported
-native backends, including LIBERO. For owned startup and cleanup, prefer the
+`PYTHON`. For owned startup and cleanup, prefer the
 [deployment CLI](deployment.md). No general batch evaluator is included.
 
 ## Public naming

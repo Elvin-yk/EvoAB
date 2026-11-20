@@ -11,7 +11,6 @@ checkpoints remain separate.
 | Integration | Use | External services |
 |---|---|---|
 | `robodojo` | Official RoboDojo simulation, task requirements and bundled gripper skills | RoboDojo environment; Hybrid adds an identified Pi0.5 model and a reviewer by default |
-| `robouse` | Direct simulation tasks, including LIBERO and RoboCasa | Prepared profile-specific RoboUse environment |
 | `libero_plus` | Official LIBERO-Plus perturbation tasks, Direct control | [Separate pinned LIBERO-Plus runtime](libero-extensions.md) |
 | `robotwin` | RoboTwin 2.0 dual-arm tasks, Direct control | [Pinned RoboTwin runtime and assets](robotwin.md) |
 | `libero_pro` | Selected official LIBERO-PRO suites, Direct control | [Separate pinned LIBERO-PRO runtime](libero-extensions.md#libero-pro) |
@@ -23,7 +22,7 @@ checkpoints remain separate.
 | `isaaclab_arena` | Experimental G1 humanoid loco-manipulation through Hybrid | [Arena runtime/assets and GR00T actor](isaaclab_arena.md) |
 | `navila` | Experimental Go2 quadruped navigation through Hybrid | [NaVILA-Bench runtime/scenes and NaVILA actor bridge](navila.md) |
 
-Each integration composes its supported tools. RoboDojo, RoboUse and RoboLab
+Each integration composes its supported tools. RoboDojo and RoboLab
 provide Direct and Hybrid profiles; Hybrid requires an admitted controller and
 actor binding. LIBERO-Plus, LIBERO-PRO, RoboTwin, RMBench and CALVIN provide Direct
 only. DexJoCo, BEHAVIOR, Arena and NaVILA provide Hybrid with scene, skill and
@@ -57,7 +56,6 @@ official CLI commands, migration details and hardware validation status.
 ## Inspect integration options
 
 ```bash
-evoab run --integration robouse --help
 evoab run --integration robodojo --help
 ```
 
@@ -141,8 +139,8 @@ See [runtime defaults](running.md#single-episode-cli) for capability selection.
 
 ### Clean robot tools
 
-All eight gripper integrations support `--tool-profile clean`: RoboDojo,
-RoboUse, RoboLab, RoboTwin, LIBERO-Plus, LIBERO-PRO, RMBench and CALVIN.
+All seven gripper integrations support `--tool-profile clean`: RoboDojo,
+RoboLab, RoboTwin, LIBERO-Plus, LIBERO-PRO, RMBench and CALVIN.
 The former `--tool-profile minimal` remains a compatibility alias; CLI and Python
 configuration resolve it to `clean`, including saved run metadata.
 It exposes `move`, `hold`, `capture_scene` and `finish`, reusing the same schemas, controllers,
@@ -172,7 +170,7 @@ absolute `image_path`; image attachments remain unchanged. Snapshot artifact IDs
 are opaque references, not local image filenames. Other profiles retain
 `observation_path` and `camera_calibration`.
 
-All eight integrations publish robot reference files independently of the tool
+All seven integrations publish robot reference files independently of the tool
 profile. Initial input lists their exact local paths, media types and SHA-256
 hashes in `robot_resources`; the list is saved as `robot_resources.json` and
 returned by scene tools. Native agent file tools may read those exact paths.
@@ -182,11 +180,8 @@ Static robot references do not replace per-observation camera matrices.
 Reference detail follows the native integration, not a fabricated common URDF:
 Dojo/Lab retain their existing geometry and gripper calibration; RoboTwin/RMBench
 and CALVIN publish their actual URDF kinematic trees and control mappings;
-LIBERO-Plus/PRO and MuJoCo RoboUse backends publish robot-only compiled bodies,
-joints, sites and geometry parameters. RoboUse workers publish ManiSkill URDF
-kinematics, RoboCasa/Genesis robot model parameters, or Factory articulation
-names and limits. Kinematic exports omit meshes; Factory does not export a USD
-kinematic tree. Each resource states its format and limitations. No task objects,
+LIBERO-Plus/PRO publish robot-only compiled bodies,
+joints, sites and geometry parameters. Each resource states its format and limitations. No task objects,
 goal state, grader inputs or whole simulator scene files are published.
 
 Completed gripper actions in every profile reuse their final snapshot when it
@@ -206,8 +201,8 @@ agent views, retain null matrices instead of fabricated geometry.
 For RoboDojo, add `--no-camera-calibration` at environment startup to disable
 camera intrinsics and extrinsics as well; this option requires `--no-depth`.
 Use `run --deploy local`, `deploy env`, or the native RoboDojo server. The environment
-declares `has_calibration=false`. RoboUse and RoboLab do not support this switch;
-explicit calibration overrides are rejected for those integrations and for actor
+declares `has_calibration=false`. RoboLab does not support this switch;
+explicit calibration overrides are rejected for that integration and for actor
 or SAM3 deployment. In `run --env-url` mode, configure the external service at
 startup instead; the agent connection cannot change its camera capabilities.
 Captures and action records contain no camera matrices or depth data; image paths,
@@ -246,8 +241,7 @@ together; dependent stages need separate calls and completed feedback checks. Ea
 registers `control_frame`, `grasp_site_description` and `rotation_radius_m` on its
 arm descriptors; shared tools interpolate poses without loading a robot model.
 RoboDojo merges a fixed-site URDF extension into the native X5 chain for FK/DLS,
-and converts site targets once for native link6 IK. RoboUse supplies backend-specific
-grasp-site and controller conversions.
+and converts site targets once for native link6 IK.
 The site is a geometric convention, not object attachment evidence.
 
 Environment protocol 4 and tool schema 8 define this interface. Upgrade services
@@ -269,26 +263,6 @@ control, use [the Hybrid example](../examples/robodojo_hybrid.sh) and
 upstream revisions and retained licenses. The official environment server requires
 `--native-root` pointing to a clean pinned official checkout, including its submodules.
 External runtime trees are not packaged.
-
-## RoboUse
-
-`--integration robouse` composes the shared scene, gripper, skill and episode tools
-for RoboUse tasks, including LIBERO and RoboCasa. The `robouse_cartesian` binding
-supports public world-frame absolute poses or latest-ACK-relative deltas on
-admitted LIBERO and RoboCasa controllers. RoboCasa retains the controller target
-orientation and rejects rotation. Other RoboUse families remain Direct-only until
-their native capability contracts are explicitly validated. Tasks and seeds reuse
-the same binding when those contracts match. Each native backend keeps its own
-dependencies, task admission, step budget, scoring and camera configuration.
-
-Use `setup --integration robouse --runtime-profile PROFILE` to prepare a native
-runtime, then `run --integration robouse --deploy local --task TASK` with the
-model and provider settings. For an unreleased build, pass your matching runtime wheel to
-`setup --wheel`; a published installation can fetch its matching version from the
-package index. See [deployment](deployment.md).
-See [deployment profiles](deployment.md#environment-profiles-and-limits),
-[RoboUse scripts](../scripts/robouse/README.md) and the
-[implementation](../evoab/integrations/robouse/).
 
 ## RoboLab
 
@@ -322,7 +296,6 @@ one execution loop. The integration selects its binding through a factory;
 | RoboDojo | `robodojo_pi05` | Explicit legacy Pi0.5 config, images, RNG and clipping |
 | RoboDojo X5 | `robodojo_x5_joint` | Absolute X5 joints and continuous normalized openings at 25 Hz |
 | RoboLab DROID | `robolab_droid_joint` | Seven measured joints plus normalized finger angle; joint and physical-gap targets |
-| RoboUse LIBERO / RoboCasa | `robouse_cartesian` | World public-control-point absolute poses or latest-ACK-relative deltas; native rotation constraints |
 | DexJoCo | `dexjoco_tcp_hand` | Absolute world TCP pose plus named Allegro finger positions in one native step |
 | BEHAVIOR R1Pro | `behavior_r1pro_joint` | Torso, arm and gripper joint targets with local base velocity at 30 Hz |
 | Arena G1 | `arena_g1_locomanipulation` | Arm/hand targets, heading-frame velocity and pelvis height through the native whole-body controller at 50 Hz |
@@ -374,7 +347,7 @@ integrations/<name>/
     └── ...                 # native geometry, controllers and kinematics
 ```
 
-RoboDojo and RoboUse keep native adapters in `environment/adapter.py`.
+RoboDojo keeps its native adapter in `environment/adapter.py`.
 Shared tools and HTTP protocols stay in `tools/` and
 `services/`.
 
@@ -393,7 +366,7 @@ files in the shared store. Publish image bytes through the store at the provider
 boundary, then pass `local_path(artifact_id)` to `ObservationHub`. Runtime paths are absolute;
 persisted observation references are relative to the session directory.
 
-RoboUse and RoboDojo reuse `integrations.gripper.create_session`; RoboDojo also
+RoboDojo uses `integrations.gripper.create_session`; RoboDojo also
 supplies a task-requirements loader. Another tool family can use a different callback
 without adding action-name dispatch to the runtime or duplicating episode state.
 

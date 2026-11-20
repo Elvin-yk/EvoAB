@@ -94,7 +94,7 @@ The wheel and sdist include integration/service deployment TOML recipes. Native
 repositories, simulator assets, actor weights and SAM3 checkpoints stay outside
 the distribution in the explicit runtime cache. The main distribution provides
 the CLI and planner SDKs. The separate `evoab-runtime` distribution
-provides native workers and the `robouse.backends:evoab_worker` entry point,
+provides native environment services
 without Codex, Claude, MCP or Textual dependencies. Setup installs exactly the
 matching runtime version in its isolated environment. Both distributions are
 built from the same source tree, own the same `evoab` modules, and must

@@ -12,7 +12,7 @@ Choose a workflow based on where the environment runs:
 | Your starting point | Workflow |
 |---|---|
 | An environment service is already running | Install the agent, configure the model, then `run --env-url URL` |
-| You want local RoboDojo or RoboUse | Install the agent, `setup` once, then `run --deploy local` for each episode |
+| You want local RoboDojo | Install the agent, `setup` once, then `run --deploy local` for each episode |
 | You want RoboLab | Prepare its native runtime, start the service, then connect with `--env-url` |
 | You want a Python application or strategy | Install into your Python environment and use the [SDK](sdk.md) |
 
@@ -170,8 +170,7 @@ SAM3 services separately when needed; this Direct example uses neither.
 RoboDojo includes depth by default. To use the paper's **Realistic** RGB-only
 input setting, add `--no-depth` to this local deployment command and retain
 camera calibration; see [observation settings](integrations.md#realistic-observation-settings).
-For RoboUse, select its [runtime profile](deployment.md#environment-profiles-and-limits)
-and task. Use the connection workflow below if services are already running.
+Use the connection workflow below if services are already running.
 
 ## Prepare the services
 
@@ -183,7 +182,6 @@ see [foreground services](deployment.md#foreground-services).
 | Integration | Runtime requirements |
 |---|---|
 | RoboDojo environment | Pinned official RoboDojo checkout, Isaac runtime, assets and frozen layout; see [provenance](../evoab/integrations/robodojo/SOURCE.md) |
-| RoboUse environment | A prepared native runtime for the selected profile and task; see [deployment](deployment.md) |
 | RoboDojo Pi0.5 actor, when enabled | Separate OpenPI/XPolicyLab runtime and matching checkpoint/profile |
 | SAM3, when enabled | Separate environment with an appropriate PyTorch build, `sam3==0.1.4`, `pydantic>=2,<3`, the base harness and a checkpoint |
 
@@ -244,17 +242,6 @@ independently or inherited from the main agent; see
 prepared environment and actor services, with normal budgets and task supplements.
 Supply your model ID and the actor checkpoint hash; see
 [service deployment](deployment.md#foreground-services).
-
-## Run RoboUse tasks
-
-RoboUse includes LIBERO and RoboCasa through separate native profiles. Select
-`--integration robouse`; the standalone LIBERO integration is not included.
-Prepare the profile with `setup --integration robouse --runtime-profile libero`.
-For an unreleased build, also pass your runtime wheel with `--wheel`; a published version
-is installed automatically into the runtime. Select a task from the prepared
-catalog for `--deploy local`. Use Direct mode and `--no-sam3` for the
-minimal configuration. See [profiles and task selection](deployment.md#environment-profiles-and-limits)
-and the [RoboUse guide](../scripts/robouse/README.md) for native requirements.
 
 ## Use the Claude agent
 

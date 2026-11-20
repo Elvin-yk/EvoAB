@@ -6,8 +6,7 @@ the harness schedules tools, executes them and returns feedback. Environment,
 action-model and perception services run independently, with their native dependencies.
 The Python package is `evoab`; the CLI is `evoab`.
 
-The diagram shows the shared tool and service implementation, with RoboUse and
-RoboDojo as simulator examples. `actor_act` is available in Hybrid
+The diagram shows the shared tool and service implementation, with RoboDojo as a simulator example. `actor_act` is available in Hybrid
 mode; `write_skill` requires `--skill-writing`. Agent collaboration, where
 available, is supplied by the selected agent SDK.
 
@@ -125,12 +124,12 @@ independently composed providers:
 | `EpisodeTools` | `finish` |
 
 Arm and camera names come from the environment description. Motion uses arm
-poses and scalar gripper opening. RoboUse and RoboDojo reuse these providers
+poses and scalar gripper opening. RoboLab and RoboDojo reuse these providers
 with their own environment adapters and action bindings. Native environments
 provide descriptors, models/resources and backends, never their own tool definitions.
 
 Both `run` and `tui` require an explicit environment `--integration`, such as
-`robouse` or `robodojo`. The integration composes compatible tools, validates
+`robodojo`. The integration composes compatible tools, validates
 options and selects environment-specific context. `integrations/gripper.py` is
 shared composition code, not a selectable integration.
 
@@ -322,7 +321,7 @@ There is no special `memory/` directory. See [skills setup](running.md#skills).
 This is an explicit local skill library, not automatic model training.
 
 The default observation profile is `none`. Selecting a built-in profile
-(for example `robouse` or `robodojo`) requires parallel execution and a
+(for example `robodojo`) requires parallel execution and a
 matching `--integration`. Profiles add snapshot and insight tools; freshness
 and state versions describe evidence, not task completion.
 
@@ -386,7 +385,7 @@ the public site is displaced from a native controller point.
 
 The shared motion tools do not load URDF or solve IK. Robot-model loading and native
 conversion stay inside the integration: X5 URDF plus fixed-site extension for
-RoboDojo FK/DLS and native grasp-site/OSC conversion in RoboUse.
+RoboDojo FK/DLS and native grasp-site/OSC conversion in LIBERO-Plus/PRO.
 Actor joint/native action vectors and camera extrinsics retain their native
 conventions. Environment protocol 4 / tool schema 8 requires coordinated client/service upgrades.
 Native task grading remains in its original frame, including finite return tolerances.

@@ -51,7 +51,7 @@ print('Installed SDK:', evoab.__file__)
     command([executable, '--version'])
     command([executable, '--help'])
     command([python, '-m', 'evoab', '--version'])
-    for integration in ('robodojo', 'robouse', 'robolab', 'robotwin', 'libero_plus',
+    for integration in ('robodojo', 'robolab', 'robotwin', 'libero_plus',
                         'libero_pro', 'rmbench', 'calvin', 'arx_one'):
         command([python, '-m', 'evoab', 'run', '--integration', integration,
                  '--model', 'validation-model', '--task', 'validation-task',
@@ -64,7 +64,7 @@ print('Installed SDK:', evoab.__file__)
         ('gemini_cli', ['--gemini-version', 'offline-candidate',
                         '--gemini-bridge-manifest', 'offline-manifest.json']),
     ):
-        command([python, '-m', 'evoab', 'run', '--integration', 'robouse',
+        command([python, '-m', 'evoab', 'run', '--integration', 'libero_pro',
                  '--agent', backend, '--model', 'qwen-validation',
                  '--env-url', 'http://127.0.0.1:18760', '--no-sam3',
                  '--provider-url', 'https://provider.invalid/v1', *runtime_options, '--validate-config'])
@@ -82,7 +82,6 @@ print('Optional Antigravity SDK:', dist.version)
     for integration, binding in (('robodojo', 'robodojo_pi05'),
                                  ('robodojo', 'robodojo_x5_joint'),
                                  ('robolab', 'robolab_droid_joint'),
-                                 ('robouse', 'robouse_cartesian'),
                                  ('dexjoco', 'dexjoco_tcp_hand')):
         command([python, '-m', 'evoab', 'run', '--integration', integration,
                  '--task', 'validation-task', '--model', 'validation-model',
@@ -106,26 +105,23 @@ from evoab.provider.registry import build_provider_adapter
 assert build_provider_adapter('tencent.responses', client_protocol='responses').profile_name == 'tencent.responses'
 from evoab.integrations.robodojo.action_binding import create_binding as x5_binding
 from evoab.integrations.robolab.action_binding import create_binding as droid_binding
-from evoab.integrations.robouse.action_binding import create_binding as cartesian_binding
 from evoab.tools.hybrid.provider import HybridTools
 from evoab.integrations.dexjoco.action_binding import create_binding as dexjoco_binding
 from evoab.services.actor.backends.openpi.config import resolve_config, recipe_settings
 import sys
-assert all(callable(factory) for factory in (x5_binding, droid_binding, cartesian_binding, dexjoco_binding))
+assert all(callable(factory) for factory in (x5_binding, droid_binding, dexjoco_binding))
 assert not any(name in sys.modules for name in ('isaacsim', 'mujoco', 'torch', 'scipy'))
 root = Path(evoab.__file__).parent
 assert callable(get_prompt_builder('robodojo'))
-assert callable(get_prompt_builder('robouse'))
 for resource in ('ui/web/static/index.html', 'ui/web/static/app.js',
                  'agents/opencode/bridge.js', 'agents/gemini_cli/robotBridge.ts',
                  'integrations/robodojo/deployment.toml',
-                 'integrations/robouse/recipes/libero.toml',
                  'integrations/dexjoco/deployment.toml', 'integrations/dexjoco/SOURCE.md',
                  'resources/prompts/dexjoco/hybrid.md', 'resources/skills/dexjoco/index.md',
                  'services/actor/recipes/robodojo_pi05.toml',
                  'services/actor/recipes/dexjoco_pick_bucket.toml'):
     assert (root / resource).is_file(), resource
-session = Session(SessionConfig(integration='robouse',
+session = Session(SessionConfig(integration='libero_pro',
     env_url='http://127.0.0.1:18760', no_sam3=True))
 session.close()  # Validate configuration only; do not connect or finalize an episode.
 for profile, widths in (("robodojo_pi05", (14,14,50)), ("dexjoco_pick_bucket", (23,22,30))):
@@ -142,11 +138,11 @@ assert DeviceRequest.model_validate_json(DeviceRequest(command=step,
 SetupConfig(integration="dexjoco").resolve()
 DeploymentConfig(integration="dexjoco", task="pick_bucket", depth=False).resolve()
 assert not any(name in sys.modules for name in ("mujoco", "jax", "openpi", "torch", "scipy"))
-resolved = SessionConfig(integration='robouse', env_url='http://127.0.0.1:18760',
+resolved = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760',
                          no_sam3=True, tool_profile='direct').resolve()
 assert resolved.tool_profile == 'direct'
 assert resolved.tool_modules == ('skills', 'scene', 'gripper', 'episode')
-legacy = SessionConfig(integration='robouse', env_url='http://127.0.0.1:18760',
+legacy = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760',
                        no_sam3=True, integration_options={'action_profile': 'direct'}).resolve()
 assert legacy.tool_modules == resolved.tool_modules
 dex = SessionConfig(integration='dexjoco', env_url='http://127.0.0.1:18788',
@@ -155,7 +151,7 @@ dex = SessionConfig(integration='dexjoco', env_url='http://127.0.0.1:18788',
                          'vla_review': False}).resolve()
 assert dex.tool_modules == ('skills', 'scene', 'hybrid', 'episode')
 try:
-    SessionConfig(integration='robouse', env_url='http://127.0.0.1:18760',
+    SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760',
                   no_sam3=True, tool_profile='direct',
                   integration_options={'action_profile': 'hybrid'}).resolve()
 except ValueError as error:

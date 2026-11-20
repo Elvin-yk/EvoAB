@@ -9,12 +9,10 @@ EvoAB（Evolving Agents with Bodies）把已有的 Agent、Agent + Policy 机器
 现有代码已具备：
 - 分层清楚：Agent、调度、工具、服务、后端五层。
 - 已有多种交互模式：Direct、Hybrid（Agent + VLA，带审核）、Clean、Code-as-Policy。
-- 环境覆盖广：RoboDojo、RoboUse（含 LIBERO、RoboCasa、MetaWorld 等）、LIBERO-Plus/PRO、RoboTwin 2.0、RMBench、CALVIN、RoboLab、DexJoCo、BEHAVIOR 等；真机有 ARX ONE、Piper-X。
+- 环境覆盖广：RoboDojo、LIBERO-Plus/PRO、RoboTwin 2.0、RMBench、CALVIN、RoboLab、DexJoCo、BEHAVIOR 等；真机有 ARX ONE、Piper-X。
 - 模型网关可以把 Codex 的 Responses 请求转成 Chat Completions。
 - 默认不给深度图和判分反馈，符合 RoboDojo Agent Track 规则。
 - 自带只读回放监控，可以浏览运行记录。
-
-5090 验证（2026-11-20）：RoboUse `libero-red-block-in-bowl`，Codex + gpt-6-astra(low)，经 `omnirouter.chat_completions` 走我们的代理。结果 task_success=true，797.8 s，136 环境步，26 次模型请求。
 
 ## 1. 分层
 
@@ -130,7 +128,6 @@ Astranomy 的主要结论：性能的主要来源是接口文本和上下文，�
 
 1. **M0 基础**（已完成）
    - 统一命名为 EvoAB。
-   - 在 5090 上用改名后的版本重跑 RoboUse 回合，验证改名不破坏功能。
 2. **M1 方法层**
    - nanobot 驱动的进程内 Agent 后端（`--agent evoab`），不依赖 Codex 也能对接各家模型。
    - 方法配置加载器与复现卡片。

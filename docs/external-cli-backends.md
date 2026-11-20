@@ -121,7 +121,7 @@ Set `EVOAB_PROVIDER_URL` to the Qwen Chat API root and
 arguments and Git. Supply the exact reviewed binary version:
 
 ```bash
-evoab run --integration robouse --agent opencode \
+evoab run --integration libero_pro --agent opencode \
   --model "$QWEN_MODEL" --env-url "$EPISODE_URL" --no-sam3 \
   --opencode-binary /path/to/opencode --opencode-version "$OPENCODE_VERSION"
 ```
@@ -190,7 +190,7 @@ python -m evoab.agents.gemini_cli.bridge seal /path/to/gemini-source \
   --binary /path/to/gemini-source/bundle/gemini.js --version "$GEMINI_VERSION" \
   --output /path/to/gemini-bridge-manifest.json
 
-evoab run --integration robouse --agent gemini_cli \
+evoab run --integration libero_pro --agent gemini_cli \
   --model "$QWEN_MODEL" --env-url "$EPISODE_URL" --no-sam3 \
   --gemini-binary /path/to/gemini-source/bundle/gemini.js \
   --gemini-version "$GEMINI_VERSION" \

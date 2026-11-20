@@ -1,9 +1,9 @@
 # LIBERO-Plus and LIBERO-PRO
 
-Stock LIBERO remains available through `--integration robouse`. The separate
+The
 `libero_plus` integration uses the official LIBERO-Plus task catalog, language,
 initial states, corrupted observations and success predicates with the shared
-Direct gripper tools. It does not change existing RoboUse tasks.
+Direct gripper tools.
 
 ## Prepare a native runtime
 
@@ -111,8 +111,7 @@ generated tasks as official. A missing task or asset stops preparation.
 
 For multi-trial evaluation, enumerate official initial-state indices explicitly
 and retain the native revision, suite, task name, seed and budget with each result.
-The Plus one-trial recommendation does not apply to PRO. These integrations do
-not expand RoboUse's separate task-admission list.
+The Plus one-trial recommendation does not apply to PRO.
 
 ## Native validation scope
 

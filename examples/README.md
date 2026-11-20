@@ -11,7 +11,6 @@ commands by pip. For a workflow without a checkout, use the
 |---|---|---|
 | [robodojo.sh](robodojo.sh) | `stack_bowls` | `setup` once, then `run` starts and cleans up an environment |
 | [robolab.sh](robolab.sh) | `BananaInBowlTask` | Prepare native RoboLab, then `serve` and `run` in two terminals |
-| [robouse.sh](robouse.sh) | LIBERO `libero-10-0` | `setup` once, then `run` starts and cleans up an environment |
 
 ## Install and configure the planner
 
@@ -62,27 +61,7 @@ Pass `--task OTHER_TASK` to change tasks, `--env-gpu 1` to choose another GPU,
 or `--no-depth` for RGB-only input with camera calibration. Only seed 0 is
 supported by the bundled RoboDojo runtime.
 
-## RoboUse (LIBERO)
-
-Use a supported Linux GPU/EGL host with Python 3.11 available. LIBERO has its own
-runtime profile because its dependencies differ from the other RoboUse backends.
-Setup prepares the native packages and assets; see
-[runtime profiles](../docs/deployment.md#environment-profiles-and-limits).
-
-```bash
-bash examples/robouse.sh setup --wheel "$WHEEL"
-bash examples/robouse.sh run --model "$MODEL" --validate-config
-bash examples/robouse.sh run --model "$MODEL" --monitor
-```
-
-The default bundled task, `libero-10-0`, asks the robot to put the alphabet soup
-and tomato sauce in the basket. Select another admitted task with `--task`.
-For another backend, pass the same `--runtime-profile` to both `setup` and `run`
-and choose a task from that profile, for example a prepared RoboCasa task.
-An offline argument check does not establish that a selected task or runtime is
-installed. See [RoboUse task coverage](../scripts/robouse/README.md).
-
-For both managed examples, omit `EVOAB_ENV_URL` from the invoking
+For the managed RoboDojo example, omit `EVOAB_ENV_URL` from the invoking
 environment: an external URL conflicts with `--deploy local`. To connect to an
 already running service instead, use the [CLI connection workflow](../docs/deployment.md#run-a-task-with-one-command).
 
@@ -127,7 +106,7 @@ Use `run --model "$MODEL" --print-config` to inspect the resolved settings.
 Offline checks do not call the model or start a simulator, and do not verify
 credentials, GPU availability or task success.
 
-Agent outputs go under `./runs/robodojo`, `./runs/robolab` or `./runs/robouse`.
+Agent outputs go under `./runs/robodojo` or `./runs/robolab`.
 Each run gets its own session directory. `--monitor` prints the live Web URL;
 use `--monitor-port` if running examples simultaneously. To replay saved results:
 
@@ -142,9 +121,8 @@ cover optional action-model and segmentation services.
 ## Hybrid across environments
 
 - [RoboLab DROID](robolab_hybrid.sh) uses the joint/physical-gap profile.
-- [RoboUse](robouse_hybrid.sh) uses admitted LIBERO or RoboCasa Cartesian control.
 
-Both require separately prepared environment and compatible actor services. Supply
+Hybrid runs require separately prepared environment and compatible actor services. Supply
 the actual checkpoint SHA256 and planner/reviewer configuration. Task count does
 not determine binding count. See [Hybrid contracts and migration](../docs/hybrid.md).
 

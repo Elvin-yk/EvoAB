@@ -86,7 +86,7 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         "--integration",
         dest="integration",
         required=True,
-        help="Required environment integration, such as robodojo or robouse",
+        help="Required environment integration, such as robodojo or libero_pro",
     )
     agent.add_argument("--agent",
         dest="agent_backend",

@@ -15,11 +15,10 @@ service is already available. Use the [source or wheel installation](getting-sta
 during the source preview; package-name installation becomes available with the
 first PyPI release.
 
-- **[Runnable examples](../examples/README.md)** — one task with RoboDojo, RoboLab
-  or RoboUse, including environment preparation and offline configuration checks.
+- **[Runnable examples](../examples/README.md)** — one task with RoboDojo or RoboLab, including environment preparation and offline configuration checks.
 - **[Installation and first run](getting-started.md)** — install a published
   package, source checkout or wheel; validate offline, prepare a runtime and run a task.
-- **[Local setup and deployment](deployment.md)** — prepare RoboDojo/RoboUse,
+- **[Local setup and deployment](deployment.md)** — prepare RoboDojo,
   start environment, actor or SAM3 independently, and understand ownership.
 - **[Python SDK](sdk.md)** — custom strategies, built-in agents, tool jobs, events,
   results and explicit preparation/deployment; [examples](../examples/sdk/).

@@ -74,7 +74,7 @@ For example, the RoboDojo integration accepts
 assert the identity of an already prepared episode. They do not create or reset
 it. RoboDojo alone also accepts `include_extra_task_requirements` (default `True`);
 set it to `False` to omit the packaged `instruction_supplements.json` guidance.
-RoboUse and RoboLab reject this field. Unknown options fail before connecting.
+RoboLab rejects this field. Unknown options fail before connecting.
 Each integration retains its own
 defaults, validators and capabilities. A strategy
 that calls environment-specific tools still depends on those capabilities.
@@ -268,7 +268,7 @@ for the artifacts needed for synchronized camera replay.
 
 ```python
 config = SessionConfig(
-    integration="robouse",
+    integration="libero_pro",
     env_url="http://localhost:18760",
     no_sam3=True,
     tool_profile="direct",

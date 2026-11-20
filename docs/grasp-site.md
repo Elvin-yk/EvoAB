@@ -7,7 +7,6 @@ frame. Saved trajectories retain the coordinate conventions of their recording.
 | Integration | Public site | Model and conversion |
 |---|---|---|
 | RoboDojo X5 | `x5_grasp_site` | Load native X5 URDF plus `x5_grasp_site.urdf`; FK/DLS end at the site. Native IK receives the inverse fixed transform to link6 exactly once. |
-| RoboUse OSC backends | Backend-declared grasp site | Use the native site transform and calibrated OSC conversion declared by the backend. |
 | RoboLab DROID | Robotiq `base_link` mounting flange | Convert the world target into the measured robot-root frame; see [RoboLab frames](robolab.md#frames-gripper-and-observations). |
 
 `control_frame`, `grasp_site_description` and `rotation_radius_m` are registered in

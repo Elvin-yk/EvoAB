@@ -21,7 +21,6 @@ configured package index. Prepare only the runtimes you need:
 
 ```bash
 evoab setup --integration robodojo
-evoab setup --integration robouse --runtime-profile mujoco
 evoab setup --service actor --profile robodojo_pi05
 evoab setup --service sam3
 ```
@@ -98,8 +97,6 @@ For an existing installation, register it without modifying it:
 ```bash
 evoab setup --integration robodojo \
   --runtime-python /path/to/venv/bin/python --native-root /path/to/RoboDojo
-evoab setup --integration robouse --runtime-profile robocasa \
-  --runtime-python /path/to/server/bin/python --worker-python /path/to/worker/bin/python
 evoab setup --service actor --profile robodojo_pi05 \
   --runtime-python /path/to/openpi/bin/python --native-root /path/to/XPolicyLab \
   --checkpoint /path/to/checkpoint
@@ -121,7 +118,7 @@ evoab deploy actor --profile robodojo_pi05 --gpu 1
 evoab deploy sam3 --gpu 2
 ```
 
-Defaults bind localhost, with ports 18760 (RoboDojo), 18780 (RoboUse),
+Defaults bind localhost, with ports 18760 (RoboDojo),
 18761 (actor) and 18762 (SAM3). Override `--host`, `--port`, `--gpu`,
 `--startup-timeout-s`, and `--shutdown-timeout-s` as needed. GPU indices refer to
 the current `CUDA_VISIBLE_DEVICES` list, including UUID entries. The command
@@ -184,17 +181,8 @@ Only seed 0 is supported. `--layout` and optional `--layout-sha256` select and
 verify an alternative frozen layout. The actual task, seed and hash appear in
 service identity and run records.
 
-RoboUse recipes are separated by incompatible native dependencies:
-`mujoco`, `libero`, `robocasa`, `maniskill_cpu`, `maniskill_gpu`, `genesis`,
-and `factory`. Setup defaults to `mujoco`; deployment can resolve an unambiguous
-bundled task from prepared runtime catalogs, or use an explicit profile.
-Use `--task-dir` for an external RoboUse task. Each backend defines task admission,
-native grading, step budgets and camera defaults; all use Direct control. Validate
-each runtime profile separately on its target hardware.
-
 RoboLab uses a [dedicated connection workflow](robolab.md) without automatic
 deployment. Physical-robot integrations are not part of this public release.
-LIBERO tasks use the RoboUse `libero` profile.
 
 Python consumers can reuse the recipe/runtime/launch contracts and owned
 `Deployment` handle in `services/deployment/`. CLI signal handlers, process exit

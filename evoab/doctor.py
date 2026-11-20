@@ -48,7 +48,6 @@ BACKEND_BINARIES = ("opencode", "gemini")
 
 KNOWN_INTEGRATIONS = (
     "robodojo",
-    "robouse",
     "robolab",
     "robotwin",
     "libero_plus",

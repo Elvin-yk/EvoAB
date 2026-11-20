@@ -23,7 +23,7 @@ import yaml
 from evoab.ui.studio import jobs
 
 #: Integrations Studio can launch runs for today (others are listed for setup only).
-LAUNCHABLE = ("robouse", "libero_pro")
+LAUNCHABLE = ("libero_pro",)
 
 
 @dataclass(frozen=True)
@@ -40,9 +40,6 @@ class BenchmarkInfo:
 
 
 REGISTRY: tuple[BenchmarkInfo, ...] = (
-    BenchmarkInfo("robouse", "RoboUse", "simulation", "MuJoCo / ManiSkill / Genesis", "Panda, ALOHA, floating gripper",
-                  "auto", "Tabletop, MetaWorld, RoboSuite, LIBERO, RoboCasa, ManiSkill and composed tasks",
-                  profiles=("mujoco", "libero", "robocasa", "maniskill_cpu", "maniskill_gpu", "genesis", "factory")),
     BenchmarkInfo("robodojo", "RoboDojo", "simulation", "Isaac Sim 5.1", "Dual ARX X5",
                   "auto", "42 bimanual tasks: generalization, memory, precision, long-horizon, open",
                   requirements="Isaac Sim / Isaac Lab runtime; NVIDIA GPU"),
@@ -126,11 +123,7 @@ def _embodiment(spec: dict[str, Any]) -> str:
     for key in ("embodiment", "robot"):
         if spec.get(key):
             return str(spec[key])
-    task_id = str(spec.get("id", ""))
-    for name in ("aloha-2", "franka-panda", "google-robot", "unitree-go2", "crazyflie-2", "pal-tiago"):
-        if f"--{name}--" in task_id:
-            return name
-    return "floating parallel gripper" if spec.get("backend") == "tabletop" else "Panda"
+    return ""
 
 
 @dataclass(frozen=True)
@@ -186,7 +179,7 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
             "category": meta.get("category"),
             "difficulty": meta.get("difficulty"),
             "source": meta.get("source"),
-            "embodiment": _embodiment({**spec, "id": task_id}),
+            "embodiment": _embodiment(spec),
             "max_steps": spec.get("max_steps"),
         }
     try:

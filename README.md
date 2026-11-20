@@ -29,19 +29,18 @@ it with a VLA or world-action model.
 | Type | Integration | Notes |
 |---|---|---|
 | Simulation | RoboDojo | Dual-arm manipulation; Direct tools or Hybrid Pi0.5 |
-| Simulation | RoboUse | LIBERO, RoboCasa, MetaWorld, RoboSuite, ManiSkill, Tabletop and more |
 | Simulation | LIBERO-Plus / PRO | Official perturbation suites |
 | Simulation | RoboTwin 2.0, RMBench, CALVIN, RoboLab, DexJoCo | See [docs/integrations.md](docs/integrations.md) |
 | Simulation | BEHAVIOR, IsaacLab Arena, NaVILA-Bench | Experimental mobile, humanoid and quadruped |
 | Real robot | ARX ONE, Piper-X | Dual-arm platforms with RealSense cameras |
 
-## Quick start (RoboUse, MuJoCo)
+## Quick start (RoboDojo, on a supported Linux GPU host)
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e .
 python scripts/release/prepare.py --output-dir ../dist-evoab
-evoab setup --integration robouse --runtime-profile mujoco \
+evoab setup --integration robodojo \
   --wheel ../dist-evoab/dist/evoab_runtime-0.2.0-py3-none-any.whl
 ```
 
@@ -49,8 +48,8 @@ Run one task with a Codex agent through any OpenAI-compatible endpoint:
 
 ```bash
 export EVOAB_API_KEY=...
-evoab run --integration robouse --deploy local --runtime-profile mujoco \
-  --task libero-red-block-in-bowl --action-profile direct --no-sam3 \
+evoab run --integration robodojo --deploy local \
+  --task stack_bowls --action-profile direct --no-sam3 \
   --agent codex --model gpt-6-astra --reasoning-effort low \
   --provider-url http://127.0.0.1:38579/v1 \
   --provider-profile omnirouter.chat_completions --codex-web-search disabled \
@@ -63,7 +62,7 @@ Replay saved runs with `evoab monitor --run-dir ./runs`. See
 
 ## Studio
 
-EvoAB Studio is a local web page for launching prepared RoboUse tasks,
+EvoAB Studio is a local web page for launching prepared LIBERO-PRO tasks,
 tracking running jobs, and reviewing run outcomes, token usage, and replays.
 The Benchmark page lists other integrations and their setup requirements.
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Removed the RoboUse integration, CLI and Studio launch entries, native workers and setup recipes. LIBERO-PRO and LIBERO-Plus use their own Panda controller.
+
 - Rename the package, CLI and environment variables to `evoab`, `evoab` and
   `EVOAB_*`; the runtime distribution is `evoab-runtime`.
 

@@ -113,30 +113,14 @@ async function loadRuns() {
 const loadProviders = async () => (S.providers = await api("/api/providers"));
 async function loadBenchmarks() {
   const integrations = await api("/api/benchmarks");
-  const catalog = [];
-  for (const bench of integrations) {
-    if (bench.kind !== "simulation" || !PROJECT_SOURCES[bench.integration]) continue;
-    if (bench.integration !== "robouse") {
-      catalog.push(bench);
-      continue;
-    }
-    // Display LIBERO independently, using its actual RoboUse runtime for setup and launch.
-    catalog.push({ ...bench, profiles: bench.profiles.filter((p) => p.profile !== "libero") });
-    catalog.push({
-      ...bench, catalogId: "libero", title: "LIBERO", simulator: "MuJoCo（robosuite）", embodiment: "Franka Panda",
-      description: "官方终身机器人学习评测集，测试跨任务的知识迁移。本机通过 RoboUse 的 LIBERO 环境接入。",
-      profiles: bench.profiles.filter((p) => p.profile === "libero"),
-    });
-    const mujoco = bench.profiles.find((p) => p.profile === "mujoco");
-    const count = mujoco?.suites?.metaworld || 0;
-    catalog.push({
-      ...bench, catalogId: "metaworld", taskSuite: "metaworld", title: "MetaWorld MT50",
-      simulator: "MuJoCo", embodiment: "Sawyer",
-      description: "50 个单臂操作任务，通过 RoboUse 的 MuJoCo 环境运行。",
-      profiles: mujoco ? [{ ...mujoco, task_count: count, suites: { metaworld: count },
-        launchable: mujoco.launchable && count > 0 }] : [],
-    });
-  }
+  const catalog = integrations.filter((b) => b.kind === "simulation" && PROJECT_SOURCES[b.integration]);
+  catalog.push({
+    integration: "libero", kind: "simulation", title: "LIBERO", simulator: "MuJoCo（robosuite）",
+    embodiment: "Franka Panda", profiles: [], description: "官方终身机器人学习评测集，测试跨任务的知识迁移。",
+  }, {
+    integration: "metaworld", kind: "simulation", title: "MetaWorld MT50", simulator: "MuJoCo",
+    embodiment: "Sawyer", profiles: [], description: "50 个单臂桌面操作任务。",
+  });
   catalog.push({
     integration: "robocasa_gr1", kind: "simulation", title: "RoboCasa GR-1 Tabletop",
     simulator: "MuJoCo（robosuite）", embodiment: "GR-1", profiles: [],
@@ -146,10 +130,10 @@ async function loadBenchmarks() {
   return catalog;
 }
 async function loadTasks(bench, profile, force = false) {
-  const { integration, taskSuite } = bench;
+  const { integration } = bench;
   const key = `${integration}/${profile}`;
   if (!S.tasks[key] || force) S.tasks[key] = await api(`/api/benchmarks/${integration}/${profile}/tasks`);
-  return taskSuite ? S.tasks[key].filter((t) => t.suite === taskSuite) : S.tasks[key];
+  return S.tasks[key];
 }
 async function loadModels(providerId, force = false) {
   if (!S.models[providerId] || force) S.models[providerId] = await api(`/api/providers/${encodeURIComponent(providerId)}/models`);
@@ -266,17 +250,15 @@ function stepBench(body) {
   const cards = [];
   for (const bench of S.benchmarks.filter((b) => b.kind === w.kind)) {
     for (const p of bench.profiles.filter((profile) => profile.launchable)) {
-      const selected = w.bench?.integration === bench.integration && w.bench.profile === p.profile && w.bench.taskSuite === bench.taskSuite;
-      const mujoco = bench.integration === "robouse" && p.profile === "mujoco";
-      const description = mujoco && !bench.taskSuite ? "机器人操作任务集，例如用夹爪把红色方块放进白碗。" : bench.description;
-      const runtime = mujoco ? "MuJoCo 物理仿真" : p.profile === "default" ? bench.simulator : p.profile;
+      const selected = w.bench?.integration === bench.integration && w.bench.profile === p.profile;
+      const runtime = p.profile === "default" ? bench.simulator : p.profile;
       cards.push(h("button", { class: `choice bench-choice${selected ? " selected" : ""}`,
         onclick: () => {
           if (!selected) selectBenchmark(bench, p);
           w.step = 2; route();
         } },
         h("span", { class: "title" }, bench.title),
-        h("span", { class: "desc" }, description),
+        h("span", { class: "desc" }, bench.description),
         h("span", { class: "meta" }, [runtime, `${p.task_count} 个任务`].filter((v) => v && v !== "—").join(" · "))));
     }
   }
@@ -834,7 +816,6 @@ function stopPlay() {
 
 // Simulation projects included in the Studio catalog, with upstream citations.
 const PROJECT_SOURCES = {
-  robouse: { repo: "benchflow-ai/robouse" },
   robodojo: { repo: "RoboDojo-Benchmark/RoboDojo", paper: "2607.04434" },
   libero: { repo: "Lifelong-Robot-Learning/LIBERO", paper: "2306.03310" },
   libero_pro: { repo: "Zxy-MLlab/LIBERO-PRO", paper: "2510.03827" },
@@ -846,7 +827,7 @@ const PROJECT_SOURCES = {
 };
 
 function projectLinks(bench) {
-  const source = PROJECT_SOURCES[bench.catalogId || bench.integration];
+  const source = PROJECT_SOURCES[bench.integration];
   if (!source) return null;
   const link = (url, label) => h("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, label);
   return h("div", { class: "project-links" },
@@ -858,14 +839,12 @@ function projectLinks(bench) {
 function pageBenchmarks(main) {
   const expanded = new Set(Array.from(main.querySelectorAll("details[open]"), (el) => el.dataset.integration));
   const profileRow = (bench, p) => {
-    const canPrepare = !bench.taskSuite && bench.setup === "auto" && ["not_prepared", "setup_failed"].includes(p.status);
-    const canRefresh = !bench.taskSuite && bench.setup === "auto" && p.status === "ready";
+    const canPrepare = bench.setup === "auto" && ["not_prepared", "setup_failed"].includes(p.status);
+    const canRefresh = bench.setup === "auto" && p.status === "ready";
     const suites = Object.entries(p.suites || {}).map(([s, n]) => `${s} ${n}`).join(" · ");
     return [
       h("div", { class: "profile-row" },
-        h("span", { class: "mono" }, { mujoco: "MuJoCo", libero: "LIBERO", robocasa: "RoboCasa",
-          maniskill_cpu: "ManiSkill · CPU", maniskill_gpu: "ManiSkill · GPU", genesis: "Genesis",
-          default: "默认环境" }[p.profile] || p.profile),
+        h("span", { class: "mono" }, p.profile === "default" ? "默认环境" : p.profile),
         h("span", {}, pill(p.status, BENCH_STATUS)),
         h("span", { class: "suites", title: suites }, p.status === "ready" ? `${p.task_count} 个任务${suites ? ` · ${suites}` : ""}` :
           bench.setup === "external" ? bench.requirements : bench.setup === "real" ? "需要连接实体机器人与设备进程" :
@@ -882,14 +861,11 @@ function pageBenchmarks(main) {
       h("button", { class: "btn", onclick: async (e) => { e.currentTarget.disabled = true; await loadBenchmarks(); route(); toast("已重新检查"); } }, "重新检查")),
     S.benchmarks.map((b) => {
       const ready = b.profiles.filter((p) => p.status === "ready").length;
-      const id = b.catalogId || b.integration;
-      const description = id === "robouse"
-        ? "把不同的机器人任务集接入同一套评测流程。智能体操作模拟机器人，系统按场景中的实际结果评分。"
-        : b.description;
+      const id = b.integration;
       return h("article", { class: "card bench" },
         h("div", { class: "bench-head" },
           h("h2", { class: "t" }, b.title),
-          h("div", { class: "d" }, description),
+          h("div", { class: "d" }, b.description),
           h("div", { class: "m" }, h("span", {}, `仿真器：${b.simulator}`),
             h("span", {}, `本体：${b.embodiment}`)),
           projectLinks(b)),
@@ -901,7 +877,7 @@ function pageBenchmarks(main) {
 }
 
 function selectBenchmark(bench, p) {
-  Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile, title: bench.title, taskSuite: bench.taskSuite }, task: null, suite: "all", query: "" });
+  Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile, title: bench.title }, task: null, suite: "all", query: "" });
 }
 
 function startWith(bench, p) {

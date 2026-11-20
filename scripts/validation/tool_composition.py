@@ -27,9 +27,9 @@ from evoab.tools.hybrid.contracts import HybridCapabilities
 from evoab.tools.selection import TOOL_GROUPS
 from evoab.tools.toolkit import ToolOutput
 
-INTEGRATIONS = ("robodojo", "robouse", "robolab", "robotwin", "libero_plus",
+INTEGRATIONS = ("robodojo", "robolab", "robotwin", "libero_plus",
                 "libero_pro", "rmbench", "calvin")
-HYBRID = INTEGRATIONS[:3]
+HYBRID = ("robodojo", "robolab")
 BASE_TOOLS = {"list_skills", "read_skill", "view_env_state", "capture_scene",
               "locate", "move", "grasp", "release", "hold", "finish"}
 JOBS = set(TOOL_GROUPS["@jobs"])
@@ -75,7 +75,7 @@ class Resource:
         self.closed = True
 
 
-def config(integration="robouse", profile="direct", *, legacy=False, **settings):
+def config(integration="robolab", profile="direct", *, legacy=False, **settings):
     options = {"task": "validation-task"}
     if integration == "robodojo":
         options["include_extra_task_requirements"] = False
@@ -234,7 +234,7 @@ class CompositionChecks(unittest.TestCase):
         with assembled(cfg, self.directory) as (assembly, _, _, actor):
             for name, arguments in (
                 ("actor_act", {"instruction": "test", "active_groups": ["arm"]}),
-                ("write_skill", {"path": "robouse/test.md", "content": "test"}),
+                ("write_skill", {"path": "robolab/test.md", "content": "test"}),
                 ("capture_observation", {}),
             ):
                 self.assertFalse(assembly.executor.call(name, arguments).output.success)
@@ -275,7 +275,7 @@ class CompositionChecks(unittest.TestCase):
             close=lambda: None)
         with patch("evoab.session.load_observation_profile",
                    return_value=SimpleNamespace(create_observation_profile=lambda *a: profile)):
-            cfg = config(observation_profile="robouse")
+            cfg = config("robodojo", observation_profile="robodojo")
             with assembled(cfg, self.directory) as (assembly, *_):
                 self.assertTrue(set(TOOL_GROUPS["@observation"]) <= surface(assembly))
                 result = assembly.executor.call("capture_observation", {})
@@ -287,9 +287,9 @@ class CompositionChecks(unittest.TestCase):
             with assembled(config(skill_writing=True, tool_return_mode="immediate"),
                            self.directory) as (assembly, *_):
                 result = assembly.executor.call("write_skill",
-                    {"path": "robouse/learned.md", "content": "Fixture experience"})
+                    {"path": "robolab/learned.md", "content": "Fixture experience"})
                 self.assertTrue(result.output.success)
-                self.assertEqual((library / "robouse/learned.md").read_text(), "Fixture experience")
+                self.assertEqual((library / "robolab/learned.md").read_text(), "Fixture experience")
 
     def test_capabilities_and_failed_assembly_cleanup(self):
         with assembled(config(), self.directory, calibrated=False) as (assembly, *_):
@@ -300,10 +300,10 @@ class CompositionChecks(unittest.TestCase):
 
     def test_custom_composition_omits_motion_and_its_prompt(self):
         from evoab.integrations.composition import resolve_tool_profile
-        spec = load_integration("robouse").get_integration_spec()
+        spec = load_integration("robolab").get_integration_spec()
         modules = tuple(m for m in spec.tool_profiles["direct"] if m.name != "gripper")
         spec = replace(spec, tool_profiles={"observe": modules}, default_tool_profile="observe")
-        with patch("evoab.integrations.robouse.get_integration_spec", return_value=spec):
+        with patch("evoab.integrations.robolab.get_integration_spec", return_value=spec):
             cfg = config(profile="observe")
             with assembled(cfg, self.directory) as (assembly, *_):
                 self.assertFalse({"move", "grasp", "release", "hold"} & surface(assembly))

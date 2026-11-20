@@ -58,9 +58,6 @@ robodojo = [
     "imageio-ffmpeg>=0.4",
 ]
 
-[project.entry-points."robouse.backends"]
-evoab_worker = "evoab.integrations.robouse.environment.backends.worker_backend:WorkerBackend"
-
 [project.scripts]
 evoab = "evoab.cli:main"
 
@@ -99,7 +96,6 @@ namespaces = false
     "**/*.cpp", "**/*.hpp", "**/*.h", "**/*.msg", "**/*.srv", "**/package.xml", "**/SHA256SUMS",
     "**/LICENSE", "**/NOTICE",
 ]
-"evoab.integrations.robouse" = ["recipes/*.toml"]
 "evoab.services.actor" = ["recipes/*.toml"]
 "evoab.services.perception" = ["recipes/*.toml"]
 

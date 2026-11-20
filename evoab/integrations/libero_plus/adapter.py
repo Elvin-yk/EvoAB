@@ -1,10 +1,9 @@
 """Pinned LIBERO-family native observations, OSC actions and task outcomes."""
 import time
-from types import SimpleNamespace
 
 import numpy as np
 
-from evoab.integrations.robouse.environment.backends.osc import OSC
+from .osc import LiberoOSC
 from evoab.services.environment.contracts import (
     ArmCommand, ArmDescription, CameraDescription, EnvironmentDescription,
     EnvironmentState, PoseCommand, RequestRejected, StepReceipt,
@@ -44,9 +43,7 @@ class LiberoAdapter:
         noise = getattr(env, "noise", 0)
         # Zoom/glass corruptions move pixels without changing the native camera.
         self.distorted_agentview = 20 < noise <= 30 or noise > 40
-        native = SimpleNamespace(env=env, action_spec=SimpleNamespace(dim=7),
-                                 mj_model_data=lambda: (env.sim.model._model, env.sim.data._data))
-        self.binding = OSC(native, "libero")
+        self.binding = LiberoOSC(env)
         self.commands = {"arm": 1.0}
         self.steps, self.success, self.ended, self.closed = 0, False, False, False
         self.outcome = None
@@ -63,7 +60,7 @@ class LiberoAdapter:
         from evoab.integrations.robot_resources import add_robot_resources, mujoco_robot_model
         model = self.binding.model
         add_robot_resources(self.description, model=mujoco_robot_model(
-            model, [model.site_bodyid[entry[1]] for entry in self.binding.entries]))
+            model, [model.site_bodyid[self.binding.site]]))
 
     def episode_identity(self):
         return self.instruction, self.metadata

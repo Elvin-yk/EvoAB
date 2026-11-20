@@ -105,7 +105,7 @@ these boundaries do not require every contribution to touch only one directory.
 ## Add an environment to an existing family
 
 1. Read `IntegrationSpec`, `PreparedEpisodeSession`, the selected family's
-   composition, and the environment backend contract. Use RoboUse/RoboDojo for
+   composition, and the environment backend contract. Use RoboDojo for
    gripper structure. An example adapter does not establish hardware validation
    for a new device.
 2. Prepare native services and publish an accurate environment description:

@@ -12,7 +12,7 @@ Direct motion. A discarded suffix is never replayed. Disabling review with
 
 Select `--tool-profile hybrid` on an integration that declares it; binding
 admission depends on the actual controller and actor profile. The
-`--action-profile hybrid` alias remains supported. RoboDojo, RoboUse and RoboLab
+`--action-profile hybrid` alias remains supported. RoboDojo and RoboLab
 can compose Hybrid with Direct tools. DexJoCo, BEHAVIOR, IsaacLab Arena and NaVILA
 compose Hybrid with scene, skills and episode tools, without gripper tools.
 Integrations own these compositions; a backend never chooses the visible tools.
@@ -66,7 +66,6 @@ the backend owns model-specific selection and padding. Capturing only when
 | `robodojo_pi05` | Pinned legacy X5 Pi0.5 model/config/RNG/image transforms; explicit clipping | Native FK; bounded pose corrections |
 | `robodojo_x5_joint` | Dual X5 absolute joints and continuous normalized openings, 25 Hz | Native FK; bounded pose corrections |
 | `robolab_droid_joint` | Seven Panda joints; observed finger-angle fraction, commanded normalized physical gap | Requested and nominal slew-limited flange FK; bounded corrections |
-| `robouse_cartesian` | Admitted LIBERO full-pose or RoboCasa fixed-orientation public world control points; absolute poses or latest-ACK-relative deltas | Absolute target previews are nominal requests; deltas do not advertise predicted future motion |
 | `dexjoco_tcp_hand` | Absolute TCP pose and named dexterous finger positions | Student/stop; native clipping recorded |
 | `behavior_r1pro_joint` | R1Pro torso/arm/gripper positions and local base velocity; OpenPI Pi0.5 | Student/stop; atomic 30 Hz control |
 | `arena_g1_locomanipulation` | G1 arm/hand joints, heading-frame velocity and pelvis height; GR00T | Student/stop; native whole-body controller at 50 Hz |
@@ -77,14 +76,6 @@ compatible profile can serve them. The legacy Pi0.5 path deliberately retains it
 pinned model/runtime requirements. XPolicyLab itself has no X5 or integration
 assumptions; its configuration supplies complete observation/action wire mappings.
 This does not establish checkpoint compatibility or benchmark performance.
-
-RoboUse tasks, scenes, seeds and checkpoints do not each need a binding. They reuse
-one when their controller and policy semantics match. Other RoboUse controller
-families are not advertised for Hybrid until their capabilities are validated.
-RoboCasa actions contain only xyz plus normalized opening (four values);
-observations retain measured xyz, wxyz and opening (eight values). It preserves
-its native target orientation and rejects profiles containing angular action
-fields, rotation commands and rotation corrections.
 
 ## Add another integration
 
