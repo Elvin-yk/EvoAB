@@ -13,6 +13,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+import httpx
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
@@ -122,6 +123,13 @@ def create_app(runs_root: Path) -> FastAPI:
     @app.post("/api/providers/{provider_id}/test")
     def provider_test(provider_id: str) -> dict[str, Any]:
         return providers.test_connection(_provider(provider_id))
+
+    @app.get("/api/providers/{provider_id}/quota")
+    def provider_quota(provider_id: str) -> dict[str, Any]:
+        try:
+            return providers.token_quota(_provider(provider_id))
+        except (ValueError, httpx.HTTPError) as error:
+            raise HTTPException(502, "Could not retrieve provider quota") from error
 
     @app.get("/api/providers/{provider_id}/models")
     def provider_models(provider_id: str) -> dict[str, Any]:

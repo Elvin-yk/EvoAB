@@ -85,6 +85,7 @@ namespaces = false
 "evoab.resources" = ["prompts/**/*.md", "prompts/robodojo/task_requirements.json", "prompts/robodojo/instruction_supplements.json", "skills/**/*.md"]
 "evoab.integrations.robolab" = ["SOURCE.md"]
 "evoab.integrations.piper_x" = ["templates/*.json", "SOURCE.md", "README.md"]
+"evoab.integrations.libero_pro" = ["deployment.toml"]
 "evoab.integrations.dexjoco" = ["deployment.toml", "SOURCE.md"]
 "evoab.integrations.behavior" = ["deployment.toml", "SOURCE.md"]
 "evoab.integrations.isaaclab_arena" = ["deployment.toml", "SOURCE.md"]

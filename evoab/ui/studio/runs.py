@@ -163,6 +163,7 @@ def summarize_run(
         "provider": launch.get("provider_label") or config.get("provider_url"),
         "model": (result or {}).get("model") or launch.get("model"),
         "agent": (result or {}).get("agent_backend") or launch.get("agent"),
+        "tool_profile": (result or {}).get("tool_profile") or launch.get("tool_profile"),
         "action_profile": (result or {}).get("action_profile") or launch.get("action_profile"),
         "reasoning_effort": (result or {}).get("reasoning_effort") or launch.get("reasoning_effort"),
         "seed": (result or {}).get("seed"),
@@ -194,6 +195,7 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
         "provider": launch.get("provider_label"),
         "model": launch.get("model"),
         "agent": launch.get("agent"),
+        "tool_profile": launch.get("tool_profile"),
         "action_profile": launch.get("action_profile"),
         "reasoning_effort": launch.get("reasoning_effort"),
         "seed": None,
@@ -210,7 +212,7 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
 
 
 def _method(run: dict[str, Any]) -> str:
-    return f"{run.get('agent') or 'codex'} · {run.get('action_profile') or 'direct'}"
+    return f"{run.get('agent') or 'codex'} · {run.get('tool_profile') or run.get('action_profile') or 'direct'}"
 
 
 def scan_runs(root: Path) -> list[dict[str, Any]]:

@@ -18,7 +18,7 @@ REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh")
 METHODS = (
     {"id": "direct", "agent": "codex", "action_profile": "direct", "label": "Direct tools",
      "description": "Full direct tool set: gripper motion, scene capture and queries, skills, finish."},
-    {"id": "clean", "agent": "codex", "action_profile": "clean", "label": "Clean (4 tools)",
+    {"id": "clean", "agent": "codex", "action_profile": "direct", "label": "Clean (4 tools)",
      "description": "Minimal baseline: move, hold, capture_scene and finish; no initial state dump."},
 )
 
@@ -37,13 +37,17 @@ class LaunchRequest:
 def build_command(request: LaunchRequest, provider: Provider, output_root: Path) -> list[str]:
     """The exact ``evoab run`` command for one Studio launch."""
     method = next(m for m in METHODS if m["id"] == request.method)
+    profile, task = request.profile, request.task
+    if request.integration == "libero_pro":
+        profile, task = task.split("/", 1)
     return [
         sys.executable, "-m", "evoab", "run",
         "--integration", request.integration,
         "--deploy", "local",
-        "--runtime-profile", request.profile,
-        "--task", request.task,
-        "--action-profile", method["action_profile"],
+        "--runtime-profile", profile,
+        "--task", task,
+        "--tool-profile", method["id"],
+        *(["--no-depth"] if method["id"] == "clean" else []),
         "--no-sam3",
         "--agent", method["agent"],
         "--model", request.model,
@@ -104,5 +108,6 @@ def launch(request: LaunchRequest, task: dict, provider: Provider, runs_root: Pa
         agent=method["agent"],
         reasoning_effort=request.reasoning_effort,
         action_profile=method["action_profile"],
+        tool_profile=method["id"],
     )
     return launch_id

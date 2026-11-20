@@ -353,9 +353,11 @@ function commandPreview() {
   const w = S.wizard;
   const provider = selectedProvider();
   const method = selectedMethod();
+  const [profile, task] = w.bench.integration === "libero_pro" ? w.task.task.split("/") : [w.bench.profile, w.task.task];
   return [
-    "evoab run", `--integration ${w.bench.integration}`, "--deploy local", `--runtime-profile ${w.bench.profile}`,
-    `--task ${w.task.task}`, `--action-profile ${method.action_profile}`, "--no-sam3", `--agent ${method.agent}`,
+    "evoab run", `--integration ${w.bench.integration}`, "--deploy local", `--runtime-profile ${profile}`,
+    `--task ${task}`, `--tool-profile ${method.id}`,
+    ...(method.id === "clean" ? ["--no-depth"] : []), "--no-sam3", `--agent ${method.agent}`,
     `--model ${w.model}`, `--reasoning-effort ${w.effort}`, `--provider-url ${provider.base_url}`,
     `--provider-profile ${provider.profile}`, "--codex-web-search disabled", "--monitor",
   ].join(" \\\n  ");
@@ -1082,6 +1084,22 @@ async function settingsModels(body, providerId) {
   draw();
 }
 
+function quotaRow(provider) {
+  const value = h("span", { class: "hint", role: "status" });
+  const refresh = h("button", { class: "btn small", onclick: async () => {
+    refresh.disabled = true;
+    try {
+      const q = await api(`/api/providers/${encodeURIComponent(provider.id)}/quota`);
+      value.textContent = q.unlimited ? "此密钥未设额度上限" : `剩余 ${q.remaining.toLocaleString()} 个供应商额度单位`;
+    } catch (error) {
+      value.textContent = error.message;
+    } finally {
+      refresh.disabled = false;
+    }
+  } }, "查询密钥额度");
+  return h("div", { class: "toolbar" }, h("strong", {}, provider.label), refresh, value);
+}
+
 function settingsUsage(body) {
   const t = S.totals || { overall: {}, by_provider: [], by_model: [], by_day: [] };
   const o = t.overall;
@@ -1097,6 +1115,7 @@ function settingsUsage(body) {
   const cacheRate = o.input_tokens ? `缓存命中 ${((100 * (o.cached_input_tokens || 0)) / o.input_tokens).toFixed(0)}%` : null;
   put(body, h("div", { class: "page wide" },
     pageHead("用量", "按 API、模型与日期汇总的 token 用量，来自每次运行记录的模型响应"),
+    ...S.providers.filter(p => p.key_configured && p.quota_supported).map(quotaRow),
     h("div", { class: "metrics" },
       metric("运行次数", fmtInt(o.runs), `成功 ${fmtInt(o.success)}`), metric("模型请求", fmtInt(o.requests)),
       metric("输入 tokens", fmtTokens(o.input_tokens), cacheRate), metric("输出 tokens", fmtTokens(o.output_tokens), o.reasoning_tokens ? `推理 ${fmtTokens(o.reasoning_tokens)}` : null),

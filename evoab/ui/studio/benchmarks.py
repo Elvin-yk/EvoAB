@@ -23,7 +23,7 @@ import yaml
 from evoab.ui.studio import jobs
 
 #: Integrations Studio can launch runs for today (others are listed for setup only).
-LAUNCHABLE = ("robouse",)
+LAUNCHABLE = ("robouse", "libero_pro")
 
 
 @dataclass(frozen=True)
@@ -48,7 +48,7 @@ REGISTRY: tuple[BenchmarkInfo, ...] = (
                   requirements="Isaac Sim / Isaac Lab runtime; NVIDIA GPU"),
     BenchmarkInfo("libero_pro", "LIBERO-PRO", "simulation", "MuJoCo (robosuite)", "Franka Panda",
                   "external", "LIBERO suites under instruction and position perturbations",
-                  requirements="Separately prepared LIBERO-PRO service (--env-url)"),
+                  requirements="Adopt a pinned installation with evoab setup --integration libero_pro --runtime-python PYTHON --native-root ROOT"),
     BenchmarkInfo("libero_plus", "LIBERO-Plus", "simulation", "MuJoCo (robosuite 1.4)", "Franka Panda",
                   "external", "Official LIBERO-Plus perturbation suites",
                   requirements="Separately prepared LIBERO-Plus service (--env-url)"),
@@ -176,7 +176,7 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
     tasks = {}
     for task_id, entry in (data.get("data", {}).get("tasks") or {}).items():
         spec = _spec(entry.get("spec"))
-        meta = _task_metadata(str(entry.get("path", "")))
+        meta = _task_metadata(entry["path"]) if entry.get("path") else {}
         scenario = spec.get("scenario") if isinstance(spec.get("scenario"), dict) else {}
         tasks[task_id] = {
             "task": task_id,

@@ -33,6 +33,7 @@ import httpx
 
 from evoab.provider.registry import list_provider_profiles
 
+BODEN_API_BASE = "https://apiroute.bodenai.net/v1"
 MODEL_CACHE_S = 300
 DEFAULT_PROFILE = "omnirouter.chat_completions"
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
@@ -237,6 +238,7 @@ def public_view(provider: Provider) -> dict[str, Any]:
         "base_url": provider.base_url,
         "profile": provider.profile,
         "key_configured": bool(key),
+        "quota_supported": provider.base_url.rstrip("/") == BODEN_API_BASE,
         "key_masked": mask(key),
         "key_source": "file" if provider.key_file else "studio",
         "connection": state.get("connection"),
@@ -253,6 +255,23 @@ def _headers(provider: Provider) -> dict[str, str]:
     if not key:
         raise ValueError("no API key configured")
     return {"Authorization": f"Bearer {key}"}
+
+
+def token_quota(provider: Provider) -> dict[str, Any]:
+    """Return Boden's quota for the configured key in provider units."""
+    if provider.base_url.rstrip("/") != BODEN_API_BASE:
+        raise ValueError("Quota lookup is unavailable for this provider")
+    response = httpx.get("https://apiroute.bodenai.net/api/usage/token/",
+                         headers=_headers(provider), timeout=10)
+    response.raise_for_status()
+    payload = response.json()
+    data = payload.get("data")
+    if not isinstance(data, dict) or type(data.get("unlimited_quota")) is not bool:
+        raise ValueError("Provider returned no token quota")
+    remaining = data.get("total_available")
+    if not data["unlimited_quota"] and type(remaining) not in (int, float):
+        raise ValueError("Provider returned no remaining balance")
+    return {"unlimited": data["unlimited_quota"], "remaining": None if data["unlimited_quota"] else remaining}
 
 
 def list_models(provider: Provider, refresh: bool = False) -> list[str]:

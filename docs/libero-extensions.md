@@ -139,3 +139,18 @@ These are two individual integration trials on the pre-merge implementation,
 not suite-level scores or verification of later shared-harness changes. Native
 SDK shell tools were available for scratch calculations and image inspection;
 the trials are not presented as a fully audited benchmark evaluation.
+
+### Launching from Studio
+
+Adopt the prepared native interpreter and pinned checkout on the Studio host.
+Install a matching EvoAB runtime wheel into that interpreter first.
+
+```bash
+evoab setup --integration libero_pro --runtime-python /path/to/native/bin/python --native-root /path/to/LIBERO-PRO --runtime-env MUJOCO_GL=egl
+```
+
+Under Benchmark, choose LIBERO-PRO and select a suite and task. Studio lists
+tasks from the native task map with both BDDL and initial-state files. Each run
+starts a fresh native episode at initial-state index 0, validates its identity,
+and shuts down its service when the run ends. With the CLI use
+`--deploy local --runtime-profile SUITE --task TASK_NAME`.

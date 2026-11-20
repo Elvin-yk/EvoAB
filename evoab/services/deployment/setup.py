@@ -1,6 +1,8 @@
 """Explicit installation only: never invoked from deploy or run."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 from collections.abc import Callable
 from email.parser import BytesParser
 import hashlib
@@ -178,7 +180,15 @@ def prepare(args, adapter, *, report=print):
             expected = args.checkpoint_sha256
             if expected and expected != runtime.data.get('checkpoint_sha256'):
                 raise ValueError('Checkpoint SHA256 differs from the prepared runtime')
-            validation = adapter.verify(runtime)
+            if args.runtime_python:
+                refreshed = replace(runtime, data=adapter.external_data(args))
+                validation = adapter.verify(refreshed)
+                if refreshed.data != runtime.data:
+                    previous = json.loads((root / "validation.json").read_text())
+                    publish_runtime(refreshed, {**previous, **validation})
+                runtime = refreshed
+            else:
+                adapter.verify(runtime)
             if report is not None:
                 report(f'Runtime ready (reused): {root}')
             return runtime
