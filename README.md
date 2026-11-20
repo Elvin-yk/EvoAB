@@ -63,17 +63,21 @@ Replay saved runs with `evoab monitor --run-dir ./runs`. See
 
 ## Studio
 
-EvoAB Studio is a local web page for launching simulation runs and reviewing
-them: choose the prepared environment, benchmark and task, the model API and
-model, then follow the run's outcome, token usage and replay.
+EvoAB Studio is a local web page for launching prepared RoboUse tasks,
+tracking running jobs, and reviewing run outcomes, token usage, and replays.
+The Benchmark page lists other integrations and their setup requirements.
 
 ```bash
-python -m evoab.ui.studio --runs-root ./runs --port 8770 --monitor-port 8771
+python -m evoab.ui.studio --runs-root ./runs --port 8770
 ```
 
-Providers are configured outside the repository in
-`~/.config/evoab/providers.json` (see `evoab/ui/studio/providers.py`); keys are
-read on the server and never sent to the browser.
+For an unreleased build, set the matching runtime wheel's path on the Studio
+server under Settings → General (设置 → 通用) before using one-click Benchmark
+setup. See [local deployment](docs/deployment.md) for runtime wheel details.
+
+Manage API providers and probe model capabilities under Settings (设置). The
+server stores provider definitions and keys outside the repository under
+`~/.config/evoab/` by default. The browser displays masked keys.
 
 ## Repository layout
 

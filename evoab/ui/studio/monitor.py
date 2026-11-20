@@ -1,8 +1,9 @@
-"""Replay monitor that picks up runs created after it started.
+"""Replay data for Studio, served by the run monitor's routes under ``/replay``.
 
 The standard monitor discovers run directories once. Studio launches new runs
 continuously, so this collection rediscovers the runs root (throttled) before
-lookups and reuses the monitor's readers, routes and static page unchanged.
+lookups and reuses the monitor's readers and routes unchanged. Studio draws
+the replay itself from ``/replay/api/runs/<id>`` and its media URLs.
 """
 
 from __future__ import annotations
@@ -12,10 +13,8 @@ import threading
 import time
 from pathlib import Path
 
-import uvicorn
-
 from evoab.ui.web.reader import RunReader
-from evoab.ui.web.server import Collection, create_monitor_app, discover
+from evoab.ui.web.server import Collection, discover
 
 RESCAN_INTERVAL_S = 3.0
 
@@ -52,8 +51,17 @@ class RescanningCollection(Collection):
         return super().overview()
 
 
-def start_monitor(runs_root: Path, host: str, port: int) -> None:
-    """Serve the rescanning monitor in a daemon thread."""
-    app = create_monitor_app(RescanningCollection(runs_root))
-    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning"))
-    threading.Thread(target=server.run, name="evoab-studio-monitor", daemon=True).start()
+def live_progress(collection: RescanningCollection, monitor_run_id: str) -> dict:
+    """Step budget, call count and latest frame of a run for the running page."""
+    try:
+        state = collection.state(monitor_run_id)
+    except Exception:  # noqa: BLE001 - the run may not have written records yet
+        return {}
+    frame = state["frames"][-1] if state.get("frames") else None
+    return {
+        "steps": state.get("steps"),
+        "max_steps": state.get("max_steps"),
+        "total_calls": state.get("total_calls"),
+        "phase": state.get("status"),
+        "frame_url": f"/replay{frame['url']}?width=320" if frame else None,
+    }

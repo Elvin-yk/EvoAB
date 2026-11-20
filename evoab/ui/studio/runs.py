@@ -10,11 +10,12 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
-import os
 import re
 import time
 from pathlib import Path
 from typing import Any
+
+from evoab.ui.studio import jobs
 
 #: A run without result.json whose files changed this recently counts as running.
 RUNNING_WINDOW_S = 180
@@ -105,14 +106,6 @@ def _last_change(run_dir: Path) -> float:
     return latest
 
 
-def _pid_alive(pid: Any) -> bool:
-    try:
-        os.kill(int(pid), 0)
-    except (OSError, TypeError, ValueError):
-        return False
-    return True
-
-
 def load_launches(root: Path) -> list[dict[str, Any]]:
     """Studio launch records, each with its resolved run directory if known."""
     launches = []
@@ -128,6 +121,7 @@ def load_launches(root: Path) -> list[dict[str, Any]]:
         match = _RUN_DIR_LINE.search(text)
         record["run_dir"] = Path(match.group(1)).name if match else None
         record["log_tail"] = "\n".join(text.strip().splitlines()[-6:])
+        record["alive"] = jobs.is_running(record)
         launches.append(record)
     return launches
 
@@ -146,7 +140,7 @@ def summarize_run(
     finished = result is not None
     if finished:
         status = "success" if result.get("task_success") else ("error" if result.get("error") else "failure")
-    elif _pid_alive(launch.get("pid")) or now - _last_change(run_dir) < RUNNING_WINDOW_S:
+    elif launch.get("alive") or (not launch and now - _last_change(run_dir) < RUNNING_WINDOW_S):
         status = "running"
     else:
         status = "interrupted"
@@ -172,6 +166,7 @@ def summarize_run(
         "action_profile": (result or {}).get("action_profile") or launch.get("action_profile"),
         "reasoning_effort": (result or {}).get("reasoning_effort") or launch.get("reasoning_effort"),
         "seed": (result or {}).get("seed"),
+        "max_steps": config.get("max_steps") or launch.get("max_steps"),
         "started_at": started,
         "elapsed_s": round(float(elapsed), 1),
         "environment_steps": outcome.get("native_steps"),
@@ -184,7 +179,7 @@ def summarize_run(
 
 def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
     """A launch whose run directory has not appeared yet."""
-    alive = _pid_alive(launch.get("pid"))
+    alive = bool(launch.get("alive"))
     return {
         "id": None,
         "monitor_id": None,
@@ -202,6 +197,7 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
         "action_profile": launch.get("action_profile"),
         "reasoning_effort": launch.get("reasoning_effort"),
         "seed": None,
+        "max_steps": launch.get("max_steps"),
         "started_at": launch.get("started_at"),
         "elapsed_s": round(now - float(launch.get("started_at") or now), 1),
         "environment_steps": None,
@@ -213,8 +209,16 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
     }
 
 
+def _method(run: dict[str, Any]) -> str:
+    return f"{run.get('agent') or 'codex'} · {run.get('action_profile') or 'direct'}"
+
+
 def scan_runs(root: Path) -> list[dict[str, Any]]:
-    """All runs directly under ``root`` plus pending Studio launches, newest first."""
+    """All runs directly under ``root`` plus pending Studio launches, newest first.
+
+    Each run also gets its method label and ``attempt``: the how-many-th run
+    of the same task in the same environment (oldest first).
+    """
     if not root.is_dir():
         return []
     now = time.time()
@@ -227,22 +231,38 @@ def scan_runs(root: Path) -> list[dict[str, Any]]:
             if summary is not None:
                 runs.append(summary)
     runs.extend(_pending(launch, now) for launch in launches if not launch["run_dir"])
-    runs.sort(key=lambda r: r["started_at"] or 0, reverse=True)
+    runs.sort(key=lambda r: r["started_at"] or 0)
+    counts: dict[tuple[Any, ...], int] = {}
+    for run in runs:
+        key = (run.get("integration"), run.get("profile"), run.get("task"))
+        counts[key] = counts.get(key, 0) + 1
+        run["attempt"] = counts[key]
+        run["method"] = _method(run)
+        run["key"] = f"run/{run['id']}" if run["id"] else f"launch/{run['launch_id']}"
+    runs.reverse()
     return runs
 
 
+def _add(bucket: dict[str, Any], run: dict[str, Any]) -> None:
+    bucket["runs"] = bucket.get("runs", 0) + 1
+    bucket["success"] = bucket.get("success", 0) + (1 if run["status"] == "success" else 0)
+    for name, value in run["usage"].items():
+        bucket[name] = bucket.get(name, 0) + value
+
+
 def usage_totals(runs: list[dict[str, Any]]) -> dict[str, Any]:
-    """Totals overall and per provider · model."""
-    by_model: dict[str, dict[str, Any]] = {}
+    """Usage overall and grouped by API, by API · model and by day."""
     overall: dict[str, Any] = {"runs": 0, "success": 0}
+    groups: dict[str, dict[str, dict[str, Any]]] = {"by_provider": {}, "by_model": {}, "by_day": {}}
     for run in runs:
-        key = f"{run.get('provider') or '?'} · {run.get('model') or '?'}"
-        for bucket in (overall, by_model.setdefault(key, {"runs": 0, "success": 0})):
-            bucket["runs"] += 1
-            bucket["success"] += 1 if run["status"] == "success" else 0
-            for name, value in run["usage"].items():
-                bucket[name] = bucket.get(name, 0) + value
-    return {
-        "overall": overall,
-        "by_model": [{"key": k, **v} for k, v in sorted(by_model.items(), key=lambda kv: -kv[1]["runs"])],
-    }
+        provider = run.get("provider") or "?"
+        day = time.strftime("%Y-%m-%d", time.localtime(run.get("started_at") or 0))
+        _add(overall, run)
+        _add(groups["by_provider"].setdefault(provider, {}), run)
+        _add(groups["by_model"].setdefault(f"{provider} · {run.get('model') or '?'}", {}), run)
+        _add(groups["by_day"].setdefault(day, {}), run)
+    result: dict[str, Any] = {"overall": overall}
+    for name, items in groups.items():
+        ordered = sorted(items.items(), key=lambda kv: kv[0] if name == "by_day" else -kv[1].get("total_tokens", 0))
+        result[name] = [{"key": key, **value} for key, value in ordered]
+    return result
