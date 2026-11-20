@@ -318,6 +318,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .bench-head .m { color: var(--faint); font-size: 12px; grid-column: 1 / -1; display: flex; gap: 16px; flex-wrap: wrap; }
 .project-links { grid-column: 1 / -1; display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: baseline; margin-top: 6px; font-size: 13px; color: var(--muted); }
 .project-links a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.runtime-unavailable { padding: 9px 18px; border-top: 1px solid var(--line); color: var(--muted); }
 .profiles summary { cursor: pointer; padding: 9px 18px; font-weight: 550; }
 .profiles summary span { margin-left: 10px; font-weight: 400; }
 .profiles[open] summary { border-bottom: 1px solid var(--line); }
