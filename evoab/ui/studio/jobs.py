@@ -44,6 +44,16 @@ def _ensure_reaper() -> None:
     threading.Thread(target=_reap_forever, name="evoab-studio-reaper", daemon=True).start()
 
 
+def _start_ticks(pid: int) -> str | None:
+    """Kernel start time of a process, to tell it apart from a later process reusing its PID."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    # Field 22 (starttime); the command name in field 2 may contain spaces, so split after ')'.
+    return stat.rsplit(")", 1)[-1].split()[19]
+
+
 def read_record(path: Path) -> dict[str, Any] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -71,7 +81,8 @@ def start(command: list[str], record_path: Path, env: dict[str, str] | None = No
             env=env,
             start_new_session=True,
         )
-    record = {"pid": process.pid, "started_at": time.time(), "exit_code": None, **fields}
+    record = {"pid": process.pid, "pid_start": _start_ticks(process.pid), "started_at": time.time(),
+              "exit_code": None, **fields}
     record_path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
     with _lock:
         _children[process.pid] = (process, record_path)
@@ -83,14 +94,19 @@ def is_running(record: dict[str, Any]) -> bool:
     if record.get("exit_code") is not None:
         return False
     try:
-        os.kill(int(record["pid"]), 0)
+        pid = int(record["pid"])
+        os.kill(pid, 0)
     except (OSError, KeyError, TypeError, ValueError):
         return False
-    return True
+    # After a restart the PID may belong to an unrelated process.
+    expected = record.get("pid_start")
+    return expected is None or _start_ticks(pid) == expected
 
 
 def interrupt(record: dict[str, Any]) -> None:
     """Ask the job's process group to stop; SIGINT lets the CLI clean up services."""
+    if not is_running(record):
+        raise ProcessLookupError("job is no longer running")
     os.killpg(int(record["pid"]), signal.SIGINT)
 
 

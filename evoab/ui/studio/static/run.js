@@ -31,7 +31,7 @@ function pageRun(main, key) {
   const run = findRun(key);
   if (!run) {
     put(main, h("div", { class: "page" }, h("div", { class: "card empty" }, h("b", {}, "找不到这次运行"),
-      h("a", { class: "btn small", href: "#history" }, "返回历史记录"))));
+      h("a", { class: "btn small", href: "#history" }, "返回运行记录"))));
     return;
   }
   if (run.id && location.hash !== `#${run.key}`) history.replaceState(null, "", `#${run.key}`);
@@ -118,18 +118,19 @@ function renderHead() {
   const lastSteps = tr ? [...tr.frames].reverse().find((f) => f.steps != null)?.steps : null;
   const steps = run.environment_steps ?? lastSteps;
   const dims = [
-    ["类型", run.simulated === false ? "真机" : "仿真"], ["环境", `${run.integration || "—"} / ${run.profile || "—"}`],
-    ["评测集", run.benchmark], ["本体", run.embodiment], ["方法", run.method],
+    ["类型", run.simulated === false ? "真机" : "仿真"], ["评测集", run.integration],
+    ["套件", run.benchmark && suiteLabel(run.benchmark)], ["本体", run.embodiment], ["方法", run.method],
     ["模型", run.model && `${run.provider ? `${run.provider} · ` : ""}${run.model}${run.reasoning_effort ? ` · ${run.reasoning_effort}` : ""}`],
-    ["第几次", `第 ${run.attempt} 次`],
+    ["第几次", run.attempt ? `同模型同任务第 ${run.attempt} 次` : null], ["开始", fmtTime(run.started_at)],
   ];
   const metric = (k, v, cls = "", sub = null) => h("div", { class: "metric" }, h("div", { class: "k" }, k),
     h("div", { class: `v ${cls}`, title: String(v) }, v), sub ? h("div", { class: "sub" }, sub) : null);
   put($("rvHead"),
     h("div", { class: "detail-head" },
       h("button", { class: "back", title: "返回", onclick: () => (history.length > 1 ? history.back() : (location.hash = "#history")) }, "←"),
-      h("div", { style: "flex:1;min-width:0" }, h("h1", {}, run.task || "—"),
-        h("p", {}, tr?.instruction || "")),
+      h("div", { style: "flex:1;min-width:0" },
+        h("h1", {}, "运行 ", h("span", { class: "mono" }, runTitle(run)), h("span", { class: "head-task" }, taskName(run.task) || "—")),
+        h("p", { title: run.task }, tr?.instruction || "")),
       h("div", { class: "row" }, pill(run.status),
         isLive(run) && run.launch_id ? h("button", { class: "btn small danger", onclick: (e) => stopRun(run, e.currentTarget) }, "停止") : null)),
     h("div", { class: "dims" }, dims.filter(([, v]) => v).map(([k, v]) => h("span", { class: "dim" }, h("b", {}, k), v))),

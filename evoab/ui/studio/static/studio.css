@@ -451,3 +451,17 @@ details.sys.inner { margin: 6px 0; }
   .metric-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .flow .step-body, .flow .step.call .step-body { padding-left: 14px; }
 }
+
+/* -- suite x perturbation picker ----------------------------------------- */
+.suite-matrix { padding: 10px 12px; margin-bottom: 12px; overflow-x: auto; }
+.suite-matrix table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.suite-matrix th, .suite-matrix td { padding: 4px 6px; text-align: center; white-space: nowrap; }
+.suite-matrix thead th { color: var(--muted); font-weight: 550; }
+.suite-matrix thead th small { display: block; color: var(--faint); font-family: var(--mono); font-weight: 400; }
+.suite-matrix tbody th { text-align: left; font-weight: 550; }
+.matrix-cell { min-width: 52px; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 3px 8px; cursor: pointer; font: inherit; }
+.matrix-cell:hover { border-color: var(--line-strong); }
+.matrix-cell.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.matrix-empty { color: var(--faint); }
+.suite-matrix p { margin: 6px 2px 0; }
+.detail-head h1 .head-task { display: block; font-size: 13.5px; font-weight: 500; color: var(--muted); margin-top: 2px; font-family: var(--mono); word-break: break-all; }

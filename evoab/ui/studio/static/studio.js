@@ -83,6 +83,22 @@ const BENCH_STATUS = {
   ready: "已就绪", not_prepared: "未安装", preparing: "安装中", setup_failed: "安装失败",
   external: "需手动配置", real: "真机",
 };
+// LIBERO-PRO suite names are "<base>[_<perturbation>]"; show them as base suite × perturbation.
+const LIBERO_BASE = { libero_10: "LIBERO-10（长程）", libero_90: "LIBERO-90", libero_goal: "LIBERO-Goal",
+  libero_object: "LIBERO-Object", libero_spatial: "LIBERO-Spatial" };
+const PERTURBATIONS = [["", "原始"], ["lan", "语言改写"], ["object", "物体属性"], ["swap", "位置交换"],
+  ["task", "任务变化"], ["env", "场景环境"]];
+function suiteParts(suite) {
+  const m = /^(libero_(?:10|90|goal|object|spatial))(?:_(lan|object|swap|task|env))?$/.exec(suite || "");
+  return m ? { base: m[1], variant: m[2] || "" } : null;
+}
+function suiteLabel(suite) {
+  const p = suiteParts(suite);
+  if (!p) return suite || "—";
+  return `${LIBERO_BASE[p.base]} · ${PERTURBATIONS.find(([k]) => k === p.variant)[1]}`;
+}
+const taskName = (task) => String(task || "").split("/").pop();
+const runTitle = (run) => `#${run.short_id || "—"}`;
 const pill = (status, labels = RUN_STATUS) => h("span", { class: `pill ${status}` }, labels[status] || status);
 const isLive = (run) => run && (run.status === "running" || run.status === "starting");
 
@@ -183,7 +199,7 @@ function selectedMethod() {
 
 function pageNew(main) {
   const w = S.wizard;
-  const steps = h("nav", { class: "steps", "aria-label": "新建运行步骤" }, STEPS.map((name, i) => {
+  const steps = h("nav", { class: "steps", "aria-label": "发起评测步骤" }, STEPS.map((name, i) => {
     const done = i < w.step;
     return h("button", {
       class: `step-tab${done ? " done" : ""}`,
@@ -255,6 +271,23 @@ function stepBench(body) {
       : h("p", { class: "card empty" }, `目前没有可从网页启动的${KINDS[w.kind]}环境。`));
 }
 
+// Base suites as rows, perturbations as columns; each cell selects one suite.
+function suiteMatrix(suites, total) {
+  const w = S.wizard;
+  const bases = [...new Set(Object.keys(suites).map((s) => suiteParts(s).base))].sort();
+  const columns = PERTURBATIONS.filter(([k]) => Object.keys(suites).some((s) => suiteParts(s).variant === k));
+  const cell = (suite, label) => suites[suite]
+    ? h("button", { class: `matrix-cell${w.suite === suite ? " active" : ""}`, title: suite,
+        onclick: () => { w.suite = suite; route(); } }, label ?? suites[suite])
+    : h("span", { class: "matrix-empty" }, "—");
+  return h("div", { class: "card suite-matrix" }, h("table", {},
+    h("thead", {}, h("tr", {}, h("th", {}, h("button", { class: `matrix-cell${w.suite === "all" ? " active" : ""}`,
+      onclick: () => { w.suite = "all"; route(); } }, `全部 ${total}`)), columns.map(([k, label]) => h("th", {}, label, h("small", {}, k ? `_${k}` : ""))))),
+    h("tbody", {}, bases.map((base) => h("tr", {}, h("th", {}, LIBERO_BASE[base]),
+      columns.map(([k]) => h("td", {}, cell(k ? `${base}_${k}` : base))))))),
+    h("p", { class: "small muted" }, "行是基础套件，列是扰动类型；单元格里的数字是可用任务数。"));
+}
+
 async function stepTask(body) {
   const w = S.wizard;
   body.append(h("div", { class: "muted" }, "加载任务…"));
@@ -270,18 +303,19 @@ async function stepTask(body) {
       class: `list-item${w.task && w.task.task === t.task ? " selected" : ""}`,
       onclick: () => { w.task = t; w.step = 3; route(); },
     },
-      h("div", { class: "t", title: t.task }, t.task),
-      h("span", {}, t.difficulty ? h("span", { class: "tag" }, t.difficulty) : null, " ", h("span", { class: "tag" }, t.suite)),
+      h("div", { class: "t", title: t.task }, taskName(t.task)),
+      h("span", {}, t.difficulty ? h("span", { class: "tag" }, t.difficulty) : null, " ", h("span", { class: "tag" }, suiteLabel(t.suite))),
       h("div", { class: "s", title: t.instruction }, [t.instruction || "（无说明）", `本体 ${t.embodiment}`, t.category,
         t.max_steps ? `步数上限 ${t.max_steps}` : null].filter(Boolean).join(" · ")),
     )) : [h("div", { class: "empty" }, "没有匹配的任务")]));
   };
-  const chips = h("div", { class: "chips" },
-    [["all", `全部 ${tasks.length}`], ...Object.entries(suites).map(([s, n]) => [s, `${s} ${n}`])].map(([value, label]) =>
-      h("button", { class: `chip-btn${w.suite === value ? " active" : ""}`, onclick: () => { w.suite = value; route(); } }, label)));
   const search = h("input", { class: "input", type: "search", placeholder: "搜索任务名或说明…", value: w.query, style: "width:260px",
     oninput: (e) => { w.query = e.target.value; renderList(); } });
-  put(body, h("div", { class: "toolbar" }, chips, h("span", { class: "spacer" }), search), list);
+  const picker = Object.keys(suites).every(suiteParts) ? suiteMatrix(suites, tasks.length) : h("div", { class: "chips" },
+    [["all", `全部 ${tasks.length}`], ...Object.entries(suites).map(([s, n]) => [s, `${s} ${n}`])].map(([value, label]) =>
+      h("button", { class: `chip-btn${w.suite === value ? " active" : ""}`, onclick: () => { w.suite = value; route(); } }, label)));
+  put(body, picker, h("div", { class: "toolbar" }, h("b", {}, w.suite === "all" ? "全部任务" : suiteLabel(w.suite)),
+    h("span", { class: "spacer" }), search), list);
   renderList();
 }
 
@@ -387,7 +421,7 @@ function stepConfirm(body) {
   const provider = selectedProvider();
   const method = selectedMethod();
   const rows = [
-    ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["评测集", w.task.suite], ["任务", w.task.task],
+    ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`], ["任务", taskName(w.task.task)],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", method.label], ["推理强度", w.effort], ["API", `${provider.label}（${provider.profile}）`],
     ["模型", w.model],
@@ -434,8 +468,8 @@ function pageRunning(main) {
         lp.frame_url ? h("img", { src: lp.frame_url, alt: "最新画面" }) : h("span", {}, run.status === "starting" ? "环境准备中…" : "等待画面"),
         pill(run.status)),
       h("div", { class: "body" },
-        h("a", { class: "t", href: `#${run.key}`, title: run.task }, run.task),
-        h("div", { class: "muted small" }, `${run.integration}/${run.profile} · ${run.benchmark || "—"} · ${run.method} · ${run.model}`),
+        h("a", { class: "t", href: `#${run.key}`, title: run.task }, h("span", { class: "mono" }, runTitle(run)), " ", taskName(run.task)),
+        h("div", { class: "muted small" }, `${suiteLabel(run.benchmark)} · ${run.method} · ${run.model}`),
         h("div", { class: "row small" }, h("span", { class: "muted" }, "环境步数"), h("span", { class: "spacer" }),
           h("span", {}, `${steps ?? "—"} / ${budget ?? "—"}`)),
         h("div", { class: "progress" }, h("i", { style: `width:${pct}%` })),
@@ -449,14 +483,14 @@ function pageRunning(main) {
         run.launch_id ? h("button", { class: "btn small danger", onclick: (e) => stopRun(run, e.currentTarget) }, "停止") : null));
   });
   put(main, h("div", { class: "page wide" },
-    pageHead("运行中", live.length ? `${live.length} 个运行正在进行，每 5 秒刷新` : "当前没有正在进行的运行",
-      h("a", { class: "btn primary", href: "#new" }, "＋ 新建运行")),
+    pageHead("进行中", live.length ? `${live.length} 个运行正在进行，每 5 秒刷新` : "当前没有正在进行的运行",
+      h("a", { class: "btn primary", href: "#new" }, "＋ 发起评测")),
     live.length ? h("div", { class: "run-cards" }, cards)
-      : h("div", { class: "card empty" }, h("b", {}, "没有正在进行的运行"), "从“新建运行”启动一次评测，进度会显示在这里。")));
+      : h("div", { class: "card empty" }, h("b", {}, "没有正在进行的运行"), "在“发起评测”里启动一次运行，进度会显示在这里。")));
 }
 
 async function stopRun(run, button) {
-  if (!confirm(`停止运行 ${run.task}？\n会向运行进程发送中断信号，已记录的数据会保留。`)) return;
+  if (!confirm(`停止运行 ${runTitle(run)}（${taskName(run.task)}）？\n会向运行进程发送中断信号，已记录的数据会保留。`)) return;
   if (button) button.disabled = true;
   try {
     await api(`/api/runs/${run.launch_id}/stop`, { method: "POST" });
@@ -491,7 +525,7 @@ function pageHistory(main) {
   const renderTable = () => {
     const runs = filteredRuns();
     put(tableHolder, runs.length ? h("div", { class: "card table-wrap" }, h("table", { class: "table" },
-      h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "评测集"), h("th", {}, "方法"),
+      h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "运行 ID"), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "套件"), h("th", {}, "方法"),
         h("th", {}, "模型"), h("th", { class: "num" }, "第几次"), h("th", { class: "num" }, "步数"), h("th", { class: "num" }, "用时"),
         h("th", { class: "num" }, "tokens"), h("th", {}, "开始时间"))),
       h("tbody", {}, runs.map((r) => h("tr", { class: "clickable", onclick: () => (location.hash = `#${r.key}`) },
@@ -499,17 +533,18 @@ function pageHistory(main) {
           if (e.target.checked) f.selected.add(r.key); else f.selected.delete(r.key);
           renderCompareBar();
         } })),
+        h("td", { class: "mono" }, runTitle(r)),
         h("td", {}, pill(r.status)),
-        h("td", { class: "task-cell", title: r.task }, r.task || "—"),
-        h("td", {}, `${r.integration || "—"}/${r.profile || "—"}`, h("div", { class: "faint small" }, r.benchmark || "")),
+        h("td", { class: "task-cell", title: r.task }, taskName(r.task) || "—"),
+        h("td", {}, suiteLabel(r.benchmark), h("div", { class: "faint small" }, r.integration || "")),
         h("td", {}, r.method),
         h("td", {}, r.model || "—", h("div", { class: "faint small" }, r.provider || "")),
-        h("td", { class: "num" }, r.attempt),
+        h("td", { class: "num" }, r.attempt ?? "—"),
         h("td", { class: "num" }, r.environment_steps ?? "—"),
         h("td", { class: "num" }, fmtDuration(r.elapsed_s)),
         h("td", { class: "num" }, fmtTokens(r.usage.total_tokens)),
         h("td", {}, fmtTime(r.started_at)))))))
-      : h("div", { class: "card empty" }, h("b", {}, S.runs.length ? "没有匹配的运行" : "还没有运行记录"), S.runs.length ? "调整筛选条件试试。" : "从“新建运行”开始第一次评测。"));
+      : h("div", { class: "card empty" }, h("b", {}, S.runs.length ? "没有匹配的运行" : "还没有运行记录"), S.runs.length ? "调整筛选条件试试。" : "在“发起评测”里开始第一次运行。"));
     renderCompareBar();
   };
   const renderCompareBar = () => {
@@ -525,7 +560,7 @@ function pageHistory(main) {
     if (f.compare && keys.length >= 2) compareHolder.append(compareTable(keys.map(findRun)));
   };
   put(main, h("div", { class: "page wide" },
-    pageHead("历史记录", `共 ${S.runs.length} 次运行 · 运行目录 ${S.config.runs_root}`),
+    pageHead("运行记录", `共 ${S.runs.length} 次运行 · 运行目录 ${S.config.runs_root}`),
     h("div", { class: "toolbar" },
       h("input", { class: "input", type: "search", placeholder: "搜索任务、模型、API…", value: f.query, style: "width:280px",
         oninput: (e) => { f.query = e.target.value; renderTable(); } }),
@@ -539,15 +574,15 @@ function pageHistory(main) {
 
 function compareTable(runs) {
   const rows = [
-    ["状态", (r) => pill(r.status)], ["任务", (r) => r.task], ["环境", (r) => `${r.integration}/${r.profile}`],
+    ["状态", (r) => pill(r.status)], ["任务", (r) => taskName(r.task)], ["套件", (r) => suiteLabel(r.benchmark)],
     ["方法", (r) => r.method], ["模型", (r) => r.model], ["推理强度", (r) => r.reasoning_effort || "—"],
-    ["第几次", (r) => r.attempt], ["环境步数", (r) => r.environment_steps ?? "—"], ["用时", (r) => fmtDuration(r.elapsed_s)],
+    ["运行 ID", (r) => runTitle(r)], ["第几次", (r) => r.attempt ?? "—"], ["环境步数", (r) => r.environment_steps ?? "—"], ["用时", (r) => fmtDuration(r.elapsed_s)],
     ["模型请求", (r) => fmtInt(r.usage.requests)], ["输入 tokens", (r) => fmtInt(r.usage.input_tokens)],
     ["缓存命中", (r) => fmtInt(r.usage.cached_input_tokens)], ["输出 tokens", (r) => fmtInt(r.usage.output_tokens)],
     ["总 tokens", (r) => fmtInt(r.usage.total_tokens)], ["开始时间", (r) => fmtTime(r.started_at)],
   ];
   return h("div", { class: "card compare table-wrap" }, h("table", { class: "table" },
-    h("thead", {}, h("tr", {}, h("th", {}, "对比"), runs.map((r) => h("th", {}, h("a", { href: `#${r.key}` }, `#${r.attempt} ${r.model}`))))),
+    h("thead", {}, h("tr", {}, h("th", {}, "对比"), runs.map((r) => h("th", {}, h("a", { href: `#${r.key}` }, `${runTitle(r)} ${r.model}`))))),
     h("tbody", {}, rows.map(([label, fn]) => h("tr", {}, h("td", {}, label), runs.map((r) => h("td", {}, fn(r))))))));
 }
 
@@ -601,7 +636,7 @@ function pageBenchmarks(main) {
             href: `https://github.com/Elvin-yk/EvoAB/blob/main/docs/${guide}` }, "配置指南") : null,
           p.status === "ready" && p.task_count > 0 ? h("button", { class: "btn small", onclick: () => openTasks(bench, p) },
             `浏览任务（${p.task_count}）`) : null,
-          p.launchable ? h("button", { class: "btn small", onclick: () => startWith(bench, p) }, "新建运行") : null)),
+          p.launchable ? h("button", { class: "btn small", onclick: () => startWith(bench, p) }, "发起评测") : null)),
       p.setup_log && ["preparing", "setup_failed"].includes(p.status) ? h("pre", { class: "profile-log log" }, p.setup_log) : null,
     ];
   };
@@ -668,7 +703,7 @@ async function openTasks(bench, p) {
   if (p.launchable) {
     selection.append(selectedName, h("button", { class: "btn primary", onclick: () => {
       close(); startWith(bench, p, selectedTask);
-    } }, "新建运行"));
+    } }, "发起评测"));
     drawer.append(selection);
   }
   const search = h("input", { class: "input", type: "search", placeholder: "搜索任务或任务组", "aria-label": "搜索任务或任务组",
@@ -991,7 +1026,7 @@ function settingsGeneral(body) {
   const select = (key, options) => h("select", { class: "select", onchange: (e) => (s[key] = e.target.value || null) },
     h("option", { value: "" }, "（不指定）"), options.map(([v, l]) => h("option", { value: v, selected: s[key] === v }, l)));
   put(body, h("div", { class: "page" },
-    pageHead("通用", "新建运行时的默认选择，以及服务器上的目录"),
+    pageHead("通用", "发起评测时的默认选择，以及服务器上的目录"),
     h("div", { class: "card card-pad", style: "max-width:640px" },
       field("默认 API", select("default_provider", usable.map((p) => [p.id, p.label]))),
       field("默认模型", h("input", { class: "input mono", value: s.default_model || "", placeholder: "例如 gpt-6-astra", oninput: (e) => (s.default_model = e.target.value || null) })),

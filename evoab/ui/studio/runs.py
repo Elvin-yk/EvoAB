@@ -217,11 +217,19 @@ def _method(run: dict[str, Any]) -> str:
     return f"{run.get('agent') or 'codex'} · {run.get('tool_profile') or run.get('action_profile') or 'direct'}"
 
 
+def short_id(run: dict[str, Any]) -> str:
+    """Display id: the random suffix of the run directory, else of the launch id."""
+    if run.get("id"):
+        return str(run["id"]).rsplit("_", 1)[-1]
+    return str(run.get("launch_id") or "").rsplit("_", 1)[-1]
+
+
 def scan_runs(root: Path) -> list[dict[str, Any]]:
     """All runs directly under ``root`` plus pending Studio launches, newest first.
 
-    Each run also gets its method label and ``attempt``: the how-many-th run
-    of the same task in the same environment (oldest first).
+    Each run also gets its method label, a short display id and ``attempt``:
+    the how-many-th started run of the same task with the same model (oldest
+    first). Launches that never created a run directory get no attempt.
     """
     if not root.is_dir():
         return []
@@ -238,9 +246,13 @@ def scan_runs(root: Path) -> list[dict[str, Any]]:
     runs.sort(key=lambda r: r["started_at"] or 0)
     counts: dict[tuple[Any, ...], int] = {}
     for run in runs:
-        key = (run.get("integration"), run.get("profile"), run.get("task"))
-        counts[key] = counts.get(key, 0) + 1
-        run["attempt"] = counts[key]
+        if run["id"]:
+            key = (run.get("integration"), run.get("profile"), run.get("task"), run.get("model"))
+            counts[key] = counts.get(key, 0) + 1
+            run["attempt"] = counts[key]
+        else:
+            run["attempt"] = None
+        run["short_id"] = short_id(run)
         run["method"] = _method(run)
         run["key"] = f"run/{run['id']}" if run["id"] else f"launch/{run['launch_id']}"
     runs.reverse()
