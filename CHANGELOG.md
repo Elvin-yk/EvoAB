@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Codex robot agents no longer receive `AGENTS.md` project docs or Codex's
+  bundled skills (`project_doc_max_bytes=0`, bundled skills and skill
+  instructions disabled), and start in the run's `scratch` directory instead of
+  the launcher's working directory. Earlier runs launched from a checkout carried
+  that checkout's developer instructions in the agent's context.
+
 - Studio run review rebuilt around a reconstructed trace (`/api/trace/<run>`):
   fixed harness stages, one round per model request (trigger, new input, full
   context on demand, latency, retries, tokens, output) and every tool execution

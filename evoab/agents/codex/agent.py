@@ -218,9 +218,14 @@ class CodexAgent(CodexConfig):
         if self._api_key:
             env["EVOAB_CODEX_KEY"] = self._api_key
 
+        cwd = code_policy.cwd if code_policy else self._cwd
+        if not code_policy and self._cwd == "." and session_dir is not None:
+            # Start in the run's own scratch directory, not wherever the launcher was started.
+            cwd = str(Path(session_dir).resolve() / "scratch")
+            Path(cwd).mkdir(parents=True, exist_ok=True)
         codex_config = openai_codex.CodexConfig(
             config_overrides=tuple(config_overrides),
-            cwd=code_policy.cwd if code_policy else self._cwd,
+            cwd=cwd,
             env=env,
             # Avoid experimental app-server API fields to preserve provider compatibility.
             experimental_api=False,
@@ -228,7 +233,7 @@ class CodexAgent(CodexConfig):
 
         turn_options = {
             "approval_mode": openai_codex.ApprovalMode.deny_all,
-            "cwd": code_policy.cwd if code_policy else self._cwd,
+            "cwd": cwd,
             "model": self._model,
             "sandbox": openai_codex.Sandbox.full_access,
         }
@@ -531,6 +536,12 @@ def _sdk_config_overrides(
         # Control only Codex dispatch; model batching and background execution have separate owners.
         f"mcp_servers.evoab.supports_parallel_tool_calls={str(mcp_parallel_dispatch).lower()}",
         f'model_reasoning_effort="{reasoning_effort}"',
+        # The robot agent's context is the assembled episode prompt only. Codex would otherwise
+        # add AGENTS.md files found from its working directory (developer instructions of
+        # whichever checkout it starts in) and its bundled general-purpose skills.
+        "project_doc_max_bytes=0",
+        "skills.bundled.enabled=false",
+        "skills.include_instructions=false",
     ]
     if web_search is not None:
         overrides.append(f"web_search={json.dumps(web_search)}")
