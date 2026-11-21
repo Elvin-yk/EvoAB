@@ -22,10 +22,14 @@ RUN if [ -n "${UBUNTU_MIRROR}" ]; then \
         libmagickwand-dev libfontconfig1-dev libexpat1 unzip wget \
     && rm -rf /var/lib/apt/lists/*
 
-RUN uv pip install --no-cache-dir "torch==2.1.0" --torch-backend cpu
+# The base image's uv config sets an upload-date cutoff (exclude-newer). PyPI mirrors
+# omit upload dates, so with a mirror uv would see no versions at all: drop the
+# config then and rely on the exact pins below. Without a mirror the cutoff stays.
+RUN uv pip install --no-cache-dir $( [ -n "${UV_DEFAULT_INDEX}${UV_INDEX_URL}" ] && echo --no-config ) \
+        "torch==2.1.0" --torch-backend cpu
 # Exact versions keep resolution identical on any index or mirror (an unpinned
 # resolve through a mirror once picked an unbuildable matplotlib 1.4.3).
-RUN uv pip install --no-cache-dir \
+RUN uv pip install --no-cache-dir $( [ -n "${UV_DEFAULT_INDEX}${UV_INDEX_URL}" ] && echo --no-config ) \
         numpy==1.24.4 numba==0.58.1 scipy==1.10.1 mujoco==3.2.3 robosuite==1.4.0 bddl==1.0.1 \
         pillow==12.3.0 h5py==3.16.0 PyYAML==6.0.3 termcolor==3.3.0 future==1.0.0 easydict==1.13 hydra-core==1.3.4 \
         gym==0.26.2 matplotlib==3.10.9 opencv-python==4.11.0.86 scikit-image==0.24.0 Wand==0.7.2 \
@@ -36,7 +40,8 @@ ARG LIBERO_PLUS_REF=4976dc30028e805ff8094b55501d532c48fec182
 RUN mkdir -p /app/LIBERO-plus && cd /app/LIBERO-plus \
     && git init -q && git remote add origin https://github.com/sylvestf/LIBERO-plus.git \
     && git fetch -q --depth 1 origin "${LIBERO_PLUS_REF}" && git checkout -q FETCH_HEAD \
-    && uv pip install --no-cache-dir --config-setting editable_mode=compat -e . \
+    && uv pip install --no-cache-dir $( [ -n "${UV_DEFAULT_INDEX}${UV_INDEX_URL}" ] && echo --no-config ) \
+        --config-setting editable_mode=compat -e . \
     && rm -rf /app/LIBERO-plus/.git ~/.cache/uv
 
 # MuJoCo assets (about 6.4 GB) from the MIT-licensed dataset Sylvest/LIBERO-plus at a pinned revision.
