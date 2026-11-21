@@ -130,7 +130,7 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     if agent_enabled:
         agent_backend = get_agent_backend(args.agent_backend)
         if getattr(args, "interaction_mode", "tool_calling") == "direct_policy" and not hasattr(agent_backend, "run_direct"):
-            raise ValueError("--interaction-mode direct_policy requires --agent nanobot")
+            raise ValueError("--interaction-mode direct_policy requires --agent native")
         if getattr(agent_backend, "owns_provider", False):
             agent_backend.validate_config(args, explicit)
         else:

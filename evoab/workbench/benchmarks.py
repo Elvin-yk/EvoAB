@@ -23,7 +23,7 @@ import yaml
 from evoab.workbench import jobs
 
 #: Integrations Studio can launch runs for today (others are listed for setup only).
-LAUNCHABLE = ("libero_pro",)
+LAUNCHABLE = ("libero_pro", "custom")
 
 
 @dataclass(frozen=True)
@@ -69,6 +69,8 @@ REGISTRY: tuple[BenchmarkInfo, ...] = (
                   "auto", "Experimental humanoid loco-manipulation (Hybrid GR00T)"),
     BenchmarkInfo("navila", "NaVILA-Bench", "simulation", "Isaac Lab", "Go2 quadruped",
                   "auto", "Experimental quadruped navigation (Hybrid NaVILA)"),
+    BenchmarkInfo("custom", "Custom benchmark", "simulation", "—", "—", "custom",
+                  "User-defined Gym-style benchmark registered with a manifest"),
     BenchmarkInfo("arx_one", "ARX ONE", "real", "—", "Dual ARX X5 + RealSense D405",
                   "real", "Physical dual-arm station behind a device process"),
     BenchmarkInfo("piper_x", "Piper-X", "real", "—", "Dual Piper arms + RealSense",
@@ -199,6 +201,9 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
     prepared = {(r.integration, r.profile): r for r in prepared_runtimes()}
     items = []
     for info in REGISTRY:
+        if info.integration == "custom":
+            items += _custom_items(runs_root, prepared)
+            continue
         profiles = info.profiles or ("default",)
         entries = []
         for profile in profiles:
@@ -244,6 +249,77 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
     return items
 
 
+def _custom_items(runs_root: Path, prepared: dict) -> list[dict[str, Any]]:
+    """One entry per registered custom benchmark (runtime profile = benchmark name)."""
+    from evoab.integrations.custom import manifest as manifests
+    items = []
+    for name in manifests.registered():
+        try:
+            manifest = manifests.load(name)
+        except ValueError as error:
+            items.append({"integration": "custom", "title": name, "kind": "simulation", "simulator": "", "embodiment": "",
+                          "setup": "custom", "description": f"Invalid manifest: {error}", "requirements": "", "profiles": []})
+            continue
+        runtime = prepared.get(("custom", name))
+        record_path = _setup_record(runs_root, "custom", name)
+        job = jobs.read_record(record_path)
+        status = ("preparing" if job and jobs.is_running(job) else "ready" if runtime is not None
+                  else "setup_failed" if job and job.get("exit_code") not in (None, 0) else "not_prepared")
+        items.append({
+            "integration": "custom", "title": manifest.title, "kind": "simulation", "simulator": manifest.simulator,
+            "embodiment": manifest.embodiment, "setup": "custom", "description": manifest.description,
+            "requirements": f"{manifest.make} · {manifest.python}", "name": name,
+            "profiles": [{"profile": name, "status": status, "task_count": len(runtime.tasks) if runtime else 0,
+                          "suites": {name: len(runtime.tasks)} if runtime else {},
+                          "prepared_at": runtime.prepared_at if runtime else None,
+                          "package_version": runtime.package_version if runtime else None,
+                          "launchable": bool(runtime and runtime.tasks),
+                          "setup_log": jobs.log_tail(record_path, 12) if job else ""}],
+        })
+    return items
+
+
+def add_custom(runs_root: Path, text: str) -> dict[str, Any]:
+    """Validate and register a manifest, then check it in its interpreter (background setup)."""
+    from evoab.integrations.custom import manifest as manifests
+    manifest = manifests.parse(text)
+    path = manifests.path_for(manifest.name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    _forget_custom_runtimes(manifest.name)
+    pid = start_setup(runs_root, "custom", manifest.name)
+    return {"name": manifest.name, "manifest": str(path), "pid": pid}
+
+
+def _forget_custom_runtimes(name: str) -> None:
+    """Drop adoption records of earlier manifest versions (metadata only; nothing installed)."""
+    import shutil
+    root = cache_root() / f"custom-{name}"
+    if root.is_dir():
+        shutil.rmtree(root)
+    for record in list(_parsed):
+        if record.is_relative_to(root):
+            _parsed.pop(record, None)
+
+
+def remove_custom(name: str) -> dict[str, Any]:
+    from evoab.integrations.custom import manifest as manifests
+    path = manifests.path_for(name)
+    if not path.is_file():
+        raise ValueError(f"custom benchmark {name!r} is not registered")
+    path.unlink()
+    _forget_custom_runtimes(name)
+    return {"removed": name}
+
+
+def custom_manifest(name: str) -> str:
+    from evoab.integrations.custom import manifest as manifests
+    path = manifests.path_for(name)
+    if not path.is_file():
+        raise ValueError(f"custom benchmark {name!r} is not registered")
+    return path.read_text(encoding="utf-8")
+
+
 def demo_file(runtime: PreparedRuntime, task: str) -> Path | None:
     if runtime.integration == "libero_pro" and task in runtime.tasks:
         from evoab.integrations.libero_pro.demo_assets import preview_path
@@ -274,6 +350,16 @@ def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | No
     without it setup installs ``evoab-runtime`` from the package index.
     """
     info = next((b for b in REGISTRY if b.integration == integration), None)
+    if integration == "custom":
+        from evoab.integrations.custom import manifest as manifests
+        manifest = manifests.load(profile)
+        record_path = _setup_record(runs_root, integration, profile)
+        existing = jobs.read_record(record_path)
+        if existing and jobs.is_running(existing):
+            raise ValueError(f"{profile} is already being prepared")
+        command = [sys.executable, "-m", "evoab", "setup", "--integration", "custom", "--runtime-profile", profile,
+                   "--runtime-python", manifest.python]
+        return jobs.start(command, record_path, integration=integration, profile=profile, requested_at=time.time())
     if info is None or info.setup != "auto":
         raise ValueError(f"{integration} cannot be prepared automatically")
     if info.profiles and profile not in info.profiles:

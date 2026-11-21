@@ -19,7 +19,7 @@ EvoAB（Evolving Agents with Bodies）把已有的 Agent、Agent + Policy 机器
 ```
 ① methods/<name>/          方法配置与复现卡片：一个复现工作 = 一份配置
 ② 交互模式 / 控制回路       evoab/execution、evoab/context：Direct | Hybrid | Clean | CodeAsPolicy，加上我们新增的 Agentic 与 Orchestrator 变体
-③ 模型运行时               evoab/agents（Codex、Claude Code 等外部 Agent），evoab/provider（网关与协议转换）；新增 nanobot 驱动的进程内 Agent 后端
+③ 模型运行时               evoab/agents（Codex、Claude Code 等外部 Agent），evoab/provider（网关与协议转换）；内置进程内 Agent 后端（`--agent native`）
 ④ 工具与服务               evoab/tools（Gripper、Scene、Skill、Episode、Hybrid），evoab/services（环境、actor、感知服务）
 ⑤ evoab/integrations/<env>/ 环境只描述事实：相机、坐标系、夹爪几何、基础执行器
 ⑥ 评测与展示               evoab/artifacts、evoab/ui/web（回放监控）；后续扩展为 EvoAB Studio
@@ -49,14 +49,15 @@ EvoAB（Evolving Agents with Bodies）把已有的 Agent、Agent + Policy 机器
 
 其他模块只依赖这四个名字。
 
-### 3.2 当前实现：nanobot（MIT）作为内部依赖
+### 3.2 当前实现：内置 Agent 运行时（固定版本的第三方 MIT 依赖）
 
-- 第三方运行时只出现在 `evoab/llm/_backends/` 里，替换成自研实现时只改这一处。
+- 第三方运行时只出现在 `evoab/provider/catalog.py` 和 `evoab/agents/native/` 里，替换成自研实现时只改这两处。
+- 配置、模型预设和调用用量都放在 `~/.config/evoab/agent/`，由 Studio「设置 → 模型 / 概览」和 `evoab models` 管理。
 - 依赖固定版本，用到的部分：
   - providers：OpenAI 兼容、Anthropic、Azure、Bedrock、OAuth，以及回退和重试；
   - 面向模型的工具循环；
   - 工具注册表。
-- 不用它的聊天渠道、WebUI、定时任务和自动更新。
+- 不用它的聊天渠道、WebUI、定时任务和自动更新；Studio 直接调用它的设置接口，界面由 Studio 自己呈现。
 - 已知约束：工具循环要求提供历史压缩回调。上游迭代快，需要给适配层写回归测试。
 - 底座已有的 `codex`、`claude_code`（以及实验性的 `gemini_cli`、`opencode`）外部 Agent 后端保留，给需要原生 CLI Agent 的方法用。
 
@@ -129,12 +130,12 @@ Astranomy 的主要结论：性能的主要来源是接口文本和上下文，�
 1. **M0 基础**（已完成）
    - 统一命名为 EvoAB。
 2. **M1 方法层**
-   - nanobot 驱动的进程内 Agent 后端（`--agent evoab`），不依赖 Codex 也能对接各家模型。
+   - 内置进程内 Agent 后端（`--agent native`），不依赖 Codex 也能对接各家模型。
    - 方法配置加载器与复现卡片。
    - 补 Astranomy Direct（无状态、直接出动作块）。
    - 复现 Harness VLA 方法（任务记忆 + `vla_act`），Pi0.5 LIBERO 等作为 actor 后端。
 3. **M2 前端（EvoAB Studio）**
-   - 以 `evoab/ui/web` 回放监控为基础，按 nanobot 风格重做。
+   - 以 `evoab/ui/web` 回放监控为基础重做。
    - 回答 8 个维度：仿真/真机、方法、本体、任务、benchmark、第几回合、可视化、用量。
 4. **M3 Benchmark 对比**
    - LIBERO-PRO：Harness VLA 与 Direct/Hybrid 对比。

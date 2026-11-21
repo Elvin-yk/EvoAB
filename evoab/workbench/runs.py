@@ -293,11 +293,11 @@ def usage_totals(runs: list[dict[str, Any]]) -> dict[str, Any]:
     overall: dict[str, Any] = {"runs": 0, "success": 0}
     groups: dict[str, dict[str, dict[str, Any]]] = {"by_provider": {}, "by_model": {}, "by_day": {}}
     for run in runs:
-        provider = run.get("provider") or "?"
+        provider = run.get("provider") or "—"
         day = time.strftime("%Y-%m-%d", time.localtime(run.get("started_at") or 0))
         _add(overall, run)
         _add(groups["by_provider"].setdefault(provider, {}), run)
-        _add(groups["by_model"].setdefault(f"{provider} · {run.get('model') or '?'}", {}), run)
+        _add(groups["by_model"].setdefault(run.get("model") or "—", {}), run)
         _add(groups["by_day"].setdefault(day, {}), run)
     result: dict[str, Any] = {"overall": overall}
     for name, items in groups.items():

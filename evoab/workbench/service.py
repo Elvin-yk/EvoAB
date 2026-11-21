@@ -14,11 +14,12 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from evoab.workbench import benchmarks, direct_trace, jobs, providers, trace
+from evoab.workbench import benchmarks, direct_trace, jobs, trace
 from evoab.workbench.launcher import DIRECT_OPTIONS, METHODS, REASONING_EFFORTS, LaunchRequest, launch, validate
 from evoab.workbench.runs import STUDIO_DIR, load_launches, scan_runs, usage_totals
 
-SETTING_KEYS = ("default_provider", "default_model", "default_effort", "default_method", "runtime_wheel")
+# Launch defaults (remembered from the last launch) and the benchmark runtime wheel.
+SETTING_KEYS = ("default_model", "default_effort", "default_method", "runtime_wheel")
 
 
 class WorkbenchError(Exception):
@@ -54,7 +55,7 @@ class Workbench:
 
     @staticmethod
     def settings_path() -> Path:
-        return providers.config_dir() / "studio.json"
+        return Path(os.environ.get("EVOAB_CONFIG_DIR") or Path.home() / ".config" / "evoab").expanduser() / "studio.json"
 
     def settings(self) -> dict[str, Any]:
         try:
@@ -77,11 +78,9 @@ class Workbench:
     def config(self) -> dict[str, Any]:
         return {
             "runs_root": str(self.runs_root),
-            "config_dir": str(providers.config_dir()),
             "reasoning_efforts": REASONING_EFFORTS,
             "methods": METHODS,
             "direct_options": {k: list(v[1]) if v[1] else None for k, v in DIRECT_OPTIONS.items()},
-            "wire_profiles": providers.agent_profiles(),
             "settings": self.settings(),
         }
 
@@ -107,79 +106,68 @@ class Workbench:
             raise Conflict(str(error)) from error
         return {"pid": pid, "integration": integration, "profile": profile}
 
-    # -- providers ------------------------------------------------------------
-
-    @staticmethod
-    def provider(provider_id: str) -> providers.Provider:
-        provider = providers.load_providers().get(provider_id)
-        if provider is None:
-            raise NotFound(f"unknown provider {provider_id!r}")
-        return provider
-
-    def providers(self) -> list[dict[str, Any]]:
-        return [providers.public_view(p) for p in providers.load_providers().values()]
-
-    def save_provider(self, provider_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def add_benchmark(self, text: str) -> dict[str, Any]:
+        """Register a custom benchmark manifest and check it in its interpreter."""
         try:
-            return providers.public_view(providers.upsert({**payload, "id": provider_id}))
+            return benchmarks.add_custom(self.runs_root, text)
         except ValueError as error:
             raise Invalid(str(error)) from error
 
-    def delete_provider(self, provider_id: str) -> dict[str, Any]:
+    def remove_benchmark(self, name: str) -> dict[str, Any]:
         try:
-            providers.delete(provider_id)
-        except KeyError as error:
-            raise NotFound(f"unknown provider {provider_id!r}") from error
-        return {"deleted": provider_id}
+            return benchmarks.remove_custom(name)
+        except ValueError as error:
+            raise NotFound(str(error)) from error
 
-    def test_provider(self, provider_id: str) -> dict[str, Any]:
-        return providers.test_connection(self.provider(provider_id))
-
-    def quota(self, provider_id: str) -> dict[str, Any]:
+    def benchmark_manifest(self, name: str | None = None) -> str:
+        """A registered manifest, or the documented template when ``name`` is empty."""
+        if not name:
+            from importlib import resources
+            return resources.files("evoab.integrations.custom").joinpath("template.toml").read_text(encoding="utf-8")
         try:
-            return providers.token_quota(self.provider(provider_id))
-        except WorkbenchError:
-            raise
-        except Exception as error:  # noqa: BLE001 - provider-specific failures
-            raise Unavailable(f"could not retrieve provider quota: {error}") from error
+            return benchmarks.custom_manifest(name)
+        except ValueError as error:
+            raise NotFound(str(error)) from error
 
-    def models(self, provider_id: str) -> dict[str, Any]:
-        provider = self.provider(provider_id)
+    # -- models: providers, presets and usage ---------------------------------
+
+    @staticmethod
+    def _catalog(operation, *args, **kwargs):
+        from evoab.provider import catalog
         try:
-            models = providers.list_models(provider)
-        except Exception as error:  # noqa: BLE001 - report provider failures to the caller
-            raise Unavailable(f"model listing failed: {type(error).__name__}: {error}") from error
-        return {"models": models, "capabilities": providers.capabilities(provider_id),
-                "recommended": providers.public_view(provider)["recommended"]}
-
-    def probe(self, provider_id: str, model: str) -> dict[str, Any]:
-        if not model:
-            raise Invalid("model is required")
-        return providers.probe_model(self.provider(provider_id), model)
-
-    # -- models (nanobot) -----------------------------------------------------
-
-    def models_overview(self) -> dict[str, Any]:
-        """nanobot's providers and model presets, read from the config its WebUI edits."""
-        from evoab.provider import nanobot
-        try:
-            config = nanobot.load_config()
+            return operation(catalog)(*args, **kwargs)
+        except catalog.CatalogError as error:
+            raise (Conflict if error.status == 409 else NotFound if error.status == 404 else Invalid)(str(error)) from error
         except RuntimeError as error:
-            return {"available": False, "error": str(error), "providers": [], "presets": []}
-        return {"available": True, "config": str(nanobot.config_path()),
-                "providers": nanobot.providers(config), "presets": nanobot.presets(config),
-                "webui": os.environ.get("EVOAB_NANOBOT_WEBUI", "http://127.0.0.1:8765")}
+            raise Unavailable(str(error)) from error
+
+    def model_settings(self) -> dict[str, Any]:
+        return self._catalog(lambda c: c.settings)
+
+    def save_preset(self, fields: dict[str, Any], existing: str | None = None) -> dict[str, Any]:
+        return self._catalog(lambda c: c.save_preset, fields, existing=existing)
+
+    def delete_preset(self, name: str) -> dict[str, Any]:
+        return self._catalog(lambda c: c.delete_preset, name)
+
+    def save_provider(self, fields: dict[str, Any], existing: str | None = None) -> dict[str, Any]:
+        return self._catalog(lambda c: c.save_provider, fields, existing=existing)
+
+    def delete_provider(self, name: str) -> dict[str, Any]:
+        return self._catalog(lambda c: c.delete_provider, name)
+
+    def provider_models(self, name: str, refresh: bool = False) -> dict[str, Any]:
+        return self._catalog(lambda c: c.provider_models, name, refresh)
+
+    def model_usage(self) -> dict[str, Any]:
+        return self._catalog(lambda c: c.usage)
 
     # -- runs -----------------------------------------------------------------
 
     def runs(self, live=None) -> list[dict[str, Any]]:
         """All runs, newest first. ``live(monitor_id)`` may add live progress to running ones."""
         items = scan_runs(self.runs_root)
-        registered = providers.load_providers()
         for run in items:
-            provider = registered.get(run.get("provider_id"))
-            if provider is not None:
-                run["provider"] = provider.label
             if live and run["status"] == "running" and run.get("monitor_id"):
                 run["live"] = live(run["monitor_id"])
         return items
@@ -200,10 +188,12 @@ class Workbench:
     def launch(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
             request = LaunchRequest(**payload)
-            task, provider = validate(request, providers.load_providers())
+            task = validate(request)
         except (TypeError, ValueError) as error:
             raise Invalid(str(error)) from error
-        launch_id = launch(request, task, provider, self.runs_root)
+        launch_id = launch(request, task, self.runs_root)
+        self.update_settings({"default_model": request.model, "default_effort": request.reasoning_effort,
+                              "default_method": request.method})
         return {"launch_id": launch_id, "short_id": launch_id.rsplit("_", 1)[-1], "request": asdict(request)}
 
     def _launch_record(self, launch_id: str) -> dict[str, Any]:

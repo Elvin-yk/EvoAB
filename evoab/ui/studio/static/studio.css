@@ -570,12 +570,42 @@ details.sys.inner { margin: 6px 0; }
 .direct-options { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
 .direct-options .field .section-title { margin: 0 0 6px; }
 .check { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; cursor: pointer; }
-.nanobot-summary { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
-@media (max-width: 1100px) { .nanobot-summary { grid-template-columns: 1fr; } }
-.nanobot-summary .card { padding: 14px 16px; overflow-x: auto; }
-.nanobot-frame { width: 100%; height: 760px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 .dp-switch { margin-left: auto; }
 .dp-switch .row { display: flex; gap: 6px; align-items: center; }
 .dp-switch select { max-width: 340px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
 .dp-player.waiting .dp-output, .dp-player.waiting .dp-note, .dp-player.waiting .dp-alert { display: none !important; }
 .dp-player.waiting .dp-telemetry::after { content: "模型推理中：动作块返回后才会执行"; font-size: 12px; color: var(--muted); align-self: center; }
+
+/* -- settings: dialogs, models, usage, benchmarks ------------------------------ */
+.modal { position: fixed; z-index: 60; top: 8vh; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px));
+  max-height: 84vh; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.18); }
+.modal.wide { width: min(920px, calc(100vw - 32px)); }
+.modal-head { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.modal-head h2 { margin: 0; font-size: 15px; }
+.modal-body { padding: 14px 18px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.modal-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.form-row { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 12px; }
+.form-label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; }
+.form-label small { font-size: 11px; color: var(--faint); }
+.form-row .input, .form-row select { width: 100%; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.preset-list { display: flex; flex-direction: column; gap: 10px; }
+.preset, .provider-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.provider-row { padding: 8px 2px; border-bottom: 1px solid var(--line); }
+.preset .avatar, .provider-row .avatar { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+  background: var(--sunk); border: 1px solid var(--line); font-weight: 600; font-size: 13px; flex-shrink: 0; }
+.preset-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.usage-card { padding: 16px 18px; margin-bottom: 16px; }
+.usage-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.usage-big { font-size: 30px; font-weight: 600; }
+.usage-facts { display: flex; gap: 18px; color: var(--muted); font-size: 13px; }
+.usage-facts b { color: var(--text); }
+.usage-chart { width: 100%; height: auto; }
+.usage-chart .miss { fill: #c9ccd3; } .usage-chart .cached { fill: #9aa4b5; } .usage-chart .out { fill: #f97316; }
+.usage-chart .lbl { font: 10px var(--mono); fill: var(--muted); }
+.usage-legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); }
+.usage-legend .k::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.usage-legend .miss::before { background: #c9ccd3; } .usage-legend .cached::before { background: #9aa4b5; } .usage-legend .out::before { background: #f97316; }
+.settings-body .card { margin-bottom: 16px; }
+.manifest-editor { width: 100%; min-height: 52vh; font-size: 12.5px; line-height: 1.5; white-space: pre; tab-size: 2; }

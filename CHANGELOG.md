@@ -10,26 +10,28 @@
   `direct/` (policy, prompt, per-step frames, per-inference calls and requests).
   This replaces "Direct" meaning tool calls to `move`.
 
-- `--agent nanobot` (`pip install 'evoab[nanobot]'`, `nanobot-ai==0.4.1`): models
-  come from nanobot presets and providers in nanobot's own config; usage lands in
-  nanobot's usage store. Tool calling runs nanobot's `AgentRunner` with only the
-  robot tools and nanobot's transcript consolidation (run-local storage).
-  `evoab models` and `/api/models` list presets.
+- Built-in agent `--agent native` (`pip install 'evoab[agent]'`): model presets,
+  providers and usage records in `~/.config/evoab/agent/`; tool calling with only
+  the robot tools and transcript consolidation (run-local storage). Both Studio
+  methods (Direct Policy, Agentic Policy) use it. `evoab models` manages presets
+  and providers; `evoab usage` reports recorded calls. The earlier provider store
+  (`evoab providers`, `~/.config/evoab/providers.json`) and model probing are
+  removed.
 
-- Studio: Direct Policy method with representation, horizon, history and
-  prompt-block choices; model step lists nanobot presets with a link to nanobot's
-  WebUI. Direct runs open in a step-by-step player: synchronized cameras, a
-  control-step track segmented by inference (optionally including real inference
-  waits), play / replay call / previous-next call / speed, CALL·STEP·ACTION
-  telemetry, the action chunk with measured tracking error, model note, repair /
-  clamp / hold alerts, a trajectory chart, an inference list and per-inference
-  request/reply drawer and a switcher across Direct rollouts. Each launch picks a
-  free environment port, so LIBERO-PRO runs can overlap.
+- Custom benchmarks (`--integration custom`, `docs/custom-benchmarks.md`): a
+  Gym-style `make(task_id, seed)` plus a TOML manifest mapping observations,
+  actions and success; registered with `evoab benchmarks add` or in Studio, and
+  checked in the benchmark's own interpreter. Example: `examples/benchmarks/`.
 
-- Studio settings open on "模型与提供商": nanobot's presets and providers plus
-  nanobot's own settings page embedded (same config file). The earlier provider
-  list remains as "旧版提供商（Codex）" for the Codex method. EvoAB model calls are
-  recorded in nanobot's usage store.
+- Studio: settings are 概览 (usage), 模型 (presets and providers) and 评测集
+  (benchmarks, runtime wheel, custom benchmarks); the separate 评测集 page,
+  provider list, model probing, usage and general pages are gone. Direct runs
+  open in a step-by-step player: synchronized cameras, a control-step track
+  segmented by inference (optionally including real inference waits), play /
+  replay call / previous-next call / speed, CALL·STEP·ACTION telemetry, the
+  action chunk with measured tracking error, model note, repair / clamp / hold
+  alerts, a trajectory chart, an inference list, per-inference request/reply and
+  a rollout switcher. Each launch picks a free environment port.
 
 - Studio's operations move to `evoab/workbench/` and are exposed as
   `evoab runs | providers | benchmarks | usage | settings | studio` commands

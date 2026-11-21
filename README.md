@@ -60,13 +60,12 @@ Replay saved runs with `evoab monitor --run-dir ./runs`. See
 [docs/getting-started.md](docs/getting-started.md) and
 [docs/running.md](docs/running.md) for more.
 
-## Direct policies and nanobot
+## Direct policies and the built-in agent
 
-`--agent nanobot` takes models from [nanobot](https://github.com/HKUDS/nanobot)
-(`pip install 'evoab[nanobot]'`): providers, model presets, request APIs,
-retries and usage accounting are nanobot's, read from the same config file its
-WebUI edits, and every call appears in nanobot's usage view. `--model` names a
-nanobot preset; `evoab models` lists them.
+`--agent native` is EvoAB's built-in agent (`pip install 'evoab[agent]'`).
+`--model` names a model preset; presets, providers and recorded usage live in
+`~/.config/evoab/agent/` and are managed in Studio (设置 → 模型) or with
+`evoab models`.
 
 `--interaction-mode direct_policy` makes the model the controller: each
 inference is one independent request (prompt pack + task + a short window of
@@ -85,14 +84,18 @@ by step with every inference's request, reply, latency and cost.
 ```bash
 evoab run --integration libero_pro --deploy local --runtime-profile libero_object \
   --task pick_up_the_cream_cheese_and_place_it_in_the_basket --no-sam3 \
-  --agent nanobot --model gpt-6-astra --interaction-mode direct_policy \
+  --agent native --model gpt-6-astra --interaction-mode direct_policy \
   --direct-representation abs_eef --direct-horizon 3:15 --direct-history 15:7
 ```
 
-Without `direct_policy`, `--agent nanobot` runs nanobot's agent runner with only
-EvoAB's robot tools registered (no nanobot workspace, memory, skills or web
-tools); nanobot's transcript consolidation handles long contexts, with its
-storage inside the run directory.
+Without `direct_policy`, `--agent native` runs an agent loop with only EvoAB's
+robot tools registered, consolidating the transcript when it outgrows the
+model's context window.
+
+Your own benchmark can be added without an integration: provide
+`make(task_id, seed)` returning a Gym-style environment and a manifest mapping
+its observations, actions and success signal. See
+[custom benchmarks](docs/custom-benchmarks.md).
 
 ## Studio
 
@@ -110,26 +113,28 @@ returns; the HTTP API is described at `/openapi.json`.
 
 ```bash
 evoab benchmarks tasks libero_pro --suite libero_object
-evoab models                        # nanobot providers and presets
+evoab models                        # model presets and providers
 evoab runs launch --task libero_object/pick_up_the_alphabet_soup_and_place_it_in_the_basket \
   --method direct_policy --model gpt-6-astra --representation abs_eef
 evoab runs list
 evoab runs trace 721e018e          # rounds, tool calls, results and why the run ended
 evoab runs trace 721e018e --round 4   # full input and output of one model request
 evoab runs stop 721e018e
-evoab providers add my-api --base-url https://host/v1 --key-env MY_API_KEY
-evoab providers probe my-api some-model
+evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_KEY
+evoab models add-preset my-model --provider my_api --model some-model --effort medium
+evoab benchmarks add my_bench.toml   # a custom Gym-style benchmark
 evoab usage
 ```
 
-For an unreleased build, set the matching runtime wheel's path on the Studio
-server under Settings → General (设置 → 通用) before using one-click Benchmark
-setup. See [local deployment](docs/deployment.md) for runtime wheel details.
+For an unreleased build, set the matching runtime wheel's path under Settings →
+Benchmarks (设置 → 评测集) before using one-click Benchmark setup. See
+[local deployment](docs/deployment.md) for runtime wheel details.
 
-Manage API providers and probe model capabilities under Settings (设置). The
-server stores provider definitions and keys outside the repository under
-`~/.config/evoab/` by default. The browser displays masked keys; the CLI reads
-keys from standard input or an environment variable, never from arguments.
+Settings (设置) has three pages: 概览 (token and request usage of every model
+call), 模型 (model presets and the providers they call; keys stay on the
+server, mode 600 under `~/.config/evoab/agent/`) and 评测集 (benchmark runtimes,
+including custom benchmarks). The CLI reads keys only from standard input or an
+environment variable, never from arguments.
 
 ## Repository layout
 

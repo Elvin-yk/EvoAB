@@ -76,43 +76,63 @@ def create_app(runs_root: Path) -> FastAPI:
     def benchmark_demo(integration: str, profile: str, task: str) -> FileResponse:
         return FileResponse(bench.demo(integration, profile, task), media_type="video/mp4")
 
+    @app.get("/api/benchmarks/custom/template", response_class=Response)
+    def custom_template() -> Response:
+        return Response(bench.benchmark_manifest(), media_type="text/plain; charset=utf-8")
+
+    @app.get("/api/benchmarks/custom/{name}", response_class=Response)
+    def custom_manifest(name: str) -> Response:
+        return Response(bench.benchmark_manifest(name), media_type="text/plain; charset=utf-8")
+
+    @app.post("/api/benchmarks/custom", status_code=201)
+    def custom_add(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        return bench.add_benchmark(str(payload.get("manifest") or ""))
+
+    @app.delete("/api/benchmarks/custom/{name}")
+    def custom_remove(name: str) -> dict[str, Any]:
+        return bench.remove_benchmark(name)
+
     @app.post("/api/benchmarks/{integration}/{profile}/setup")
     def benchmark_setup(integration: str, profile: str) -> dict[str, Any]:
         return bench.prepare(integration, profile)
 
-    # -- providers ------------------------------------------------------------
-
-    @app.get("/api/providers")
-    def provider_list() -> list[dict[str, Any]]:
-        return bench.providers()
-
-    @app.put("/api/providers/{provider_id}")
-    def provider_save(provider_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        return bench.save_provider(provider_id, payload)
-
-    @app.delete("/api/providers/{provider_id}")
-    def provider_delete(provider_id: str) -> dict[str, Any]:
-        return bench.delete_provider(provider_id)
-
-    @app.post("/api/providers/{provider_id}/test")
-    def provider_test(provider_id: str) -> dict[str, Any]:
-        return bench.test_provider(provider_id)
-
-    @app.get("/api/providers/{provider_id}/quota")
-    def provider_quota(provider_id: str) -> dict[str, Any]:
-        return bench.quota(provider_id)
-
-    @app.get("/api/providers/{provider_id}/models")
-    def provider_models(provider_id: str) -> dict[str, Any]:
-        return bench.models(provider_id)
-
-    @app.post("/api/providers/{provider_id}/probe")
-    def provider_probe(provider_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        return bench.probe(provider_id, str(payload.get("model") or ""))
+    # -- models: providers, presets, usage ------------------------------------
 
     @app.get("/api/models")
-    def model_overview() -> dict[str, Any]:
-        return bench.models_overview()
+    def model_settings() -> dict[str, Any]:
+        return bench.model_settings()
+
+    @app.post("/api/models/presets", status_code=201)
+    def preset_create(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        return bench.save_preset(payload)
+
+    @app.put("/api/models/presets/{name}")
+    def preset_update(name: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        return bench.save_preset(payload, existing=name)
+
+    @app.delete("/api/models/presets/{name}")
+    def preset_delete(name: str) -> dict[str, Any]:
+        return bench.delete_preset(name)
+
+    @app.post("/api/models/providers", status_code=201)
+    def provider_create(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        return bench.save_provider(payload)
+
+    @app.put("/api/models/providers/{name}")
+    def provider_update(name: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        return bench.save_provider(payload, existing=name)
+
+    @app.delete("/api/models/providers/{name}")
+    def provider_delete(name: str) -> dict[str, Any]:
+        return bench.delete_provider(name)
+
+    @app.get("/api/models/providers/{name}/models")
+    def provider_model_list(name: str, refresh: bool = False) -> dict[str, Any]:
+        return bench.provider_models(name, refresh)
+
+    @app.get("/api/usage")
+    def model_usage() -> dict[str, Any]:
+        return bench.model_usage()
 
     # -- runs -----------------------------------------------------------------
 

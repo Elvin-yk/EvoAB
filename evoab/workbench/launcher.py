@@ -11,18 +11,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from evoab.workbench import benchmarks, jobs
-from evoab.workbench.providers import Provider
 from evoab.workbench.runs import STUDIO_DIR
 
 REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh")
 # The runtime tool-profile ID is retained for compatibility with saved launches.
 METHODS = (
-    {"id": "direct_policy", "agent": "nanobot", "action_profile": "direct", "label": "Direct Policy",
+    {"id": "direct_policy", "agent": "native", "action_profile": "direct", "label": "Direct Policy",
      "interaction": "direct_policy", "tool_profile": "direct",
      "description": "模型每次直接输出一段末端位姿动作块，由该评测集的控制器逐步执行，再观察、再输出。不经过任何工具调用。"},
-    {"id": "direct", "agent": "codex", "action_profile": "direct", "label": "Agentic Policy",
+    {"id": "agentic", "agent": "native", "action_profile": "direct", "label": "Agentic Policy",
      "interaction": "tool_calling", "tool_profile": "direct",
-     "description": "智能体在同一会话中观察场景、调用机器人动作，并根据执行反馈决定下一步。"},
+     "description": "智能体在同一会话中观察场景、调用机器人工具（移动、抓取、感知等），并根据执行反馈决定下一步。"},
 )
 # Direct-policy options Studio may set; each maps to one ``evoab run`` flag.
 DIRECT_OPTIONS = {
@@ -38,7 +37,6 @@ class LaunchRequest:
     integration: str
     profile: str
     task: str
-    provider_id: str
     model: str
     reasoning_effort: str = "low"
     method: str = "direct_policy"
@@ -52,7 +50,7 @@ def free_port() -> int:
         return sock.getsockname()[1]
 
 
-def build_command(request: LaunchRequest, provider: Provider | None, output_root: Path) -> list[str]:
+def build_command(request: LaunchRequest, output_root: Path) -> list[str]:
     """The exact ``evoab run`` command for one Studio launch."""
     method = next(m for m in METHODS if m["id"] == request.method)
     profile, task = request.profile, request.task
@@ -70,14 +68,11 @@ def build_command(request: LaunchRequest, provider: Provider | None, output_root
         "--agent", method["agent"],
         "--model", request.model,
         "--reasoning-effort", request.reasoning_effort,
+        "--interaction-mode", method["interaction"],
     ]
-    if method["agent"] == "nanobot":
-        command += ["--interaction-mode", method["interaction"]]
+    if method["interaction"] == "direct_policy":
         for key, value in (request.direct or {}).items():
             command += [DIRECT_OPTIONS[key][0], str(value)]
-    else:
-        command += ["--provider-url", provider.base_url, "--provider-profile", provider.profile,
-                    "--codex-web-search", "disabled"]
     return command + [
         "--output-dir", str(output_root),
         # Port 0 picks a free port; the CLI then prints the run directory at start.
@@ -85,7 +80,7 @@ def build_command(request: LaunchRequest, provider: Provider | None, output_root
     ]
 
 
-def validate(request: LaunchRequest, providers: dict[str, Provider]) -> tuple[dict, Provider | None]:
+def validate(request: LaunchRequest) -> dict:
     if request.integration not in benchmarks.LAUNCHABLE:
         raise ValueError(f"Studio cannot launch {request.integration} runs yet")
     task = benchmarks.task_info(request.integration, request.profile, request.task)
@@ -94,33 +89,25 @@ def validate(request: LaunchRequest, providers: dict[str, Provider]) -> tuple[di
     method = next((m for m in METHODS if m["id"] == request.method), None)
     if method is None:
         raise ValueError(f"unknown method {request.method!r}")
-    if not request.model:
-        raise ValueError("model is required")
     if request.reasoning_effort not in REASONING_EFFORTS:
         raise ValueError(f"reasoning effort must be one of {REASONING_EFFORTS}")
-    if method["agent"] == "nanobot":
-        from evoab.provider import nanobot
-        presets = {p["name"] for p in nanobot.presets()}
-        if request.model not in presets:
-            raise ValueError(f"unknown nanobot model preset {request.model!r}")
-        for key, value in (request.direct or {}).items():
-            if key not in DIRECT_OPTIONS:
-                raise ValueError(f"unknown Direct option {key!r}")
-            choices = DIRECT_OPTIONS[key][1]
-            if choices and value not in choices:
-                raise ValueError(f"{key} must be one of {choices}")
-            if not isinstance(value, str) or not value or " " in value:
-                raise ValueError(f"invalid {key} value {value!r}")
-        return task, None
-    provider = providers.get(request.provider_id)
-    if provider is None:
-        raise ValueError(f"unknown provider {request.provider_id!r}")
-    if not provider.api_key():
-        raise ValueError(f"provider {provider.label} has no API key")
-    return task, provider
+    from evoab.provider import catalog
+    if request.model not in {p["name"] for p in catalog.presets()}:
+        raise ValueError(f"unknown model preset {request.model!r}")
+    if request.direct and method["interaction"] != "direct_policy":
+        raise ValueError("Direct options apply only to the Direct Policy method")
+    for key, value in (request.direct or {}).items():
+        if key not in DIRECT_OPTIONS:
+            raise ValueError(f"unknown Direct option {key!r}")
+        choices = DIRECT_OPTIONS[key][1]
+        if choices and value not in choices:
+            raise ValueError(f"{key} must be one of {choices}")
+        if not isinstance(value, str) or not value or " " in value:
+            raise ValueError(f"invalid {key} value {value!r}")
+    return task
 
 
-def launch(request: LaunchRequest, task: dict, provider: Provider | None, runs_root: Path) -> str:
+def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
     """Start one run in its own process group; return its launch id.
 
     The run writes its artifacts to a directory it creates under ``runs_root``;
@@ -128,13 +115,10 @@ def launch(request: LaunchRequest, task: dict, provider: Provider | None, runs_r
     """
     launch_id = f"{time.strftime('%Y%m%d-%H%M%S')}_{secrets.token_hex(3)}"
     method = next(m for m in METHODS if m["id"] == request.method)
-    env = dict(os.environ)
-    if provider is not None:
-        env["EVOAB_API_KEY"] = provider.api_key() or ""
     jobs.start(
-        build_command(request, provider, runs_root),
+        build_command(request, runs_root),
         runs_root / STUDIO_DIR / f"{launch_id}.json",
-        env=env,
+        env=dict(os.environ),
         launch_id=launch_id,
         integration=request.integration,
         profile=request.profile,
@@ -143,8 +127,6 @@ def launch(request: LaunchRequest, task: dict, provider: Provider | None, runs_r
         embodiment=task["embodiment"],
         max_steps=task.get("max_steps"),
         task=request.task,
-        provider_id=provider.id if provider else "nanobot",
-        provider_label=provider.label if provider else "nanobot",
         model=request.model,
         agent=method["agent"],
         reasoning_effort=request.reasoning_effort,

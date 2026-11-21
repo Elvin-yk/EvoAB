@@ -1,4 +1,4 @@
-"""``evoab runs | providers | benchmarks | usage | settings | studio`` commands.
+"""``evoab runs | models | benchmarks | usage | settings | studio`` commands.
 
 Each command calls the same :class:`Workbench` method as the matching Studio
 page. ``--json`` prints the exact payload the Studio API returns, for scripts
@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-COMMANDS = ("runs", "models", "providers", "benchmarks", "usage", "settings", "studio")
+COMMANDS = ("runs", "models", "benchmarks", "usage", "settings", "studio")
 
 
 def _print_json(value: Any) -> None:
@@ -122,19 +122,55 @@ def _runs_trace(bench, args) -> None:
 
 
 def _models(bench, args) -> None:
-    data = bench.models_overview()
-    if args.json:
-        _print_json(data)
+    action = args.action or "list"
+    if action == "list":
+        data = bench.model_settings()
+        if args.json:
+            _print_json(data)
+            return
+        print("presets (use as --model):")
+        _table([[p["name"], p.get("resolved_provider") or p["provider"], p["model"], p.get("reasoning_effort") or "-",
+                 p.get("max_tokens"), p.get("context_window_tokens")] for p in data["presets"]],
+               ["PRESET", "PROVIDER", "MODEL", "EFFORT", "MAX_OUT", "CONTEXT"])
+        print("\nproviders:")
+        _table([[p["name"], p.get("label"), p.get("api_base") or p.get("default_api_base") or "(built-in)",
+                 ",".join((p.get("api") or {}).get("supported_apis") or p.get("request_apis") or [])]
+                for p in data["providers"] if p.get("configured")], ["KEY", "NAME", "API BASE", "APIS"])
         return
-    if not data["available"]:
-        sys.exit(data["error"])
-    print(f"nanobot config: {data['config']}")
-    print("providers:")
-    for p in data["providers"]:
-        print(f"  {p['name']:<14} {p['label']:<20} {p['api_base'] or '(built-in)'}  key={'yes' if p['has_key'] else 'no'}")
-    print("presets (use as --model):")
-    for p in data["presets"]:
-        print(f"  {p['name']:<28} {p['provider']:<12} {p['model']}  effort={p['reasoning_effort'] or '-'}  max_tokens={p['max_tokens']}")
+    if action == "catalog":
+        result = bench.provider_models(args.provider, args.refresh)
+        if args.json:
+            _print_json(result)
+        else:
+            for row in result.get("models") or []:
+                print(row.get("id") if isinstance(row, dict) else row)
+        return
+    if action in ("add-provider", "set-provider"):
+        fields = {"name": args.name, "api_base": args.base_url, "thinking_style": args.reasoning_format}
+        if args.apis:
+            apis = args.apis.split(",")
+            fields["api"] = {"supportedApis": apis, "preferredApi": args.preferred_api or apis[0]}
+        if key := _read_key(args):
+            fields["api_key"] = key
+        if action == "add-provider":
+            result = bench.save_provider(fields)
+        else:
+            fields.pop("name")
+            result = bench.save_provider({k: v for k, v in fields.items() if v is not None}, existing=args.name)
+    elif action == "remove-provider":
+        result = bench.delete_provider(args.name)
+    elif action in ("add-preset", "edit-preset"):
+        fields = {"name": args.new_name if action == "edit-preset" else args.name, "provider": args.provider,
+                  "model": args.model, "reasoning_effort": args.effort, "max_tokens": args.max_tokens,
+                  "context_window_tokens": args.context, "temperature": args.temperature}
+        fields = {k: v for k, v in fields.items() if v is not None}
+        result = bench.save_preset(fields, existing=args.name if action == "edit-preset" else None)
+    elif action == "remove-preset":
+        result = bench.delete_preset(args.name)
+    if args.json:
+        _print_json(result)
+    else:
+        print("saved")
 
 
 def _runs_launch(bench, args) -> None:
@@ -143,7 +179,6 @@ def _runs_launch(bench, args) -> None:
         "integration": args.integration,
         "profile": args.profile,
         "task": args.task,
-        "provider_id": args.provider or settings.get("default_provider"),
         "model": args.model or settings.get("default_model"),
         "reasoning_effort": args.effort or settings.get("default_effort") or "low",
         "method": args.method or settings.get("default_method") or "direct_policy",
@@ -174,54 +209,18 @@ def _runs_log(bench, args) -> None:
     print(bench.log(run["launch_id"], args.lines))
 
 
-# -- providers ------------------------------------------------------------------
+# -- keys -----------------------------------------------------------------------
 
 
 def _read_key(args) -> str | None:
-    if args.key_env:
+    if getattr(args, "key_env", None):
         key = os.environ.get(args.key_env)
         if not key:
             sys.exit(f"environment variable {args.key_env} is empty")
         return key
-    if args.key_stdin:
+    if getattr(args, "key_stdin", False):
         return sys.stdin.readline().strip()
     return None
-
-
-def _providers(bench, args) -> None:
-    action = args.action
-    if action == "list":
-        items = bench.providers()
-        if args.json:
-            _print_json(items)
-            return
-        _table([[p["id"], p["label"], p["base_url"], p["key_masked"] or "(no key)",
-                 ("ok" if p["connection"]["ok"] else "failed") if p.get("connection") else "untested",
-                 len(p["recommended"])] for p in items], ["ID", "NAME", "URL", "KEY", "CONNECTION", "VERIFIED"])
-        return
-    if action == "add":
-        payload = {"label": args.label or args.id, "base_url": args.base_url, "profile": args.profile}
-        key = _read_key(args)
-        if key:
-            payload["api_key"] = key
-        result = bench.save_provider(args.id, payload)
-    elif action == "remove":
-        result = bench.delete_provider(args.id)
-    elif action == "test":
-        result = bench.test_provider(args.id)
-    elif action == "models":
-        result = bench.models(args.id)
-        if not args.json:
-            caps = result["capabilities"]
-            _table([[m, "yes" if caps.get(m, {}).get("vision") else ("no" if m in caps else "?"),
-                     "yes" if caps.get(m, {}).get("tools") else ("no" if m in caps else "?")] for m in result["models"]],
-                   ["MODEL", "IMAGES", "TOOLS"])
-            return
-    elif action == "probe":
-        result = bench.probe(args.id, args.model)
-    elif action == "quota":
-        result = bench.quota(args.id)
-    _print_json(result)
 
 
 # -- benchmarks, usage, settings --------------------------------------------------
@@ -246,16 +245,34 @@ def _benchmarks(bench, args) -> None:
                ["TASK", "EMBODIMENT", "MAX_STEPS", "INSTRUCTION"])
     elif args.action == "prepare":
         _print_json(bench.prepare(args.integration, args.profile))
+    elif args.action == "add":
+        result = bench.add_benchmark(args.manifest.read_text(encoding="utf-8"))
+        _print_json(result) if args.json else print(f"registered {result['name']}; checking it in its interpreter "
+                                                    f"(evoab benchmarks list shows the status)")
+    elif args.action == "remove":
+        result = bench.remove_benchmark(args.name)
+        _print_json(result) if args.json else print(f"removed {args.name}")
+    elif args.action == "template":
+        print(bench.benchmark_manifest(), end="")
+    elif args.action == "manifest":
+        print(bench.benchmark_manifest(args.name), end="")
 
 
 def _usage(bench, args) -> None:
-    totals = bench.usage()
+    data = {"calls": bench.model_usage(), "runs": bench.usage()}
     if args.json:
-        _print_json(totals)
+        _print_json(data)
         return
+    calls = data["calls"]
+    print(f"model calls, last 30 days: {calls.get('requests_30d', 0)} requests, "
+          f"{_tokens(calls.get('total_tokens_30d'))} tokens ({calls.get('failed_requests_30d', 0)} failed)")
+    _table([[row["provider"], row["model"], row["requests"], _tokens(row["input_tokens"]),
+             _tokens(row["cache_read_tokens"]), _tokens(row["output_tokens"])] for row in calls.get("providers_30d", [])],
+           ["PROVIDER", "MODEL", "REQUESTS", "IN", "CACHED", "OUT"])
+    print("\nby run:")
     _table([[row["key"], row.get("runs"), row.get("success"), row.get("requests"), _tokens(row.get("input_tokens")),
-             _tokens(row.get("cached_input_tokens")), _tokens(row.get("output_tokens"))] for row in totals["by_model"]],
-           ["API · MODEL", "RUNS", "OK", "REQUESTS", "IN", "CACHED", "OUT"])
+             _tokens(row.get("output_tokens"))] for row in data["runs"]["by_model"]],
+           ["MODEL", "RUNS", "OK", "REQUESTS", "IN", "OUT"])
 
 
 def _settings(bench, args) -> None:
@@ -296,40 +313,54 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--integration", default="libero_pro")
     p.add_argument("--profile", default="default", help="Prepared runtime profile")
     p.add_argument("--task", required=True, help="Task ID as listed by `evoab benchmarks tasks`, e.g. libero_object/pick_up_...")
-    p.add_argument("--provider", help="Provider ID (default: settings.default_provider)")
-    p.add_argument("--model", help="Model ID (default: settings.default_model)")
+    p.add_argument("--model", help="Model preset (default: the last one launched)")
     p.add_argument("--effort", help="Reasoning effort (default: settings.default_effort or low)")
-    p.add_argument("--method", help="Method ID: direct_policy (nanobot preset as --model) or direct (Codex agent); "
-                                    "default: settings.default_method or direct_policy")
+    p.add_argument("--method", help="direct_policy or agentic (default: the last one launched, else direct_policy)")
     p.add_argument("--representation", help="Direct policy: abs_eef or delta_eef")
     p.add_argument("--horizon", help="Direct policy: rows per chunk, MIN:MAX")
     p.add_argument("--history", help="Direct policy: observation window and stride, LENGTH:STRIDE")
     p.add_argument("--prompt-blocks", dest="prompt_blocks", help="Direct policy: e.g. robot,timing,gripper,camera")
     p.set_defaults(handler=_runs_launch)
 
-    models = sub.add_parser("models", parents=[common], help="nanobot providers and model presets (edited in nanobot's WebUI)")
+    models = sub.add_parser("models", parents=[common], help="Model providers and presets (default: list)")
     models.set_defaults(handler=_models)
-
-    prov = sub.add_parser("providers", help="Manage model API providers").add_subparsers(dest="action", required=True)
-    p = prov.add_parser("list", parents=[common])
-    p.set_defaults(handler=_providers)
-    p = prov.add_parser("add", parents=[common], help="Add or update a provider")
-    p.add_argument("id")
-    p.add_argument("--base-url", required=True)
-    p.add_argument("--label")
-    p.add_argument("--profile", default="omnirouter.chat_completions", help="Wire profile")
-    key = p.add_mutually_exclusive_group()
-    key.add_argument("--key-stdin", action="store_true", help="Read the API key from the first line of standard input")
-    key.add_argument("--key-env", metavar="VAR", help="Read the API key from this environment variable")
-    p.set_defaults(handler=_providers)
-    for name in ("remove", "test", "models", "quota"):
-        p = prov.add_parser(name, parents=[common])
-        p.add_argument("id")
-        p.set_defaults(handler=_providers)
-    p = prov.add_parser("probe", parents=[common], help="Check that a model reads images and calls tools")
-    p.add_argument("id")
-    p.add_argument("model")
-    p.set_defaults(handler=_providers)
+    mo = models.add_subparsers(dest="action")
+    p = mo.add_parser("list", parents=[common], help="Presets and configured providers")
+    p.set_defaults(handler=_models)
+    p = mo.add_parser("catalog", parents=[common], help="Models a provider offers")
+    p.add_argument("provider")
+    p.add_argument("--refresh", action="store_true")
+    p.set_defaults(handler=_models)
+    for name, help_text in (("add-provider", "Add an OpenAI-compatible or Anthropic-compatible provider"),
+                            ("set-provider", "Change a provider (also sets keys of built-in providers)")):
+        p = mo.add_parser(name, parents=[common], help=help_text)
+        p.add_argument("name", help="Display name (add-provider) or provider key (set-provider)")
+        p.add_argument("--base-url", required=name == "add-provider")
+        p.add_argument("--apis", help="Supported request APIs, e.g. chat_completions,responses or anthropic_messages")
+        p.add_argument("--preferred-api")
+        p.add_argument("--reasoning-format", choices=("thinking_type", "enable_thinking", "reasoning_split"))
+        key = p.add_mutually_exclusive_group()
+        key.add_argument("--key-stdin", action="store_true", help="Read the API key from the first line of standard input")
+        key.add_argument("--key-env", metavar="VAR", help="Read the API key from this environment variable")
+        p.set_defaults(handler=_models)
+    p = mo.add_parser("remove-provider", parents=[common])
+    p.add_argument("name")
+    p.set_defaults(handler=_models)
+    for name in ("add-preset", "edit-preset"):
+        p = mo.add_parser(name, parents=[common], help="Create or change a model preset")
+        p.add_argument("name")
+        if name == "edit-preset":
+            p.add_argument("--new-name")
+        p.add_argument("--provider", required=name == "add-preset")
+        p.add_argument("--model", required=name == "add-preset")
+        p.add_argument("--effort")
+        p.add_argument("--max-tokens", type=int)
+        p.add_argument("--context", type=int, help="Context window tokens")
+        p.add_argument("--temperature", type=float)
+        p.set_defaults(handler=_models)
+    p = mo.add_parser("remove-preset", parents=[common])
+    p.add_argument("name")
+    p.set_defaults(handler=_models)
 
     bm = sub.add_parser("benchmarks", help="Benchmarks, their tasks and preparation").add_subparsers(dest="action", required=True)
     p = bm.add_parser("list", parents=[common])
@@ -342,7 +373,18 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--suite")
         p.set_defaults(handler=_benchmarks)
 
-    p = sub.add_parser("usage", parents=[common], help="Token usage by API and model")
+    p = bm.add_parser("add", parents=[common], help="Register a custom Gym-style benchmark from a manifest (see template)")
+    p.add_argument("manifest", type=Path)
+    p.set_defaults(handler=_benchmarks)
+    p = bm.add_parser("remove", parents=[common], help="Unregister a custom benchmark")
+    p.add_argument("name")
+    p.set_defaults(handler=_benchmarks)
+    p = bm.add_parser("template", parents=[common], help="Print the documented manifest template")
+    p.set_defaults(handler=_benchmarks)
+    p = bm.add_parser("manifest", parents=[common], help="Print a registered custom benchmark's manifest")
+    p.add_argument("name")
+    p.set_defaults(handler=_benchmarks)
+    p = sub.add_parser("usage", parents=[common], help="Recorded model calls and token usage by run")
     p.set_defaults(handler=_usage)
 
     st = sub.add_parser("settings", help="Show or change Studio defaults").add_subparsers(dest="action")

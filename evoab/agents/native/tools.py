@@ -1,4 +1,4 @@
-"""EvoAB robot tools as nanobot tools, and a hook that records every model round."""
+"""EvoAB robot tools for the agent runtime, and a hook that records every model round."""
 
 from __future__ import annotations
 

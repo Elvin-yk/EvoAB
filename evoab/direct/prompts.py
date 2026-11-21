@@ -30,6 +30,10 @@ EMBODIMENTS = {"libero_pro": "libero_panda", "libero_plus": "libero_panda"}
 
 
 def embodiment_text(integration: str, description) -> str:
+    """The environment's own description if it declares one, else the bundled pack for the integration."""
+    declared = (description.metadata or {}).get("robot_prompt")
+    if declared:
+        return str(declared)
     name = EMBODIMENTS.get(integration, "generic")
     text = resources.files("evoab.resources").joinpath(f"prompts/direct/{name}.md").read_text(encoding="utf-8")
     arm = description.arms[0]
