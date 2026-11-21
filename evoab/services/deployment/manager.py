@@ -115,6 +115,9 @@ def deploy(args, adapter):
     output, run_id = output_directory(args, args.service)
     with cancellation_signals(), Deployment(args, adapter, output, run_id) as service:
         print(json.dumps(dict(url=service.url, run_id=run_id, output_dir=str(output))), flush=True)
+        if getattr(args, 'check', False):
+            print(json.dumps(dict(check='ready', task=(service.info or {}).get('task'))), flush=True)
+            return 0
         return service.process.wait()
 
 

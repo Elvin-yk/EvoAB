@@ -12,6 +12,11 @@ license = "NVIDIA Isaac Sim EULA"
 build_args = ["UBUNTU_MIRROR", "PIP_INDEX_URL", "MINICONDA_URL", "CONDA_CHANNEL_MIRROR"]
 
 [environment]
+# The upstream image points Vulkan at /etc/vulkan/icd.d, but the NVIDIA Container
+# Toolkit mounts the driver's ICD under /usr/share/vulkan/icd.d; without this Isaac
+# Sim finds no Vulkan driver and no usable GPU.
+VK_ICD_FILENAMES = "/usr/share/vulkan/icd.d/nvidia_icd.json"
+VK_DRIVER_FILES = "/usr/share/vulkan/icd.d/nvidia_icd.json"
 OMNI_KIT_ACCEPT_EULA = "YES"
 ACCEPT_EULA = "Y"
 PRIVACY_CONSENT = "Y"

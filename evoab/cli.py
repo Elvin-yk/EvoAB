@@ -226,6 +226,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     setup.add_argument("--wheel", type=Path, help="Install a matching evoab-runtime wheel in the native environment")
     setup.add_argument("--setup-timeout-s", type=float, default=14400)
     setup.add_argument("--skip-demo-download", action="store_true", help="Skip optional expert demonstration videos")
+    setup.add_argument("--check-launch", action="store_true",
+                       help="After setup, start one task's environment service once and fail if it does not become ready")
     setup.add_argument("--accept-license", metavar="NAME",
                        help="Accept the named licence a container recipe requires (for example the NVIDIA Isaac Sim EULA)")
     add_runtime_arguments(setup)
@@ -236,6 +238,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         if kind == "env":
             service.add_argument("--integration", required=True)
             service.add_argument("--task")
+            service.add_argument("--check", action="store_true",
+                                 help="Start the service, wait until it is ready, print its identity and stop it")
         else:
             service.set_defaults(integration=None, task=None)
         service.add_argument("--profile")
@@ -298,7 +302,10 @@ def main(argv=None, *, _supervised=False) -> None:
                 from evoab.services.deployment.setup import prepare
                 from evoab.services.deployment.process import cancellation_signals
                 with cancellation_signals():
-                    prepare(args, adapter)
+                    runtime = prepare(args, adapter)
+                    if getattr(args, "check_launch", False):
+                        from evoab.services.deployment.setup import check_launch
+                        check_launch(args, adapter, runtime)
             else:
                 from evoab.services.deployment.manager import deploy
                 raise SystemExit(deploy(args, adapter))

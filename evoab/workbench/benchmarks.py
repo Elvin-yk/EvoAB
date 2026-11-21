@@ -187,8 +187,11 @@ def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
             except (FileNotFoundError, ValueError):
                 continue
             if runtime.container:
-                from evoab.services.deployment.container import container_root
-                expected_root, local = container_root(args, recipe), True
+                from evoab.services.deployment.container import container_root, spec_for
+                # A runtime built from an older container recipe must be deployed again.
+                spec = spec_for(runtime.integration)
+                expected_root = container_root(args, recipe)
+                local = spec is not None and runtime.container.get("recipe_digest") == spec.digest
             else:
                 expected_root = runtime_root(args, recipe)
                 local = Path(runtime.python).is_file() and (runtime.native_root is None or runtime.native_root.is_dir())
@@ -291,8 +294,12 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 runtime = next((r for (i, _), r in prepared.items() if i == info.integration), None)
             record_path = _setup_record(runs_root, info.integration, profile)
             job = jobs.read_record(record_path)
+            failed = job is not None and job.get("exit_code") not in (None, 0)
             if job and jobs.is_running(job):
                 status = "preparing"
+            elif failed and runtime is not None and runtime.prepared_at >= float(job.get("started_at") or 0):
+                # This deployment published its runtime but the launch check then failed.
+                status = "setup_failed"
             elif runtime is not None:
                 status = "ready"
             elif job and job.get("exit_code") not in (None, 0):
@@ -311,7 +318,8 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 "suites": suites,
                 "prepared_at": runtime.prepared_at if runtime else None,
                 "package_version": runtime.package_version if runtime else None,
-                "launchable": runtime is not None and info.task_selector is not None and bool(runtime.tasks),
+                "launchable": (status == "ready" and runtime is not None and info.task_selector is not None
+                               and bool(runtime.tasks)),
                 "empty": (status == "ready" and runtime is not None and info.task_selector is not None
                           and not runtime.tasks),
                 "setup_log": jobs.log_tail(record_path, 12) if job else "",
@@ -420,7 +428,7 @@ def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | No
         if existing and jobs.is_running(existing):
             raise ValueError(f"{integration}/{profile} is already being prepared")
         command = [sys.executable, "-m", "evoab", "setup", "--integration", integration, "--container",
-                   "--skip-demo-download"]
+                   "--skip-demo-download", "--check-launch"]
         if accept_license:
             command += ["--accept-license", accept_license]
         if info is not None and info.profiles:
@@ -442,7 +450,7 @@ def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | No
     existing = jobs.read_record(record_path)
     if existing and jobs.is_running(existing):
         raise ValueError(f"{integration}/{profile} is already being prepared")
-    command = [sys.executable, "-m", "evoab", "setup", "--integration", integration]
+    command = [sys.executable, "-m", "evoab", "setup", "--integration", integration, "--check-launch"]
     if info.profiles:
         command += ["--runtime-profile", profile]
     if wheel:

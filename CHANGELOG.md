@@ -21,7 +21,11 @@
   match EvoAB's pins); RoboTwin builds its pinned revision locally with
   PyTorch 2.8 / CUDA 12.8 and CuRobo compiled for SM 8.0–12.0. Studio lists only
   benchmarks it can deploy in one step, each with one status and one button
-  (部署, or 已部署 once ready; the LIBERO catalog placeholder is gone), plus a
+  (部署, or 已部署 once ready; the LIBERO catalog placeholder is gone). Studio
+  deployments end with `evoab setup --check-launch`, which starts one task's
+  environment service once (`evoab deploy env --check`); a failure shows 部署失败,
+  and runtimes from an older container recipe show 未部署. RoboDojo's container
+  points Vulkan at the ICD the NVIDIA Container Toolkit mounts. Plus a
   部署条件 check (Docker, GPU containers, disk, model presets; also
   `evoab benchmarks check`), a 构建镜像源 setting (Tsinghua + hf-mirror) forwarded
   to every build, marks container runtimes and launches runs in them. Native

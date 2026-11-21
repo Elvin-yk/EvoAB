@@ -24,8 +24,10 @@ pinned by digest, or ships a build recipe that the user's machine builds once.
 4. 设置 → 评测集: the 部署条件 panel checks Docker access, GPU containers, disk
    space (120 GiB recommended) and model presets, with the fix for anything
    missing. On a network in mainland China choose 构建镜像源 → 清华镜像 + hf-mirror.
-5. Click 部署 on a benchmark. Progress appears in the card; when it reads
-   已就绪, its button reads 已部署; start runs from 发起评测.
+5. Click 部署 on a benchmark. Progress appears in the card. Deployment ends by
+   starting one task's environment service once (`evoab setup --check-launch`);
+   only then does the card read 已就绪 with an 已部署 button. Start runs from 发起评测.
+   A runtime built from an older container recipe shows 未部署 again.
 
 No runtime wheel is needed: when 运行时安装包 is empty, the local layer installs
 the exact `evoab` package Studio runs plus its service dependencies. A wheel

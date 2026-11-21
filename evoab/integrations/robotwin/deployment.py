@@ -8,6 +8,8 @@ from evoab.services.deployment.runtime import check_python, query_python
 from .server import REVISION
 
 DEFAULT_PORT = 18783
+#: Task setup's launch check starts; the upstream expert admits its default seed (1).
+CHECK_TASK = "beat_block_hammer"
 
 
 def recipe(args):

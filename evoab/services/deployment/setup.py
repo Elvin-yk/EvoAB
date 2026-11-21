@@ -306,3 +306,39 @@ def setup(config: SetupConfig, *, report: Callable[[str], None] | None = None) -
     from .config import adapter_for
     args = config.resolve()
     return prepare(args, adapter_for(args), report=report)
+
+
+def check_launch(args, adapter, runtime, *, report=print):
+    """Start one task's environment service the way runs do, wait until ready, then stop it.
+
+    Setup only proves the image builds and lists tasks; this proves the simulator
+    starts on this machine (GPU, rendering, assets). The task is the adapter's
+    ``CHECK_TASK`` when it names one (a seed the upstream checks admit), else the first.
+    """
+    import socket
+    tasks = sorted((runtime.data or {}).get('tasks') or {})
+    if not tasks:
+        raise RuntimeError('The runtime lists no tasks to start')
+    task = getattr(adapter, 'CHECK_TASK', None) or tasks[0]
+    profile, _, name = task.rpartition('/')
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]
+    command = [sys.executable, '-m', 'evoab', 'deploy', 'env', '--integration', args.integration, '--task', name,
+               '--port', str(port), '--check', '--output-dir', str(runtime.root / 'checks')]
+    if profile:
+        command += ['--runtime-profile', profile]
+    elif getattr(args, 'runtime_profile', None):
+        command += ['--runtime-profile', args.runtime_profile]
+    if getattr(args, 'container', False):
+        command.append('--container')
+    if args.cache_dir:
+        command += ['--cache-dir', str(args.cache_dir)]
+    if report is not None:
+        report(f'Starting {task} once to check the environment service')
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip().splitlines()[-1:] or ['no output']
+        raise RuntimeError(f'The environment service for {task} did not start: {detail[0]}')
+    if report is not None:
+        report(f'Environment service started for {task}; deployment verified')
