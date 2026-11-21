@@ -34,31 +34,19 @@ it with a VLA or world-action model.
 | Simulation | BEHAVIOR, IsaacLab Arena, NaVILA-Bench | Experimental mobile, humanoid and quadruped |
 | Real robot | ARX ONE, Piper-X | Dual-arm platforms with RealSense cameras |
 
-## Quick start (RoboDojo, on a supported Linux GPU host)
+## Install
 
-```bash
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -e .
-python scripts/release/prepare.py --output-dir ../dist-evoab
-evoab setup --integration robodojo \
-  --wheel ../dist-evoab/dist/evoab_runtime-0.2.0-py3-none-any.whl
+Let your coding agent install it. Paste this into Claude Code, Codex or a similar
+agent on the target machine:
+
+```text
+Install EvoAB on this machine by following
+https://github.com/Elvin-yk/EvoAB/blob/main/docs/install.md
+Ask me before any command that needs sudo, and tell me the Studio URL when done.
 ```
 
-Run one task with a Codex agent through any OpenAI-compatible endpoint:
-
-```bash
-export EVOAB_API_KEY=...
-evoab run --integration robodojo --deploy local \
-  --task stack_bowls --action-profile direct --no-sam3 \
-  --agent codex --model gpt-6-astra --reasoning-effort low \
-  --provider-url http://127.0.0.1:38579/v1 \
-  --provider-profile omnirouter.chat_completions --codex-web-search disabled \
-  --output-dir ./runs --monitor
-```
-
-Replay saved runs with `evoab monitor --run-dir ./runs`. See
-[docs/getting-started.md](docs/getting-started.md) and
-[docs/running.md](docs/running.md) for more.
+The agent installs EvoAB, Docker GPU support and Studio, then you add a model
+provider and deploy benchmarks from the Studio page.
 
 ## Direct policies and the built-in agent
 
@@ -129,10 +117,6 @@ evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_K
 evoab models add-preset my-model --provider my_api --model some-model --effort medium
 evoab usage
 ```
-
-For an unreleased build, set the matching runtime wheel's path under Settings →
-Benchmarks (设置 → 评测集) before using one-click Benchmark setup. See
-[local deployment](docs/deployment.md) for runtime wheel details.
 
 Settings (设置) has three pages: 概览 (token and request usage of every model
 call), 模型 (model presets and the providers they call; keys stay on the

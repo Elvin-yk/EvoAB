@@ -257,7 +257,12 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
             install = "-r /tmp/evoab-wheel/requirements.txt"
             copy = "COPY requirements.txt /tmp/evoab-wheel/\nCOPY evoab /opt/evoab-runtime/evoab\n"
             place = ["RUN chmod -R a+rX /opt/evoab-runtime", f"RUN {python} -c \"import site, pathlib; pathlib.Path(site.getsitepackages()[0], "
-                     f"'evoab-runtime.pth').write_text('/opt/evoab-runtime\\n')\""]
+                     f"'evoab-runtime.pth').write_text('/opt/evoab-runtime\\n')\"",
+                     # Package metadata, so evoab.__version__ resolves as for a wheel install.
+                     f"RUN {python} -c \"import site, pathlib; d = pathlib.Path(site.getsitepackages()[0], "
+                     f"'evoab_runtime-{version}.dist-info'); d.mkdir(exist_ok=True); "
+                     f"(d / 'METADATA').write_text('Metadata-Version: 2.1\\nName: evoab-runtime\\nVersion: {version}\\n'); "
+                     f"(d / 'INSTALLER').write_text('evoab\\n')\""]
         uv_pins = pip_pins = ""
         constraints = tuple(spec.constraints or constraints)
         if constraints:
