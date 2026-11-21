@@ -177,10 +177,14 @@ function route() {
   const arg = section === "launch" ? hash : rest.join("/");
   const same = current.page === page && current.arg === arg;
   current = { page, arg };
-  for (const link of document.querySelectorAll(".main-nav a")) {
+  for (const link of document.querySelectorAll(".main-nav [data-page]")) {
     const target = link.dataset.page;
     const active = target === page || (page === "run" && target === "history");
     if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+  for (const link of $("settingsLinks").querySelectorAll("a")) {
+    if (page === "settings" && link.hash === `#settings/${arg || "overview"}`) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
   if (page !== "run") closeReplay();
@@ -439,8 +443,8 @@ function stepConfirm(body) {
     ...(method.interaction === "direct_policy" ? [["直接策略设置", Object.entries(directPayload()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
   ];
   body.append(
-    h("div", { class: "card" }, h("table", { class: "table" }, h("tbody", {}, rows.map(([k, v]) =>
-      h("tr", {}, h("td", { class: "muted", style: "width:120px" }, k), h("td", { style: "white-space:normal" }, v)))))),
+    h("div", { class: "card" }, h("table", { class: "table confirm-table" }, h("tbody", {}, rows.map(([k, v]) =>
+      h("tr", {}, h("td", { class: "muted" }, k), h("td", {}, v)))))),
     h("div", { class: "section-title", style: "margin-top:20px" }, "等价命令"),
     h("div", { class: "command" }, commandPreview()),
     h("p", { class: "muted small" }, "API 密钥保存在服务器上，不会出现在页面或命令中。"),
@@ -502,11 +506,7 @@ function pageHistory(main) {
   const uniq = (fn) => [...new Set(S.runs.map(fn).filter(Boolean))].sort();
   const select = (key, all, values, labels = {}) => h("select", { class: "select", onchange: (e) => { f[key] = e.target.value; renderTable(); } },
     h("option", { value: "all" }, all), values.map((v) => h("option", { value: v, selected: f[key] === v }, labels[v] || v)));
-  const heading = pageHead("运行记录");
-  const count = h("p", {});
-  heading.firstElementChild.append(count);
   const renderTable = () => {
-    count.textContent = `共 ${S.runs.length} 次运行 · 运行目录 ${S.config.runs_root}`;
     const runs = filteredRuns();
     put(tableHolder, runs.length ? h("div", { class: "card table-wrap" }, h("table", { class: "table" },
       h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "运行 ID"), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "评测集"), h("th", {}, "方法"),
@@ -544,7 +544,6 @@ function pageHistory(main) {
     if (f.compare && keys.length >= 2) compareHolder.append(compareTable(keys.map(findRun)));
   };
   put(main, h("div", { class: "page wide" },
-    heading,
     h("div", { class: "toolbar" },
       h("input", { class: "input", type: "search", placeholder: "搜索任务、模型、API…", value: f.query, style: "width:280px",
         oninput: (e) => { f.query = e.target.value; renderTable(); } }),
@@ -723,15 +722,49 @@ async function openTasks(bench, p) {
 // 概览: recorded model calls and tokens. 模型: model presets and the providers
 // they call. 评测集: benchmark runtimes, including user-defined ones.
 
-const SETTINGS_TABS = [["overview", "概览"], ["models", "模型"], ["benchmarks", "评测集"]];
+function bindSettingsDropdown() {
+  const dropdown = $("settingsDropdown");
+  const trigger = dropdown.querySelector("button");
+  const links = $("settingsLinks");
+  let openedByHover = false;
+  function show(open, hover = false) {
+    links.hidden = !open;
+    trigger.setAttribute("aria-expanded", String(open));
+    openedByHover = hover;
+  }
+  dropdown.addEventListener("pointerenter", event => {
+    if (event.pointerType === "mouse" && links.hidden) show(true, true);
+  });
+  dropdown.addEventListener("pointerleave", event => {
+    if (event.pointerType === "mouse" && openedByHover && !links.contains(document.activeElement)) show(false);
+  });
+  trigger.addEventListener("click", () => show(links.hidden || openedByHover));
+  trigger.addEventListener("keydown", event => {
+    if (event.key !== "ArrowDown") return;
+    event.preventDefault();
+    show(true);
+    links.firstElementChild.focus();
+  });
+  dropdown.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !links.hidden) {
+      show(false);
+      trigger.focus();
+    }
+  });
+  dropdown.addEventListener("focusout", event => {
+    if (!dropdown.contains(event.relatedTarget)) show(false);
+  });
+  document.addEventListener("pointerdown", event => {
+    if (!dropdown.contains(event.target)) show(false);
+  });
+  links.addEventListener("click", () => { show(false); trigger.focus(); });
+  window.addEventListener("hashchange", () => show(false));
+}
 
 function pageSettings(main, arg) {
   const [tab] = (arg || "overview").split("/");
   const body = h("div", { class: "settings-body" });
-  put(main, h("div", { class: "settings" },
-    h("nav", { class: "settings-nav", "aria-label": "设置分类" }, SETTINGS_TABS.map(([id, label]) =>
-      h("a", { href: `#settings/${id}`, "aria-current": tab === id ? "page" : null }, label))),
-    body));
+  put(main, h("div", { class: "settings" }, body));
   ({ overview: settingsOverview, models: settingsModels, benchmarks: settingsBenchmarks }[tab] || settingsOverview)(body);
 }
 
@@ -914,6 +947,7 @@ async function refresh() {
 }
 
 async function init() {
+  bindSettingsDropdown();
   try {
     [S.config] = await Promise.all([api("/api/config"), loadBenchmarks(), loadRuns()]);
   } catch (error) {

@@ -51,7 +51,7 @@ def model_settings_router():
                 '<script>const theme=matchMedia("(prefers-color-scheme: dark)");'
                 'function syncTheme(){document.documentElement.classList.toggle("dark",theme.matches)}'
                 'syncTheme();theme.addEventListener("change",syncTheme);</script>'
-                + links + '<style>html,body,#root{height:100%;margin:0}#root{display:flex;flex-direction:column}'
+                + links + '<link rel="stylesheet" href="/static/layout.css"><style>html,body,#root{height:100%;margin:0}#root{display:flex;flex-direction:column}'
                 '.settings-feature-header{display:none}.settings-grid.settings-feature-page{padding-top:18px}</style></head><body><div id="root"></div>'
                 '<script type="module" src="app.js"></script></body></html>')
 

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>EvoAB 工作台</title>
     <link rel="stylesheet" href="/static/studio.css" />
+    <link rel="stylesheet" href="/static/layout.css" />
   </head>
   <body>
     <div class="shell">
@@ -14,7 +15,14 @@
           <nav class="main-nav" aria-label="主导航">
             <a href="#new" data-page="new">发起评测</a>
             <a href="#history" data-page="history">运行记录</a>
-            <a href="#settings" data-page="settings">设置</a>
+            <div class="settings-dropdown" id="settingsDropdown">
+              <button class="settings-trigger" type="button" data-page="settings" aria-expanded="false" aria-controls="settingsLinks">设置</button>
+              <div class="settings-links" id="settingsLinks" hidden>
+                <a href="#settings/overview">概览</a>
+                <a href="#settings/models">模型</a>
+                <a href="#settings/benchmarks">评测集</a>
+              </div>
+            </div>
           </nav>
         </div>
       </header>

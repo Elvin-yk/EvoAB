@@ -1,0 +1,9 @@
+/* Shared by the Studio shell and the embedded nanobot settings document. */
+:root { --studio-width: 1280px; --gutter: clamp(12px, 3vw, 32px); }
+.header-inner, .page, .settings-grid.settings-feature-page[data-settings-section="models"] {
+  box-sizing: border-box;
+  width: 100%;
+  max-inline-size: var(--studio-width);
+  padding-inline: var(--gutter);
+  margin-inline: auto;
+}
