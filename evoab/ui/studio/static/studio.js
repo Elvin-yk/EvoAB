@@ -215,7 +215,7 @@ function selectedMethod() {
 
 function pageNew(main) {
   const w = S.wizard;
-  const steps = h("nav", { class: "steps", "aria-label": "发起评测步骤" }, STEPS.map((name, i) => {
+  const steps = h("nav", { class: "steps", "aria-label": "发起任务步骤" }, STEPS.map((name, i) => {
     const done = i < w.step;
     return h("button", {
       class: `step-tab${done ? " done" : ""}`,
@@ -545,7 +545,7 @@ function pageHistory(main) {
         h("td", { class: "num" }, fmtDuration(r.elapsed_s)),
         h("td", { class: "num" }, fmtTokens(r.usage.total_tokens)),
         h("td", {}, fmtTime(r.started_at)))))))
-      : h("div", { class: "card empty" }, h("b", {}, S.runs.length ? "没有匹配的运行" : "还没有运行记录"), S.runs.length ? "调整筛选条件试试。" : "在“发起评测”里开始第一次运行。"));
+      : h("div", { class: "card empty" }, h("b", {}, S.runs.length ? "没有匹配的运行" : "还没有运行记录"), S.runs.length ? "调整筛选条件试试。" : "在“发起任务”里开始第一次运行。"));
     renderCompareBar();
   };
   const renderCompareBar = () => {
@@ -642,7 +642,7 @@ async function deploy(bench, p, button) {
   const what = benchmarkName(bench, p.profile);
   const docker = bench.deploy === "container" ? bench.container : null;
   const license = docker?.license ? `\n\n部署需要接受 ${docker.license}（https://docs.omniverse.nvidia.com/eula/）。点“确定”即表示接受。` : "";
-  if (!confirm(`部署 ${what}？\n${deployNote(bench)}，完成后即可发起评测。${license}`)) return;
+  if (!confirm(`部署 ${what}？\n${deployNote(bench)}，完成后即可发起任务。${license}`)) return;
   button.disabled = true;
   try {
     const query = docker ? `?container=true${docker.license ? `&accept_license=${encodeURIComponent(docker.license)}` : ""}` : "";
@@ -683,7 +683,7 @@ async function openTasks(bench, p) {
   if (p.launchable) {
     selection.append(selectedName, h("button", { class: "btn primary", onclick: () => {
       close(); startWith(bench, p, selectedTask);
-    } }, "发起评测"));
+    } }, "发起任务"));
     drawer.append(selection);
   }
   const search = h("input", { class: "input", type: "search", placeholder: "搜索任务或任务组", "aria-label": "搜索任务或任务组",
@@ -883,7 +883,7 @@ function benchmarkCards() {
     // A runtime that registered no tasks is not usable: show it as a failed deployment to redo.
     const status = p.status === "ready" && !p.launchable ? "setup_failed" : p.status;
     const dockerMissing = bench.deploy === "container" && !bench.container?.docker;
-    // One button: 部署 until the runtime is ready, then a disabled 已部署 (runs start from 发起评测).
+    // One button: 部署 until the runtime is ready, then a disabled 已部署 (runs start from 发起任务).
     const action = status === "ready"
       ? h("button", { class: "btn small", disabled: true }, "已部署")
       : h("button", { class: "btn small primary", disabled: dockerMissing || status === "preparing",

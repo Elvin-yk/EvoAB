@@ -26,7 +26,7 @@ pinned by digest, or ships a build recipe that the user's machine builds once.
    missing. Its 下载源 row shows which package and model sources builds use.
 5. Click 部署 on a benchmark. Progress appears in the card. Deployment ends by
    starting one task's environment service once (`evoab setup --check-launch`);
-   only then does the card read 已就绪 with an 已部署 button. Start runs from 发起评测.
+   only then does the card read 已就绪 with an 已部署 button. Start runs from 发起任务.
    A runtime built from an older container recipe shows 未部署 again.
 
 No runtime wheel is needed: the local layer installs the exact `evoab` package
@@ -42,7 +42,7 @@ evoab run --integration libero_pro --deploy local --container --runtime-profile 
 ```
 
 Studio lists only benchmarks it can deploy in one step, each with one status
-(未部署, 部署中, 部署失败, 已就绪) and one button: 部署, or 已部署 once ready (runs start from 发起评测). Benchmarks
+(未部署, 部署中, 部署失败, 已就绪) and one button: 部署, or 已部署 once ready (runs start from 发起任务). Benchmarks
 with a container recipe deploy as Docker runtimes; MetaWorld, which has none,
 uses its native setup recipe. Once a container runtime is ready, Studio
 launches that benchmark's runs in it.

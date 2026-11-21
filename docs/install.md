@@ -77,6 +77,6 @@ model presets, which the user adds. Then tell the user:
 2. 设置 → 模型: add a provider with its API key and at least one model preset.
 3. 设置 → 评测集: click 部署 on a benchmark and wait for 已就绪 (Studio picks
    mainland China mirrors itself when needed).
-4. 发起评测: choose the task, method and model, and start a run.
+4. 发起任务: choose the task, method and model, and start a run.
 
 Report the Studio URL, what was installed, and any check that still fails.
