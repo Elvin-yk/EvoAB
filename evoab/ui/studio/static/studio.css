@@ -135,8 +135,8 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 .pill.failure, .pill.error, .pill.failed, .pill.setup_failed, .pill.bad { background: var(--bad-soft); color: var(--bad); }
 .pill.running, .pill.starting, .pill.preparing { background: var(--run-soft); color: var(--run); }
 .pill.running::before, .pill.starting::before, .pill.preparing::before { animation: pulse 1.2s infinite; }
-.pill.interrupted, .pill.not_prepared, .pill.warn { background: var(--warn-soft); color: var(--warn); }
-.pill.external, .pill.real { background: var(--sunk); color: var(--muted); }
+.pill.interrupted, .pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.not_prepared, .pill.external, .pill.real { background: var(--sunk); color: var(--muted); }
 @keyframes pulse { 50% { opacity: 0.25; } }
 .tag { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; font-size: 12px; color: var(--muted); }
 .tag.good { border-color: transparent; background: var(--ok-soft); color: var(--ok); }

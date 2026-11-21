@@ -76,7 +76,7 @@ model presets, which the user adds. Then tell the user:
 1. Open `http://<host>:8770` (forward the port over SSH for a remote machine).
 2. 设置 → 模型: add a provider with its API key and at least one model preset.
 3. 设置 → 评测集: in mainland China choose 构建镜像源 → 清华镜像 + hf-mirror; then
-   click 一键部署（Docker） on a benchmark and wait for 已就绪 · Docker.
+   click 部署 on a benchmark and wait for 已就绪.
 4. 发起评测: choose the task, method and model, and start a run.
 
 Report the Studio URL, what was installed, and any check that still fails.

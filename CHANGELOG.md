@@ -17,7 +17,11 @@
   recipe; RoboDojo builds its pinned upstream Isaac Sim 5.1 Dockerfile
   (`--accept-license "NVIDIA Isaac Sim EULA"`) with sources and assets prepared
   on the host and mounted. Without a runtime wheel, the local layer installs the
-  `evoab` package Studio runs. Studio shows 一键部署（Docker） per benchmark, a
+  `evoab` package Studio runs. CALVIN uses allenai's public image (revisions
+  match EvoAB's pins); RoboTwin builds its pinned revision locally with
+  PyTorch 2.7 / CUDA 12.8 and CuRobo compiled for SM 8.0–12.0. Studio lists only
+  benchmarks it can deploy in one step, each with one status and one button
+  (部署, or 已部署 once ready; the LIBERO catalog placeholder is gone), plus a
   部署条件 check (Docker, GPU containers, disk, model presets; also
   `evoab benchmarks check`), a 构建镜像源 setting (Tsinghua + hf-mirror) forwarded
   to every build, marks container runtimes and launches runs in them. Native

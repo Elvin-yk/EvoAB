@@ -15,6 +15,9 @@ An integration declares ``container.toml`` next to its deployment module:
 ``constraints``  pins applied when installing the runtime wheel into the image
 ``build_args``   host variables forwarded to the upstream build (e.g. mirrors)
 ``license``      a licence the user must accept (``--accept-license``) to build
+``[[sources]]``  git sources (``path``, ``url``, ``ref``) a ``dockerfile`` build
+                 copies in; the host fetches them with its own network settings
+                 (proxies, credentials), so builds need no access to the forge
 ``[environment]`` variables for every container process
 
 Integrations may also define ``container_data(args, root, report)``: host-side
@@ -64,6 +67,7 @@ class ContainerSpec:
     constraints: tuple[str, ...] = ()
     build_args: tuple[str, ...] = ()
     license: str | None = None
+    sources: tuple[dict[str, str], ...] = ()
     source: str = ""
 
     @property
@@ -89,7 +93,9 @@ def spec_for(integration: str) -> ContainerSpec | None:
                          environment={k: str(v) for k, v in data.get("environment", {}).items()},
                          build=data.get("build"), root=bool(data.get("root", False)),
                          constraints=tuple(data.get("constraints", ())), build_args=tuple(data.get("build_args", ())),
-                         license=data.get("license"), source=text)
+                         license=data.get("license"),
+                         sources=tuple({k: str(v[k]) for k in ("path", "url", "ref")} for v in data.get("sources", ())),
+                         source=text)
 
 
 def is_container(python: str) -> bool:
@@ -125,6 +131,9 @@ def run_prefix(image: str, *, gpu: bool | int, environment: dict[str, str], moun
     command = [docker(), "run", "--rm", "--init", "--network", "host", "--ipc", "host"]
     if not root:
         command += ["--user", f"{os.getuid()}:{os.getgid()}", "-e", "HOME=/tmp"]
+        # Image checkouts are root-owned; simulators that inspect their own git state
+        # (CALVIN records its diff) would otherwise fail git's ownership check.
+        command += ["-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=*"]
     if workdir:
         command += ["-w", workdir]
     if gpu is not False:
@@ -217,6 +226,32 @@ def _build_args() -> list[str]:
     return arguments
 
 
+def _fetch_sources(spec: ContainerSpec, report) -> Path:
+    """Shallow-fetch the recipe's pinned git sources on the host; return the build context.
+
+    Sources are cached per integration and reused while their pinned ref is unchanged;
+    ``.git`` is dropped so the context holds only the pinned tree.
+    """
+    from .runtime import cache_root
+    context = cache_root() / "container-sources" / spec.integration
+    for source in spec.sources:
+        target = context / source["path"]
+        stamp = context / f".{source['path'].replace('/', '_')}.ref"
+        if target.is_dir() and stamp.is_file() and stamp.read_text().strip() == source["ref"]:
+            continue
+        if report is not None:
+            report(f"Fetching {source['url']} at {source['ref']}")
+        shutil.rmtree(target, ignore_errors=True)
+        target.mkdir(parents=True)
+        for command in (["git", "init", "-q"], ["git", "remote", "add", "origin", source["url"]],
+                        ["git", "fetch", "-q", "--depth", "1", "origin", source["ref"]],
+                        ["git", "checkout", "-q", "FETCH_HEAD"]):
+            _stream(command, report, cwd=target)
+        shutil.rmtree(target / ".git")
+        stamp.write_text(source["ref"] + "\n")
+    return context
+
+
 def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, report, *,
                         context: Path | None = None, constraints=()) -> str:
     """Pull or build the upstream image, then build EvoAB's local layer on it; return its tag."""
@@ -235,7 +270,8 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
     else:
         recipe = Path(str(resources.files(f"evoab.integrations.{spec.integration}").joinpath(spec.dockerfile)))
         base = f"evoab/{spec.integration.replace('_', '-')}-base:{spec.digest[:12]}"
-        _stream([docker(), "build", "-t", base, "-f", recipe, *_build_args(), recipe.parent], report)
+        build_context = _fetch_sources(spec, report) if spec.sources else recipe.parent
+        _stream([docker(), "build", "-t", base, "-f", recipe, *_build_args(), build_context], report)
     package = None if wheel else _installed_package()
     wheel_hash = hashlib.sha256(wheel.read_bytes()).hexdigest() if wheel else package[2]
     identity = spec.digest + wheel_hash + base + "\n".join(spec.constraints or constraints)

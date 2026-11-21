@@ -53,13 +53,15 @@ REGISTRY: tuple[BenchmarkInfo, ...] = (
                   requirements="Adopt an existing LIBERO-Plus installation with --runtime-python and --native-root, or connect with --env-url", task_selector="suite/task"),
     BenchmarkInfo("robotwin", "RoboTwin 2.0", "simulation", "SAPIEN", "ALOHA AgileX dual-arm",
                   "external", "Dual-arm tasks with domain randomization",
-                  requirements="Separately prepared RoboTwin service (--env-url)"),
+                  requirements="Docker build of the pinned RoboTwin revision, or adopt one with --runtime-python and --native-root",
+                  task_selector="task"),
     BenchmarkInfo("rmbench", "RMBench", "simulation", "SAPIEN", "Dual-arm, four cameras",
                   "external", "Memory-dependent dual-arm tasks",
                   requirements="Separately prepared RMBench service (--env-url)"),
     BenchmarkInfo("calvin", "CALVIN", "simulation", "PyBullet", "Franka Panda",
                   "external", "Single-task CALVIN episodes",
-                  requirements="Separately prepared CALVIN service (--env-url)"),
+                  requirements="Public CALVIN image, or adopt an installation with --runtime-python and --native-root",
+                  task_selector="task"),
     BenchmarkInfo("metaworld", "MetaWorld MT50", "simulation", "MuJoCo", "Sawyer",
                   "auto", "50 single-arm tabletop manipulation tasks (MT50)",
                   requirements="MuJoCo + Meta-World 3.1.1 (isolated venv via evoab setup)", task_selector="task"),
@@ -280,6 +282,7 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
         if info.integration == "custom":
             items += _custom_items(runs_root, prepared)
             continue
+        container = container_info(info.integration)
         profiles = info.profiles or ("default",)
         entries = []
         for profile in profiles:
@@ -294,7 +297,7 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 status = "ready"
             elif job and job.get("exit_code") not in (None, 0):
                 status = "setup_failed"
-            elif info.setup == "auto":
+            elif info.setup == "auto" or container is not None:
                 status = "not_prepared"
             else:
                 status = info.setup  # external | real
@@ -316,7 +319,9 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 "image": (runtime.container or {}).get("image") if runtime else None,
             })
         items.append({
-            "container": container_info(info.integration),
+            "container": container,
+            # How Studio deploys it in one step: a Docker recipe wins over a native setup recipe.
+            "deploy": "container" if container else "native" if info.setup == "auto" else None,
             "integration": info.integration,
             "title": info.title,
             "kind": info.kind,

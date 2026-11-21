@@ -79,10 +79,7 @@ const RUN_STATUS = {
   success: "成功", failure: "失败", error: "出错", running: "运行中", starting: "启动中",
   failed: "启动失败", interrupted: "已中断",
 };
-const BENCH_STATUS = {
-  ready: "已就绪", not_prepared: "未安装", preparing: "安装中", setup_failed: "安装失败",
-  external: "需手动配置", real: "真机",
-};
+const BENCH_STATUS = { ready: "已就绪", not_prepared: "未部署", preparing: "部署中", setup_failed: "部署失败" };
 // LIBERO-PRO suite names are "<base>[_<perturbation>]"; show them as base suite × perturbation.
 const LIBERO_BASE = { libero_10: "LIBERO-10（长程）", libero_90: "LIBERO-90", libero_goal: "LIBERO-Goal",
   libero_object: "LIBERO-Object", libero_spatial: "LIBERO-Spatial" };
@@ -145,13 +142,10 @@ async function loadRuns() {
 }
 async function loadBenchmarks() {
   const integrations = await api("/api/benchmarks");
-  const catalog = integrations.filter((b) => b.kind === "simulation" && (PROJECT_SOURCES[b.integration] || b.integration === "custom"));
-  catalog.push({
-    integration: "libero", kind: "simulation", title: "LIBERO", simulator: "MuJoCo（robosuite）",
-    embodiment: "Franka Panda", profiles: [], description: "官方终身机器人学习评测集，测试跨任务的知识迁移。",
-  });
-  S.benchmarks = catalog;
-  return catalog;
+  // Only benchmarks Studio can deploy in one step (plus registered custom ones) are listed.
+  S.benchmarks = integrations.filter((b) => b.kind === "simulation"
+    && ((PROJECT_SOURCES[b.integration] && b.deploy) || b.integration === "custom"));
+  return S.benchmarks;
 }
 async function loadTasks(bench, profile, force = false) {
   const { integration } = bench;
@@ -609,12 +603,11 @@ async function renderLaunchLog(run) {
 
 const PROJECT_SOURCES = {
   robodojo: { repo: "RoboDojo-Benchmark/RoboDojo", paper: "2607.04434" },
-  libero: { repo: "Lifelong-Robot-Learning/LIBERO", paper: "2306.03310" },
-  libero_pro: { repo: "Zxy-MLlab/LIBERO-PRO", paper: "2510.03827", guide: "libero-extensions.md#libero-pro" },
+  libero_pro: { repo: "Zxy-MLlab/LIBERO-PRO", paper: "2510.03827" },
   metaworld: { repo: "Farama-Foundation/Metaworld", paper: "1910.10897" },
-  libero_plus: { repo: "sylvestf/LIBERO-plus", paper: "2510.13626", guide: "libero-extensions.md#prepare-a-native-runtime" },
-  robotwin: { repo: "RoboTwin-Platform/RoboTwin", paper: "2506.18088", guide: "robotwin.md#prepare-and-run" },
-  calvin: { repo: "mees/calvin", paper: "2112.03227", guide: "calvin.md#prepare-a-native-service" },
+  libero_plus: { repo: "sylvestf/LIBERO-plus", paper: "2510.13626" },
+  robotwin: { repo: "RoboTwin-Platform/RoboTwin", paper: "2506.18088" },
+  calvin: { repo: "mees/calvin", paper: "2112.03227" },
 };
 
 function projectLinks(bench) {
@@ -637,32 +630,23 @@ function startWith(bench, p, task = null) {
   location.hash = "#new";
 }
 
-async function prepare(bench, p, button) {
-  const what = benchmarkName(bench, p.profile);
-  if (!confirm(`在 Studio 服务器上安装 ${what} 环境？\n将下载仿真器依赖和任务资源。`)) return;
-  button.disabled = true;
-  try {
-    await api(`/api/benchmarks/${bench.integration}/${p.profile}/setup`, { method: "POST" });
-    toast(`已开始安装 ${what}`);
-  } catch (error) {
-    toast(`无法开始：${error.message}`, true);
-  }
-  await loadBenchmarks();
-  route();
+// One deploy action per benchmark: its Docker recipe when it has one, else its native setup recipe.
+function deployNote(bench) {
+  const docker = bench.deploy === "container" ? bench.container : null;
+  if (!docker) return bench.setup === "custom" ? "检查已注册的自定义环境" : "在本机独立环境中安装依赖和任务资源";
+  const how = docker.source === "image" ? "拉取现成 Docker 镜像（数 GB）" : "本机构建 Docker 镜像（首次可能需要一小时以上）";
+  return docker.license ? `${how} · 需接受 ${docker.license}` : how;
 }
 
-async function prepareContainer(bench, p, button) {
+async function deploy(bench, p, button) {
   const what = benchmarkName(bench, p.profile);
-  const docker = bench.container;
-  const how = docker.source === "image"
-    ? `从 ${docker.image.split("@")[0]} 拉取现成镜像（约数 GB），在其上加装 EvoAB 运行时，生成本机容器环境。`
-    : "按仓库中的构建配方在本机构建镜像（首次可能需要较长时间），再加装 EvoAB 运行时。";
-  const license = docker.license ? `\n\n构建需要接受 ${docker.license}（https://docs.omniverse.nvidia.com/eula/）。点“确定”即表示接受。` : "";
-  if (!confirm(`用 Docker 部署 ${what}？\n${how}\n完成后，这个评测集的运行都会在容器里启动。${license}`)) return;
+  const docker = bench.deploy === "container" ? bench.container : null;
+  const license = docker?.license ? `\n\n部署需要接受 ${docker.license}（https://docs.omniverse.nvidia.com/eula/）。点“确定”即表示接受。` : "";
+  if (!confirm(`部署 ${what}？\n${deployNote(bench)}，完成后即可发起评测。${license}`)) return;
   button.disabled = true;
   try {
-    const query = docker.license ? `&accept_license=${encodeURIComponent(docker.license)}` : "";
-    await api(`/api/benchmarks/${bench.integration}/${p.profile}/setup?container=true${query}`, { method: "POST" });
+    const query = docker ? `?container=true${docker.license ? `&accept_license=${encodeURIComponent(docker.license)}` : ""}` : "";
+    await api(`/api/benchmarks/${bench.integration}/${p.profile}/setup${query}`, { method: "POST" });
     toast(`已开始部署 ${what}，进度见下方日志`);
   } catch (error) {
     toast(`无法开始：${error.message}`, true);
@@ -909,44 +893,30 @@ function settingsBenchmarks(body) {
 }
 
 function benchmarkCards() {
-  // A registered runtime may legitimately have nothing selectable; explain the
-  // specific native assets each family needs instead of claiming it is ready.
-  const emptyHelp = {
-    robodojo: "任务需要原生配置与该任务在 Assets/Eval_Layout/RoboDojo/arx_x5/0/ 下的第 0 号冻结布局同时存在。补齐 <任务>_0.json 后，重新运行同一条 evoab setup --integration robodojo … 命令；CLI 启动时仍可用 --layout 指定自定义布局。",
-    libero_plus: "仅列出同时具备官方 BDDL 与匹配初始状态的扰动任务。把官方资源解压到 <native-root>/libero/libero/assets，并确认 BDDL 位于 <native-root>/libero/libero/bddl_files/<suite>/、初始状态位于 <native-root>/libero/libero/init_files/<suite>/（新增物体扰动使用 <native-root>/libero/libero/init_files/libero_newobj/<suite>/），然后重新运行同一条 evoab setup --integration libero_plus … 命令。",
-    libero_pro: "仅列出同时具备官方 BDDL 与匹配初始状态的任务。补齐 <native-root>/libero/libero/bddl_files/<suite>/ 下的 BDDL 与 <native-root>/libero/libero/init_files/<suite>/ 下的初始状态文件后，重新运行同一条 evoab setup --integration libero_pro … 命令。",
-  };
-  const emptyFallback = "该运行环境已注册，但当前没有可启动的任务。补齐原生任务资源后，重新运行对应的 evoab setup 命令。";
   const profileRow = (bench, p) => {
-    const guide = PROJECT_SOURCES[bench.integration]?.guide;
-    const canInstall = ["auto", "custom"].includes(bench.setup) && ["not_prepared", "setup_failed"].includes(p.status);
-    const docker = bench.container;
-    const canDocker = docker && docker.docker && p.status !== "preparing" && p.runtime_kind !== "container";
+    // A runtime that registered no tasks is not usable: show it as a failed deployment to redo.
+    const status = p.status === "ready" && !p.launchable ? "setup_failed" : p.status;
+    const dockerMissing = bench.deploy === "container" && !bench.container?.docker;
+    // One button: 部署 until the runtime is ready, then a disabled 已部署 (runs start from 发起评测).
+    const action = status === "ready"
+      ? h("button", { class: "btn small", disabled: true }, "已部署")
+      : h("button", { class: "btn small primary", disabled: dockerMissing || status === "preparing",
+          title: dockerMissing ? "需要 Docker，见上方部署条件" : "",
+          onclick: (e) => deploy(bench, p, e.currentTarget) }, "部署");
+    const detail = status === "ready"
+      ? h("a", { class: "small", href: "#", onclick: (e) => { e.preventDefault(); openTasks(bench, p); } }, `${p.task_count} 个任务`)
+      : h("span", { class: "muted small" }, status === "preparing" ? "正在部署，日志见下方" : deployNote(bench));
     return [
       h("div", { class: "profile-row" },
         h("strong", {}, p.profile === "default" ? "运行环境" : `运行环境 · ${p.profile}`),
-        p.status === "ready" && p.empty === true ? h("span", { class: "pill warn" }, "已注册，无可选任务") : pill(p.status, BENCH_STATUS),
-        p.runtime_kind === "container" ? h("span", { class: "tag", title: p.image || "" }, "Docker") : null,
-        h("span", { class: "acts" },
-          canDocker ? h("button", { class: "btn small primary", onclick: (e) => prepareContainer(bench, p, e.currentTarget),
-            title: docker.source === "image" ? `拉取镜像 ${docker.image}` : "在本机按构建配方生成镜像" },
-            docker.source === "image" ? "一键部署（Docker）" : "构建并部署（Docker）") : null,
-          canInstall ? h("button", { class: "btn small", onclick: (e) => prepare(bench, p, e.currentTarget) },
-            p.status === "setup_failed" ? "重新检查" : bench.setup === "custom" ? "检查环境" : "安装环境") : null,
-          p.status === "external" && guide ? h("a", { class: "btn small", target: "_blank", rel: "noopener noreferrer",
-            href: `https://github.com/Elvin-yk/EvoAB/blob/main/docs/${guide}` }, "配置指南") : null,
-          p.status === "ready" && p.task_count > 0 ? h("button", { class: "btn small", onclick: () => openTasks(bench, p) }, `浏览任务（${p.task_count}）`) : null,
-          p.launchable ? h("button", { class: "btn small", onclick: () => startWith(bench, p) }, "发起评测") : null)),
-      p.status === "ready" && p.empty === true ? h("div", { class: "notice info empty-tasks" },
-        h("strong", {}, "已注册，但没有可选任务"),
-        h("div", {}, emptyHelp[bench.integration] || emptyFallback)) : null,
-      p.setup_log && ["preparing", "setup_failed"].includes(p.status) ? h("pre", { class: "profile-log log" }, p.setup_log) : null,
+        pill(status, BENCH_STATUS), detail,
+        h("span", { class: "acts" }, action)),
+      p.setup_log && ["preparing", "setup_failed"].includes(status) ? h("pre", { class: "profile-log log" }, p.setup_log) : null,
     ];
   };
   return S.benchmarks.map((b) => h("article", { class: "card bench" },
     h("div", { class: "bench-head" }, benchmarkIdentity(b, "h2"), b.setup === "custom" ? h("span", { class: "tag" }, "自定义") : projectLinks(b)),
-    b.profiles.length ? b.profiles.map((p) => profileRow(b, p)) :
-      h("div", { class: "profile-row" }, h("strong", {}, "运行环境"), h("span", { class: "muted" }, b.description?.startsWith("Invalid") ? b.description : "仅收录资料，暂不支持运行"))));
+    b.profiles.map((p) => profileRow(b, p))));
 }
 
 function applyDefaults(force = false) {

@@ -85,7 +85,7 @@ robot tools registered, consolidating the transcript when it outgrows the
 model's context window.
 
 Benchmarks with a container recipe deploy as Docker runtimes in one step
-(Studio: 设置 → 评测集 → 一键部署（Docker）, or `evoab benchmarks prepare
+(Studio: 设置 → 评测集 → 部署, or `evoab benchmarks prepare
 INTEGRATION --container`): public upstream images are pulled by digest and
 others are built locally; nothing is hosted by EvoAB. See
 [container runtimes](docs/containers.md).

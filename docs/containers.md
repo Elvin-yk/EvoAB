@@ -8,6 +8,8 @@ pinned by digest, or ships a build recipe that the user's machine builds once.
 |---|---|---|
 | LIBERO-PRO | public image | `ghcr.io/allenai/vla-evaluation-harness/libero-pro` (pinned digest) plus the official perturbation suites from `zhouxueyang/LIBERO-Pro` |
 | LIBERO-Plus | local build | `evoab/integrations/libero_plus/Dockerfile` (based on allenai's public base image; their LIBERO-Plus image is not public) |
+| CALVIN | public image | `ghcr.io/allenai/vla-evaluation-harness/calvin` (pinned digest; same `calvin` / `calvin_env` revisions as EvoAB) |
+| RoboTwin 2.0 | local build | `evoab/integrations/robotwin/Dockerfile` (pinned revision, PyTorch 2.7 / CUDA 12.8, CuRobo for SM 8.0–12.0; allenai's image pins an older revision) |
 | RoboDojo | local build | the Dockerfile in RoboDojo's pinned upstream checkout (Isaac Sim 5.1); requires accepting the NVIDIA Isaac Sim EULA; assets (~38.5 GiB) downloaded on the host and mounted |
 
 ## A new machine, step by step
@@ -22,8 +24,8 @@ pinned by digest, or ships a build recipe that the user's machine builds once.
 4. 设置 → 评测集: the 部署条件 panel checks Docker access, GPU containers, disk
    space (120 GiB recommended) and model presets, with the fix for anything
    missing. On a network in mainland China choose 构建镜像源 → 清华镜像 + hf-mirror.
-5. Click 一键部署（Docker） (or 构建并部署) on a benchmark. Progress appears in the
-   card; when it reads 已就绪 · Docker, start runs from 发起评测 as usual.
+5. Click 部署 on a benchmark. Progress appears in the card; when it reads
+   已就绪, its button reads 已部署; start runs from 发起评测.
 
 No runtime wheel is needed: when 运行时安装包 is empty, the local layer installs
 the exact `evoab` package Studio runs plus its service dependencies. A wheel
@@ -37,9 +39,11 @@ evoab benchmarks prepare libero_pro --container      # or: evoab setup --integra
 evoab run --integration libero_pro --deploy local --container --runtime-profile libero_object --task TASK ...
 ```
 
-In Studio, each benchmark with a container recipe shows 一键部署（Docker） (or
-构建并部署 for local builds). Once a container runtime is ready, Studio launches
-that benchmark's runs in it and marks the runtime "Docker".
+Studio lists only benchmarks it can deploy in one step, each with one status
+(未部署, 部署中, 部署失败, 已就绪) and one button: 部署, or 已部署 once ready (runs start from 发起评测). Benchmarks
+with a container recipe deploy as Docker runtimes; MetaWorld, which has none,
+uses its native setup recipe. Once a container runtime is ready, Studio
+launches that benchmark's runs in it.
 
 Setup pulls (or builds) the upstream image, then builds a small local layer
 `evoab/<integration>:<version>-<hash>` that adds the runtime wheel and the
@@ -53,7 +57,10 @@ the run ends.
 Builds use the host network. The 构建镜像源 setting forwards apt, PyPI, conda and
 Hugging Face mirrors to every build (upstream recipes such as RoboDojo's accept
 the same arguments); `HF_ENDPOINT` alone overrides the asset source, and
-`EVOAB_CONTAINER_BUILD_PROXY=1` forwards the host's proxy variables into builds.
+`EVOAB_CONTAINER_BUILD_PROXY=1` forwards the host's proxy variables into builds
+(only for a proxy that does not intercept TLS: containers do not trust a host CA).
+Git sources a recipe declares under `[[sources]]` are fetched on the host with
+its own network settings, so builds never need to reach GitHub.
 Pulling the public images needs Docker itself to reach ghcr.io (configure the
 Docker daemon's proxy or registry mirror if required).
 
@@ -67,6 +74,11 @@ python = "/opt/conda/envs/sim/bin/python"
 native_root = "/app/native"          # passed to the integration as --native-root
 gpu = true
 prepare = ["printf %s <revision> > /app/native/.evoab-revision"]
+
+[[sources]]                          # dockerfile builds only: fetched on the host,
+path = "native"                      # then available to COPY in the Dockerfile
+url = "https://github.com/org/native.git"
+ref = "<commit or tag>"
 
 [environment]
 MUJOCO_GL = "egl"

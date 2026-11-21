@@ -36,13 +36,12 @@ RUN uv pip install --no-cache-dir $( [ -n "${UV_DEFAULT_INDEX}${UV_INDEX_URL}" ]
     && rm -rf ~/.cache/pip ~/.cache/uv
 
 # The pinned LIBERO-Plus revision EvoAB's integration requires.
-ARG LIBERO_PLUS_REF=4976dc30028e805ff8094b55501d532c48fec182
-RUN mkdir -p /app/LIBERO-plus && cd /app/LIBERO-plus \
-    && git init -q && git remote add origin https://github.com/sylvestf/LIBERO-plus.git \
-    && git fetch -q --depth 1 origin "${LIBERO_PLUS_REF}" && git checkout -q FETCH_HEAD \
+# Fetched on the host by setup (see [[sources]] in container.toml), so the build needs no GitHub access.
+COPY LIBERO-plus /app/LIBERO-plus
+RUN cd /app/LIBERO-plus \
     && uv pip install --no-cache-dir $( [ -n "${UV_DEFAULT_INDEX}${UV_INDEX_URL}" ] && echo --no-config ) \
         --config-setting editable_mode=compat -e . \
-    && rm -rf /app/LIBERO-plus/.git ~/.cache/uv
+    && rm -rf ~/.cache/uv
 
 # MuJoCo assets (about 6.4 GB) from the MIT-licensed dataset Sylvest/LIBERO-plus at a pinned revision.
 ARG ASSETS_REVISION=dd2bd61b7d9a6fef1abc52d606e983b41886a149

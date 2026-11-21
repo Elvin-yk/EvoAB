@@ -12,3 +12,8 @@ prepare = ["printf %s 4976dc30028e805ff8094b55501d532c48fec182 > /app/LIBERO-plu
 MUJOCO_GL = "egl"
 PYOPENGL_PLATFORM = "egl"
 TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD = "1"
+
+[[sources]]
+path = "LIBERO-plus"
+url = "https://github.com/sylvestf/LIBERO-plus.git"
+ref = "4976dc30028e805ff8094b55501d532c48fec182"

@@ -47,8 +47,8 @@ def source_root(path, revision):
     """Reject a different or modified native implementation before importing it."""
     root = path.expanduser().resolve(strict=True)
     marker = root / ".evoab-revision"
-    if not (root / ".git").exists() and marker.is_file():
-        # Container images drop .git; their recipe records the pinned revision at build time.
+    if marker.is_file():
+        # Container images drop or re-initialize .git; their recipe records the pinned revision at build time.
         if marker.read_text().strip() != revision:
             raise ValueError(f"Native image must be built from {revision}; found {marker.read_text().strip()}")
         sys.path.insert(0, str(root))

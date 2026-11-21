@@ -1,0 +1,18 @@
+# CALVIN in the public image from allenai/vla-evaluation-harness (Apache-2.0),
+# pinned by digest. Its Dockerfile.calvin checks out mees/calvin at
+# fa03f01f19c65920e18cf37398a9ce859274af76 with the calvin_env submodule at
+# 1431a46bd36bde5903fb6345e68b5ccc30def666 (both the revisions EvoAB pins) and
+# applies two Python 3.11 compatibility patches (pyhash -> fnvhash in
+# calvin_models; broader exception on PyBullet disconnect). It re-initializes
+# the git repositories, so the local layer records the pinned revisions.
+image = "ghcr.io/allenai/vla-evaluation-harness/calvin@sha256:6d018bfe4cdeb3af2c8841e4504e4e613a1f8c9acdd040eec3b8c81c7af20174"
+python = "/opt/conda/envs/calvin/bin/python"
+native_root = "/app/calvin/calvin_env"
+gpu = true
+prepare = [
+  "printf %s 1431a46bd36bde5903fb6345e68b5ccc30def666 > /app/calvin/calvin_env/.evoab-revision",
+  "printf %s fa03f01f19c65920e18cf37398a9ce859274af76 > /app/calvin/.evoab-revision",
+]
+
+[environment]
+PYOPENGL_PLATFORM = "egl"

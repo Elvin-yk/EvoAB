@@ -5,6 +5,14 @@
 It provides **one task per episode**, with the native Panda longer fingers,
 static and wrist RGB cameras, optical calibration and optional depth.
 
+## Deploy in a container
+
+Studio's 部署 button (or `evoab benchmarks prepare calvin --container`) pulls
+allenai/vla-evaluation-harness's public CALVIN image by digest. It checks out
+the same `calvin` and `calvin_env` revisions EvoAB pins (with two Python 3.11
+compatibility patches). Tasks are those with both a validation annotation and a
+task definition; Studio runs use scene D with the native scene reset and 360 steps.
+
 ## Prepare a native service
 
 Use a separate Linux/Python 3.11 native runtime with PyBullet, Gym, Hydra,

@@ -3,10 +3,18 @@
 `--integration robotwin` connects the shared Direct gripper tools to a separately
 prepared RoboTwin environment service. The initial binding supports the official
 `aloha-agilex` dual-arm parallel-gripper embodiment and `demo_clean` /
-`demo_randomized` task configurations. Hybrid actors, other embodiments and
-automatic `setup` / `--deploy local` recipes are not included.
+`demo_randomized` task configurations. Hybrid actors and other embodiments are
+not included.
 
-## Prepare and run
+## Deploy in a container
+
+Studio's 部署 button (or `evoab benchmarks prepare robotwin --container`) builds
+`evoab/integrations/robotwin/Dockerfile` locally: the pinned revision below,
+PyTorch 2.7 / CUDA 12.8, SAPIEN 3.0.0b1, mplib 0.2.1, CuRobo v0.7.8 compiled for
+SM 8.0–12.0, and the official assets from `TianxingChen/RoboTwin2.0`. Studio
+runs use the `demo_clean` configuration without depth; the seed defaults to 1.
+
+## Prepare and run natively
 
 Follow the [RoboTwin installation and asset instructions](https://github.com/RoboTwin-Platform/RoboTwin)
 in an isolated Linux native-service environment. Install the matching
