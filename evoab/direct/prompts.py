@@ -25,19 +25,13 @@ from evoab.direct.actions import Limits, Representation
 BLOCKS = ("robot", "timing", "gripper", "camera")
 OPTIONAL_BLOCKS = ("gripper", "camera")
 
-# Integration -> bundled embodiment description.
-EMBODIMENTS = {"libero_pro": "libero_panda", "libero_plus": "libero_panda"}
 
-
-def embodiment_text(integration: str, description) -> str:
-    """The environment's own description if it declares one, else the bundled pack for the integration."""
-    declared = (description.metadata or {}).get("robot_prompt")
+def embodiment_text(description) -> str:
+    """Read the environment's base prompt, falling back to general manipulation guidance."""
+    declared = description.metadata.get("robot_prompt")
     if declared:
         return str(declared)
-    name = EMBODIMENTS.get(integration, "generic")
-    text = resources.files("evoab.resources").joinpath(f"prompts/direct/{name}.md").read_text(encoding="utf-8")
-    arm = description.arms[0]
-    return text.strip().format(control_frame=arm.control_frame, grasp_site=arm.grasp_site_description)
+    return resources.files("evoab.resources").joinpath("prompts/direct/generic.md").read_text(encoding="utf-8")
 
 
 def timing_text(control_hz: float, limits: Limits) -> str:
@@ -113,19 +107,37 @@ def camera_text(cameras: dict) -> str:
     return "\n".join(lines) if found else ""
 
 
-def assemble(*, integration: str, description, representation: Representation, horizon, limits: Limits,
+def assemble(*, description, representation: Representation, horizon, limits: Limits,
              blocks, initial_state: dict, cameras: dict, robot_text: str | None = None) -> tuple[str, dict]:
     """The system prompt and the text of each block, keyed by block name."""
     unknown = set(blocks) - set(BLOCKS)
     if unknown:
         raise ValueError(f"unknown Direct prompt blocks: {sorted(unknown)}")
     parts = {
-        "robot": (robot_text or embodiment_text(integration, description)).strip(),
+        "robot": (robot_text or embodiment_text(description)).strip(),
         "timing": timing_text(description.control_frequency_hz, limits),
     }
+    parts["robot"] += "\n\nControlled arms:\n" + "\n".join(
+        f"- {arm.name}: {arm.control_frame}; {arm.grasp_site_description}" for arm in description.arms
+    )
     if "gripper" in blocks:
-        parts["gripper"] = gripper_text(initial_state["ee_quat"])
+        if "arms" in initial_state:
+            parts["gripper"] = "\n".join(
+                f"{name}: initial grasp-site orientation wxyz={_vector(state['ee_quat'])}."
+                for name, state in initial_state["arms"].items()
+            )
+        else:
+            parts["gripper"] = gripper_text(initial_state["ee_quat"])
     if "camera" in blocks and (text := camera_text(cameras)):
         parts["camera"] = text
     parts["action"] = representation.instruction(horizon)
+    if len(description.arms) > 1:
+        names = ", ".join(arm.name for arm in description.arms)
+        parts["action"] += (
+            "\n\nSynchronized control: actions is an array of time steps. Each step is a JSON object "
+            f"with exactly these arm names as keys: {names}. Each value is that arm's numeric action "
+            "in the format above. All arms execute together in one control interval. Each arm starts "
+            "from its own observed pose. To keep an arm still, repeat its target (zero motion for a delta) "
+            "and retain its gripper command."
+        )
     return "\n\n".join(parts.values()), parts

@@ -52,6 +52,8 @@ function posOfCall(i) {
 
 function renderDirect(first) {
   const tr = RV.trace;
+  const arms = tr.policy.arms || [];
+  if (first || !arms.includes(DP.arm)) DP.arm = arms.length > 1 ? arms[0] : null;
   DP.tr = tr;
   DP.frameByStep = new Map(tr.frames.map((f) => [f.step, f]));
   Object.assign(DP, directPhases(tr, DP.wait));
@@ -79,6 +81,7 @@ function renderDirect(first) {
           h("div", { class: "dp-telemetry", id: "dpTelemetry" })),
         h("p", { class: "dp-alert", id: "dpAlert", hidden: true }),
         h("div", { class: "dp-note" }, h("span", { class: "eyebrow" }, "模型动作说明"), h("p", { id: "dpNote" })),
+        h("div", { id: "dpArm" }),
         h("section", { class: "dp-output", id: "dpOutput" })),
       h("div", { class: "dp-analysis" },
         h("details", { class: "dp-chart-card", ontoggle: (e) => { if (e.currentTarget.open) { drawChart(); drawChartCursor(stateAt(DP.pos).step); } } }, h("summary", {}, "夹爪运动轨迹"),
@@ -106,6 +109,19 @@ function directKeys(e) {
 function drawStatic() {
   const { tr } = DP;
   const p = tr.policy;
+  if (p.arms?.length > 1) {
+    put($("dpArm"), h("label", {}, "动作明细与轨迹 · 机械臂 ",
+      h("select", { onchange: (e) => {
+        DP.arm = e.target.value;
+        drawDirect();
+        if ($("dpChart").closest("details").open) {
+          drawChart();
+          drawChartCursor(stateAt(DP.pos).step);
+        }
+      } }, p.arms.map((name) => h("option", { value: name, selected: DP.arm === name },
+        ({ left: "左臂", right: "右臂" })[name] || name)))));
+  }
+  $("dpArm").hidden = !(p.arms?.length > 1);
   // Cameras: one labelled image per camera, side by side.
   const cams = p.cameras || Object.keys(tr.frames[0]?.images || {});
   if ($("dpCams").childElementCount !== cams.length) {
@@ -225,14 +241,15 @@ function drawOutput(call, s) {
   }
   const p = DP.tr.policy;
   const eef = (p.columns || [])[0] === "x" || p.representation === "delta_eef";
-  const key = `${call.index}`;
+  const key = `${call.index}/${DP.arm || ""}`;
   if (out.dataset.call !== key) {
     out.dataset.call = key;
     const executed = new Map(call.executed.map((e) => [e.row, e]));
     const head = ["动作", "控制步", "X", "Y", "Z", "qw", "qx", "qy", "qz", "夹爪闭合度", "实测位置", "位置误差"];
-    const rows = call.targets.map((t, i) => {
+    const rows = call.targets.map((target, i) => {
+      const t = DP.arm ? target[DP.arm] : target;
       const e = executed.get(i);
-      const m = e?.measured?.ee_pos;
+      const m = (DP.arm ? e?.measured?.arms?.[DP.arm] : e?.measured)?.ee_pos;
       const err = m ? Math.hypot(t[0] - m[0], t[1] - m[1], t[2] - m[2]) * 1000 : null;
       return h("tr", { "data-row": i, class: [call.clamped?.[i] ? "clamped" : "", e ? "" : "skipped"].join(" ") },
         h("td", {}, h("span", { class: "mark" }), pad2(i + 1)), h("td", {}, e ? e.step : "—"),
@@ -261,7 +278,7 @@ const CHART = { padL: 40, padR: 6, padT: 6, padB: 16 };
 
 function drawChart() {
   const { tr } = DP;
-  const frames = tr.frames;
+  const frames = tr.frames.map((f) => ({step: f.step, proprio: DP.arm ? f.proprio.arms[DP.arm] : f.proprio}));
   if (frames.length < 2) { put($("dpChart"), h("div", { class: "muted small" }, "等待更多控制步…")); return; }
   // Scale to the steps actually taken; the budget is shown in the header.
   const maxStep = Math.max(10, frames[frames.length - 1].step);
@@ -277,7 +294,7 @@ function drawChart() {
   svg.setAttribute("class", "dp-chart");
   const add = (tag, attrs, text) => { const el = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); if (text != null) el.textContent = text; svg.append(el); return el; };
   const targets = [];
-  for (const c of tr.calls) for (const e of c.executed) targets.push({ step: e.step, t: c.targets[e.row], hold: c.safe_hold });
+  for (const c of tr.calls) for (const e of c.executed) targets.push({ step: e.step, t: DP.arm ? c.targets[e.row][DP.arm] : c.targets[e.row], hold: c.safe_hold });
   lanes.forEach(([name, k], li) => {
     const top = padT + li * laneH;
     const values = [...frames.map((f) => f.proprio.ee_pos[k]), ...targets.map((x) => x.t[k])];

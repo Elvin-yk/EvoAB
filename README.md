@@ -74,7 +74,11 @@ observations) that must return exactly one action-chunk tool call, such as
 qz, gripper]`. The chunk is validated and step-limited completely, then the
 benchmark's own controller executes one row per control step; malformed output
 is re-requested on the unchanged observation, and if every attempt fails the
-robot holds for one step. No tools are called. Per-benchmark prompt packs
+run ends without consuming a control step. Single-arm actions keep their numeric
+row format. In a multi-arm environment each row is an object keyed by every
+declared arm name, with one numeric action per arm. Both absolute and delta
+representations execute all arms together. The environment supplies its base
+prompt (or the policy uses the generic description). Bundled prompt packs
 (`evoab/resources/prompts/direct/`) describe the embodiment and frames; timing,
 gripper geometry and camera geometry are generated from what the environment
 reports, and `--direct-prompt-blocks` / `--direct-prompt-file` choose or replace

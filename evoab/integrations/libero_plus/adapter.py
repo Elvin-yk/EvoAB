@@ -1,5 +1,6 @@
 """Pinned LIBERO-family native observations, OSC actions and task outcomes."""
 import time
+from importlib import resources
 
 import numpy as np
 
@@ -54,7 +55,9 @@ class LiberoAdapter:
                 has_depth=depth_enabled and not (name == "agentview" and self.distorted_agentview),
                 has_calibration=not (name == "agentview" and self.distorted_agentview)) for name in CAMERAS],
             control_frequency_hz=20.0, max_episode_steps=max_steps,
-            metadata={"control_constraints": self.binding.constraint, "observation_source": "native_libero_wrapper"},
+            metadata={"control_constraints": self.binding.constraint, "observation_source": "native_libero_wrapper",
+                      "robot_prompt": resources.files("evoab.resources").joinpath(
+                          "prompts/direct/libero_panda.md").read_text(encoding="utf-8")},
         )
 
         from evoab.integrations.robot_resources import add_robot_resources, mujoco_robot_model

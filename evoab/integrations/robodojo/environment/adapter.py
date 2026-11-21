@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 import time
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +103,8 @@ class Adapter:
                      for name in CAMERA_ALIASES],
             control_frequency_hz=25, max_episode_steps=int(env.step_lim), action_binding="robodojo_pi05",
             metadata={"ik_joint_delta_guard": ik_joint_delta_guard,
+                      "robot_prompt": resources.files("evoab.resources").joinpath(
+                          "prompts/direct/robodojo_x5.md").read_text(encoding="utf-8"),
                       "layout_sha256": layout_sha256, "physics_per_tick": self.physics_per_tick,
                       "workspace_bounds": [[-1., -.8, .5], [1., .8, 1.3]]},
         )

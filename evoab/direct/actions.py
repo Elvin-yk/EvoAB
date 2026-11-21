@@ -66,18 +66,25 @@ def _limit(previous: Target, position, rotation, closure: float, limits: Limits)
     return Target(tuple(float(v) for v in start + step), _quat_wxyz(rotation), closure, clamped)
 
 
-def _rows(arguments: dict, width: int, horizon: tuple[int, int]) -> list[list[float]]:
+def _action_rows(arguments: dict, horizon: tuple[int, int]) -> list:
     if not isinstance(arguments, dict):
         raise OutputError("arguments must be a JSON object")
     extra = set(arguments) - {"actions", "note"}
     if extra:
         raise OutputError(f"unexpected fields: {sorted(extra)}")
+    if "note" in arguments and not isinstance(arguments["note"], str):
+        raise OutputError("note must be a string")
     rows = arguments.get("actions")
     if not isinstance(rows, list):
         raise OutputError("actions must be an array of rows")
     low, high = horizon
     if not low <= len(rows) <= high:
         raise OutputError(f"actions must contain {low} to {high} rows, got {len(rows)}")
+    return rows
+
+
+def _rows(arguments: dict, width: int, horizon: tuple[int, int]) -> list[list[float]]:
+    rows = _action_rows(arguments, horizon)
     for index, row in enumerate(rows):
         if not isinstance(row, list) or len(row) != width:
             raise OutputError(f"row {index + 1} must have exactly {width} numbers")
@@ -96,15 +103,36 @@ class Representation:
     width: int
     columns: tuple[str, ...]
 
-    def schema(self, horizon: tuple[int, int]) -> dict:
+    def schema(self, horizon: tuple[int, int], arms: tuple[str, ...] = ()) -> dict:
+        row = {"type": "array", "items": {"type": "number"}, "minItems": self.width, "maxItems": self.width}
+        if len(arms) > 1:
+            row = {"type": "object", "properties": {name: row for name in arms},
+                   "required": list(arms), "additionalProperties": False}
         return {"type": "function", "function": {
             "name": self.tool, "description": self.description,
             "parameters": {"type": "object", "properties": {
                 "actions": {"type": "array", "minItems": horizon[0], "maxItems": horizon[1],
-                            "items": {"type": "array", "items": {"type": "number"},
-                                      "minItems": self.width, "maxItems": self.width}},
+                            "items": row},
                 "note": {"type": "string", "description": "Brief reason for this chunk and what to check next."},
             }, "required": ["actions", "note"], "additionalProperties": False}}}
+
+    def decode_chunk(self, arguments: dict, measured: dict[str, Target], horizon, limits: Limits
+                     ) -> list[dict[str, Target]]:
+        """Validate the entire synchronized chunk before any arm can move."""
+        if len(measured) == 1:
+            name, start = next(iter(measured.items()))
+            return [{name: target} for target in self.decode(arguments, start, horizon, limits)]
+        rows = _action_rows(arguments, horizon)
+        for i, row in enumerate(rows, 1):
+            if not isinstance(row, dict) or row.keys() != measured.keys():
+                raise OutputError(f"row {i} must provide exactly the arms {list(measured)}")
+        tracks = {}
+        for name, start in measured.items():
+            try:
+                tracks[name] = self.decode({"actions": [row[name] for row in rows]}, start, horizon, limits)
+            except OutputError as error:
+                raise OutputError(f"{name}: {error}") from error
+        return [{name: track[i] for name, track in tracks.items()} for i in range(len(rows))]
 
     def decode(self, arguments: dict, measured: Target, horizon, limits: Limits) -> list[Target]:
         raise NotImplementedError
