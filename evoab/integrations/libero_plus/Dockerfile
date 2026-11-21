@@ -23,10 +23,12 @@ RUN if [ -n "${UBUNTU_MIRROR}" ]; then \
     && rm -rf /var/lib/apt/lists/*
 
 RUN uv pip install --no-cache-dir "torch==2.1.0" --torch-backend cpu
+# Exact versions keep resolution identical on any index or mirror (an unpinned
+# resolve through a mirror once picked an unbuildable matplotlib 1.4.3).
 RUN uv pip install --no-cache-dir \
         numpy==1.24.4 numba==0.58.1 scipy==1.10.1 mujoco==3.2.3 robosuite==1.4.0 bddl==1.0.1 \
-        Pillow h5py pyyaml termcolor future easydict hydra-core \
-        "gym>=0.21,<0.27" matplotlib opencv-python scikit-image wand \
+        pillow==12.3.0 h5py==3.16.0 PyYAML==6.0.3 termcolor==3.3.0 future==1.0.0 easydict==1.13 hydra-core==1.3.4 \
+        gym==0.26.2 matplotlib==3.10.9 opencv-python==4.11.0.86 scikit-image==0.24.0 Wand==0.7.2 \
     && rm -rf ~/.cache/pip ~/.cache/uv
 
 # The pinned LIBERO-Plus revision EvoAB's integration requires.
