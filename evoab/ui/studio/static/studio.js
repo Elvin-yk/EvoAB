@@ -903,10 +903,10 @@ async function providersDialog() {
 
 function providerDialog(p) {
   const custom = !p || p.is_custom;
-  const api = p?.api || {};
+  const providerApi = p?.api || {};
   const v = { name: p?.label || "", api_base: p?.api_base || "", api_key: "", thinking_style: p?.thinking_style || "",
-    use_proxy: !!p?.use_proxy, apis: api.supported_apis || api.supportedApis || (custom ? ["chat_completions"] : []),
-    preferred: api.preferred_api || api.preferredApi || "",
+    use_proxy: !!p?.use_proxy, apis: providerApi.supported_apis || providerApi.supportedApis || (custom ? ["chat_completions"] : []),
+    preferred: providerApi.preferred_api || providerApi.preferredApi || "",
     headers: p?.extra_headers ? JSON.stringify(p.extra_headers) : "", query: p?.extra_query ? JSON.stringify(p.extra_query) : "" };
   const input = (key, attrs = {}) => h("input", { class: "input", value: v[key], oninput: (e) => { v[key] = e.target.value; }, ...attrs });
   const error = h("div", { class: "notice error", hidden: true });
