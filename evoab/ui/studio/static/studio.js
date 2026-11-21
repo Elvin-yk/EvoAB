@@ -169,6 +169,7 @@ const findRun = (key) =>
 // -- routing -----------------------------------------------------------------
 
 let current = { page: null, arg: null };
+let runRefreshTimer;
 function route() {
   const hash = location.hash.slice(1) || "new";
   const [section, ...rest] = hash.split("/");
@@ -176,6 +177,12 @@ function route() {
   const page = section === "launch" ? "run" : section;
   const arg = section === "launch" ? hash : rest.join("/");
   const same = current.page === page && current.arg === arg;
+  if (current.page !== page) {
+    clearInterval(runRefreshTimer);
+    if (page === "history" || page === "run") {
+      runRefreshTimer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+    }
+  }
   current = { page, arg };
   for (const link of document.querySelectorAll(".main-nav [data-page]")) {
     const target = link.dataset.page;
@@ -943,9 +950,6 @@ async function refresh() {
   else if (page === "run") {
     const run = findRun(current.arg);
     if (run) refreshRun(run);
-  } else if (page === "settings" && current.arg.startsWith("benchmarks") && S.benchmarks.some((b) => b.profiles.some((p) => p.status === "preparing"))) {
-    await loadBenchmarks();
-    route();
   }
 }
 
@@ -973,6 +977,5 @@ function init() {
   }
   window.addEventListener("hashchange", navigate);
   navigate();
-  setInterval(() => { if (S.config && !document.hidden && location.hash !== "#settings/models") refresh(); }, 5000);
 }
 window.addEventListener("DOMContentLoaded", init, { once: true });
