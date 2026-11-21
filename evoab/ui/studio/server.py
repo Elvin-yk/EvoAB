@@ -20,6 +20,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from evoab.ui.studio.model_settings import model_settings_router
 from evoab.ui.studio.monitor import RescanningCollection, live_progress
 from evoab.ui.web.server import create_monitor_app, preview_image
 from evoab.workbench import Workbench, WorkbenchError, default_runs_root
@@ -36,6 +37,7 @@ def _digest(name: str) -> str:
 
 def create_app(runs_root: Path) -> FastAPI:
     app = FastAPI(title="EvoAB Studio", docs_url=None, redoc_url=None)
+    app.include_router(model_settings_router())
     bench = Workbench(runs_root)
     collection = RescanningCollection(bench.runs_root)
     app.mount("/replay", create_monitor_app(collection))

@@ -177,9 +177,11 @@ function route() {
   const arg = section === "launch" ? hash : rest.join("/");
   const same = current.page === page && current.arg === arg;
   current = { page, arg };
-  for (const link of document.querySelectorAll(".nav a")) {
+  for (const link of document.querySelectorAll(".main-nav a")) {
     const target = link.dataset.page;
-    link.classList.toggle("active", target === page || (page === "run" && target === "history"));
+    const active = target === page || (page === "run" && target === "history");
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
   }
   if (page !== "run") closeReplay();
   const main = $("main");
@@ -722,15 +724,13 @@ async function openTasks(bench, p) {
 // they call. 评测集: benchmark runtimes, including user-defined ones.
 
 const SETTINGS_TABS = [["overview", "概览"], ["models", "模型"], ["benchmarks", "评测集"]];
-const API_LABELS = { chat_completions: "Chat Completions", responses: "Responses", anthropic_messages: "Anthropic Messages" };
-const REASONING_FORMATS = [["", "无"], ["thinking_type", "thinking.type"], ["enable_thinking", "enable_thinking"], ["reasoning_split", "reasoning_split"]];
 
 function pageSettings(main, arg) {
   const [tab] = (arg || "overview").split("/");
   const body = h("div", { class: "settings-body" });
   put(main, h("div", { class: "settings" },
-    h("div", { class: "settings-nav" }, h("h1", {}, "设置"),
-      h("nav", { class: "nav" }, SETTINGS_TABS.map(([id, label]) => h("a", { href: `#settings/${id}`, class: tab === id ? "active" : "" }, label)))),
+    h("nav", { class: "settings-nav", "aria-label": "设置分类" }, SETTINGS_TABS.map(([id, label]) =>
+      h("a", { href: `#settings/${id}`, "aria-current": tab === id ? "page" : null }, label))),
     body));
   ({ overview: settingsOverview, models: settingsModels, benchmarks: settingsBenchmarks }[tab] || settingsOverview)(body);
 }
@@ -748,196 +748,65 @@ const row = (label, control, hint) => h("label", { class: "form-row" }, h("span"
 
 // -- overview ----------------------------------------------------------------
 
+function usageTrend(days) {
+  const end = new Date();
+  const dates = Array.from({ length: 30 }, (_, i) => new Date(end.getTime() - (29 - i) * 86400000).toISOString().slice(0, 10));
+  const byDate = new Map(days.map(day => [day.date, day]));
+  const peak = Math.max(1, ...dates.map(date => byDate.get(date)?.total_tokens || 0));
+  const bars = dates.map(date => {
+    const day = byDate.get(date);
+    const cached = day?.cache_read_tokens || 0;
+    const segments = [[Math.max(0, (day?.input_tokens || 0) - cached), "miss"], [cached, "cached"], [day?.output_tokens || 0, "out"]];
+    return h("div", { class: "day-column", title: `${date} · ${fmtTokens(day?.total_tokens || 0)} 词元 · ${day?.requests || 0} 次请求` },
+      segments.map(([value, cls]) => value > 0 && h("i", { class: cls, style: `height:${100 * value / peak}%` })));
+  });
+  return h("figure", { class: "usage-trend", "aria-label": "近 30 天每日词元用量" },
+    h("div", { class: "day-columns" }, bars),
+    h("div", { class: "chart-dates" }, h("span", {}, dates[0].slice(5)), h("span", {}, dates[29].slice(5))),
+    h("figcaption", { class: "usage-legend" }, [["miss", "未缓存输入"], ["cached", "缓存输入"], ["out", "输出"]].map(([cls, label]) =>
+      h("span", { class: `k ${cls}` }, label))));
+}
+
+function usageTable(title, period, columns, rows, nameColumns, empty) {
+  const cell = (tag, value, i) => h(tag, { class: i >= nameColumns ? "num" : "", scope: tag === "th" ? "col" : null }, value);
+  return h("section", { class: "usage-section" },
+    h("div", { class: "section-head" }, h("h2", {}, title), h("span", {}, period)),
+    h("div", { class: "usage-table table-wrap" }, rows.length ? h("table", { class: "table", "aria-label": title },
+      h("thead", {}, h("tr", {}, columns.map((x, i) => cell("th", x, i)))),
+      h("tbody", {}, rows.map(row => h("tr", {}, row.map((x, i) => cell("td", x, i)))))) : h("p", { class: "empty" }, empty)));
+}
+
 async function settingsOverview(body) {
-  const holder = h("div", {}, h("div", { class: "muted" }, "读取用量…"));
-  put(body, h("div", { class: "page wide" }, pageHead("概览", "所有模型调用的 token 与请求统计（含失败与重试），以及按运行汇总的结果。"), holder));
+  const holder = h("div", { class: "page overview" }, h("div", { class: "muted" }, "读取用量…"));
+  put(body, holder);
   let u;
   try { u = await api("/api/usage"); } catch (error) { put(holder, h("div", { class: "notice error" }, error.message)); return; }
-  const days = (u.days || []).slice(-30);
-  const max = Math.max(1, ...days.map((d) => d.total_tokens));
-  const W = 720, H = 150, bw = W / 30;
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("viewBox", `0 0 ${W} ${H + 18}`);
-  svg.setAttribute("class", "usage-chart");
-  const today = new Date();
-  for (let i = 0; i < 30; i++) {
-    const date = new Date(today.getTime() - (29 - i) * 86400000).toISOString().slice(0, 10);
-    const d = days.find((x) => x.date === date);
-    if (!d) continue;
-    const cached = d.cache_read_tokens || 0, miss = Math.max(0, d.input_tokens - cached), out = d.output_tokens;
-    let y = H;
-    for (const [value, cls] of [[miss, "miss"], [cached, "cached"], [out, "out"]]) {
-      const hgt = (H * value) / max;
-      const r = document.createElementNS(ns, "rect");
-      Object.entries({ x: i * bw + 2, y: y - hgt, width: bw - 4, height: hgt, class: cls }).forEach(([k, v]) => r.setAttribute(k, v));
-      const t = document.createElementNS(ns, "title"); t.textContent = `${date} · ${fmtTokens(d.total_tokens)} 词元 · ${d.requests} 次请求`;
-      r.append(t); svg.append(r); y -= hgt;
-    }
-  }
-  for (const [i, label] of [[0, new Date(today - 29 * 86400000).toISOString().slice(5, 10)], [29, today.toISOString().slice(5, 10)]]) {
-    const t = document.createElementNS(ns, "text");
-    Object.entries({ x: i * bw + (i ? bw : 0), y: H + 14, "text-anchor": i ? "end" : "start", class: "lbl" }).forEach(([k, v]) => t.setAttribute(k, v));
-    t.textContent = label; svg.append(t);
-  }
-  const totals = S.totals || {};
+  const metrics = [
+    ["词元总量", fmtTokens(u.total_tokens_30d || 0)],
+    ["请求次数", fmtInt(u.requests_30d || 0)],
+    ["失败次数", fmtInt(u.failed_requests_30d || 0)],
+    ["缓存命中率", `${Math.round((u.cache_read_rate_30d || 0) * 100)}%`],
+    ["活跃天数", fmtInt(u.active_days_30d || 0)],
+  ];
   put(holder,
-    h("div", { class: "card usage-card" },
-      h("div", { class: "usage-head" }, h("div", {}, h("div", { class: "muted small" }, "近 30 天词元"), h("div", { class: "usage-big" }, fmtTokens(u.total_tokens_30d || 0))),
-        h("div", { class: "usage-facts" },
-          h("span", {}, h("b", {}, fmtInt(u.requests_30d || 0)), " 次请求"),
-          h("span", {}, h("b", {}, fmtInt(u.failed_requests_30d || 0)), " 次失败"),
-          h("span", {}, h("b", {}, `${Math.round((u.cache_read_rate_30d || 0) * 100)}%`), " 缓存命中"),
-          h("span", {}, h("b", {}, fmtInt(u.active_days_30d || 0)), " 个活跃日"))),
-      svg,
-      h("div", { class: "usage-legend" }, h("span", { class: "k miss" }, "未缓存输入"), h("span", { class: "k cached" }, "缓存输入"), h("span", { class: "k out" }, "输出"))),
-    h("div", { class: "card" }, h("div", { class: "section-title" }, "按模型（近 30 天）"),
-      (u.providers_30d || []).length ? h("table", { class: "table" },
-        h("thead", {}, h("tr", {}, ["提供商", "模型", "请求", "输入", "缓存", "输出", "失败"].map((x) => h("th", {}, x)))),
-        h("tbody", {}, u.providers_30d.map((r) => h("tr", {}, h("td", {}, r.provider), h("td", { class: "mono" }, r.model), h("td", {}, fmtInt(r.requests)),
-          h("td", {}, fmtTokens(r.input_tokens)), h("td", {}, fmtTokens(r.cache_read_tokens)), h("td", {}, fmtTokens(r.output_tokens)), h("td", {}, fmtInt(r.failed_requests))))))
-        : h("div", { class: "empty small" }, "还没有模型调用记录。")),
-    h("div", { class: "card" }, h("div", { class: "section-title" }, "按运行"),
-      (totals.by_model || []).length ? h("table", { class: "table" },
-        h("thead", {}, h("tr", {}, ["模型", "运行", "成功", "请求", "输入", "输出"].map((x) => h("th", {}, x)))),
-        h("tbody", {}, totals.by_model.map((r) => h("tr", {}, h("td", { class: "mono" }, r.key), h("td", {}, fmtInt(r.runs)), h("td", {}, fmtInt(r.success)),
-          h("td", {}, fmtInt(r.requests)), h("td", {}, fmtTokens(r.input_tokens)), h("td", {}, fmtTokens(r.output_tokens)))))) : h("div", { class: "empty small" }, "还没有运行。")));
+    h("section", {}, h("div", { class: "section-head" }, h("h1", {}, "模型用量"), h("span", {}, "近 30 天")),
+      h("div", { class: "usage-summary" },
+        h("dl", { class: "usage-metrics" }, metrics.map(([label, value]) => h("div", {}, h("dt", {}, label), h("dd", {}, value)))),
+        usageTrend(u.days || []))),
+    usageTable("模型调用", "近 30 天，含重试", ["提供商", "模型", "请求", "输入词元", "缓存词元", "输出词元", "失败"],
+      (u.providers_30d || []).map(r => [r.provider, r.model, fmtInt(r.requests), fmtTokens(r.input_tokens),
+        fmtTokens(r.cache_read_tokens), fmtTokens(r.output_tokens), fmtInt(r.failed_requests)]), 2, "还没有模型调用记录。"),
+    usageTable("评测运行", "全部运行", ["模型", "运行", "成功", "请求", "输入词元", "输出词元"],
+      (S.totals?.by_model || []).map(r => [r.key, fmtInt(r.runs), fmtInt(r.success), fmtInt(r.requests),
+        fmtTokens(r.input_tokens), fmtTokens(r.output_tokens)]), 1, "还没有运行记录。"));
 }
 
 // -- models ------------------------------------------------------------------
 
 async function loadModelSettings() { return (S.modelSettings = await api("/api/models")); }
 
-async function settingsModels(body) {
-  const holder = h("div", {}, h("div", { class: "muted" }, "读取模型设置…"));
-  put(body, h("div", { class: "page wide" }, pageHead("模型", "发起评测时选择一个模型预设；预设决定调用哪个提供商的哪个模型，以及推理强度、输出上限等参数。",
-    h("button", { class: "btn", onclick: () => providersDialog() }, "管理提供商"),
-    h("button", { class: "btn primary", onclick: () => presetDialog(null) }, "＋ 新建预设")), holder));
-  let m;
-  try { m = await loadModelSettings(); } catch (error) { put(holder, h("div", { class: "notice error" }, error.message)); return; }
-  const label = (name) => m.providers.find((p) => p.name === name)?.label || name;
-  put(holder, m.presets.length
-    ? h("div", { class: "preset-list" }, m.presets.map((p) => h("div", { class: "card preset" },
-        h("span", { class: "avatar" }, (p.name || "?").slice(0, 1).toUpperCase()),
-        h("div", { class: "preset-main" }, h("b", { class: "mono" }, p.name),
-          h("div", { class: "muted small" }, `${label(p.resolved_provider || p.provider)} · ${p.model} · ${fmtTokens(p.context_window_tokens)} 上下文 · 推理 ${effortLabel(p.reasoning_effort) || "默认"} · 最多输出 ${fmtInt(p.max_tokens)}`)),
-        h("button", { class: "btn small", onclick: () => presetDialog(p) }, "配置"))))
-    : h("div", { class: "card empty" }, h("b", {}, "还没有模型预设"), "先在“管理提供商”中添加 API，再新建预设。"));
-}
-
-async function presetDialog(preset) {
-  const m = S.modelSettings || await loadModelSettings();
-  const providers = m.providers.filter((p) => p.configured);
-  if (!providers.length) { toast("请先添加提供商", true); providersDialog(); return; }
-  const v = { name: preset?.name || "", provider: preset?.provider && preset.provider !== "auto" ? preset.provider : (preset?.resolved_provider || providers[0].name),
-    model: preset?.model || "", reasoning_effort: preset?.reasoning_effort || "", max_tokens: preset?.max_tokens || 8192,
-    temperature: preset?.temperature ?? 0.1, context_window_tokens: preset?.context_window_tokens || 200000 };
-  const models = h("datalist", { id: "presetModels" });
-  const loadList = async () => {
-    put(models);
-    try {
-      const r = await api(`/api/models/providers/${encodeURIComponent(v.provider)}/models`);
-      put(models, (r.models || []).map((x) => h("option", { value: typeof x === "string" ? x : x.id })));
-    } catch { /* the list is advisory */ }
-  };
-  const input = (key, attrs = {}) => h("input", { class: "input", value: v[key], oninput: (e) => { v[key] = e.target.value; }, ...attrs });
-  const efforts = preset?.reasoning_effort_values?.length ? preset.reasoning_effort_values : ["", "none", "minimal", "low", "medium", "high", "xhigh"];
-  const error = h("div", { class: "notice error", hidden: true });
-  const save = async () => {
-    const payload = { name: v.name.trim(), provider: v.provider, model: v.model.trim(), reasoning_effort: v.reasoning_effort,
-      max_tokens: Number(v.max_tokens), temperature: Number(v.temperature), context_window_tokens: Number(v.context_window_tokens) };
-    try {
-      await api(preset ? `/api/models/presets/${encodeURIComponent(preset.name)}` : "/api/models/presets", { method: preset ? "PUT" : "POST", json: payload });
-      d.close(); toast("已保存"); route();
-    } catch (e) { error.textContent = e.message; error.hidden = false; }
-  };
-  const remove = async () => {
-    if (!confirm(`删除预设 ${preset.name}？`)) return;
-    try { await api(`/api/models/presets/${encodeURIComponent(preset.name)}`, { method: "DELETE" }); d.close(); toast("已删除"); route(); }
-    catch (e) { error.textContent = e.message; error.hidden = false; }
-  };
-  const d = dialog(preset ? "配置预设" : "新建预设",
-    row("预设名称", input("name", { placeholder: "例如 gpt-6-astra" })),
-    row("提供商", h("select", { class: "input", onchange: (e) => { v.provider = e.target.value; loadList(); } },
-      providers.map((p) => h("option", { value: p.name, selected: p.name === v.provider }, p.label || p.name)))),
-    row("模型", h("div", {}, input("model", { list: "presetModels", placeholder: "模型 ID" }), models)),
-    row("推理强度", h("select", { class: "input", onchange: (e) => { v.reasoning_effort = e.target.value; } },
-      efforts.map((e) => h("option", { value: e, selected: e === (v.reasoning_effort || "") }, effortLabel(e) || "默认")))),
-    h("details", { class: "sys" }, h("summary", {}, "高级选项"),
-      row("最大输出词元", input("max_tokens", { type: "number", min: 1 })),
-      row("温度", input("temperature", { type: "number", step: "0.05", min: 0, max: 2 })),
-      row("上下文窗口", input("context_window_tokens", { type: "number", min: 1 }))),
-    error,
-    h("div", { class: "modal-foot" }, preset ? h("button", { class: "btn danger", onclick: remove }, "删除") : null, h("span", { class: "spacer" }),
-      h("button", { class: "btn primary", onclick: save }, "保存")));
-  loadList();
-}
-
-async function providersDialog() {
-  const m = await loadModelSettings();
-  const configured = m.providers.filter((p) => p.configured);
-  const builtins = m.providers.filter((p) => !p.configured && !p.is_custom && !p.oauth && p.name !== "custom");
-  const d = dialog("管理提供商",
-    configured.length ? configured.map((p) => h("div", { class: "provider-row" },
-      h("span", { class: "avatar" }, (p.label || p.name).slice(0, 1).toUpperCase()),
-      h("div", { class: "preset-main" }, h("b", {}, p.label || p.name), h("div", { class: "muted small mono" }, p.api_base || p.default_api_base || "")),
-      h("button", { class: "btn small", onclick: () => { d.close(); providerDialog(p); } }, "配置")))
-      : h("div", { class: "empty small" }, "还没有提供商。"),
-    h("div", { class: "modal-foot" },
-      builtins.length ? h("select", { class: "input", style: "max-width:220px", onchange: (e) => { const p = builtins.find((x) => x.name === e.target.value); if (p) { d.close(); providerDialog(p); } } },
-        h("option", { value: "" }, "添加内置提供商…"), builtins.map((p) => h("option", { value: p.name }, p.label || p.name))) : null,
-      h("span", { class: "spacer" }),
-      h("button", { class: "btn primary", onclick: () => { d.close(); providerDialog(null); } }, "＋ 添加自定义提供商")));
-}
-
-function providerDialog(p) {
-  const custom = !p || p.is_custom;
-  const providerApi = p?.api || {};
-  const v = { name: p?.label || "", api_base: p?.api_base || "", api_key: "", thinking_style: p?.thinking_style || "",
-    use_proxy: !!p?.use_proxy, apis: providerApi.supported_apis || providerApi.supportedApis || (custom ? ["chat_completions"] : []),
-    preferred: providerApi.preferred_api || providerApi.preferredApi || "",
-    headers: p?.extra_headers ? JSON.stringify(p.extra_headers) : "", query: p?.extra_query ? JSON.stringify(p.extra_query) : "" };
-  const input = (key, attrs = {}) => h("input", { class: "input", value: v[key], oninput: (e) => { v[key] = e.target.value; }, ...attrs });
-  const error = h("div", { class: "notice error", hidden: true });
-  const save = async () => {
-    const payload = { api_base: v.api_base.trim() || null, thinking_style: v.thinking_style || null, use_proxy: v.use_proxy };
-    if (v.api_key) payload.api_key = v.api_key;
-    if (custom) {
-      payload.name = v.name.trim();
-      if (v.apis.length) payload.api = { supportedApis: v.apis, preferredApi: v.apis.includes(v.preferred) ? v.preferred : v.apis[0] };
-    }
-    try {
-      if (v.headers) payload.extra_headers = JSON.parse(v.headers);
-      if (v.query) payload.extra_query = JSON.parse(v.query);
-    } catch { error.textContent = "请求头和查询参数需要填写 JSON 对象"; error.hidden = false; return; }
-    try {
-      if (p) { if (!custom) delete payload.name; await api(`/api/models/providers/${encodeURIComponent(p.name)}`, { method: "PUT", json: payload }); }
-      else await api("/api/models/providers", { method: "POST", json: payload });
-      d.close(); toast("已保存"); route();
-    } catch (e) { error.textContent = e.message; error.hidden = false; }
-  };
-  const remove = async () => {
-    if (!confirm(`删除提供商 ${p.label || p.name}？`)) return;
-    try { await api(`/api/models/providers/${encodeURIComponent(p.name)}`, { method: "DELETE" }); d.close(); toast("已删除"); route(); }
-    catch (e) { error.textContent = e.message; error.hidden = false; }
-  };
-  const d = dialog(p ? `配置 ${p.label || p.name}` : "添加自定义提供商",
-    custom ? row("名称", input("name", { placeholder: "例如 我的 API" })) : null,
-    row("API 地址", input("api_base", { placeholder: p?.default_api_base || "https://host/v1" })),
-    row("API 密钥", input("api_key", { type: "password", autocomplete: "off", placeholder: p?.configured ? "已设置，留空保持不变" : "" }), "只保存在服务器上"),
-    custom ? row("支持的接口", h("div", { class: "checks" }, Object.entries(API_LABELS).map(([k, label]) => h("label", { class: "check" },
-      h("input", { type: "checkbox", checked: v.apis.includes(k), onchange: (e) => { v.apis = e.target.checked ? [...v.apis, k] : v.apis.filter((x) => x !== k); } }), label)))) : null,
-    custom ? row("默认接口", h("select", { class: "input", onchange: (e) => { v.preferred = e.target.value; } },
-      Object.entries(API_LABELS).map(([k, label]) => h("option", { value: k, selected: k === v.preferred }, label)))) : null,
-    h("details", { class: "sys" }, h("summary", {}, "高级选项"),
-      row("推理字段格式", h("select", { class: "input", onchange: (e) => { v.thinking_style = e.target.value; } },
-        REASONING_FORMATS.map(([k, label]) => h("option", { value: k, selected: k === v.thinking_style }, label))), "部分接口用不同字段开启推理"),
-      row("使用代理", h("input", { type: "checkbox", checked: v.use_proxy, onchange: (e) => { v.use_proxy = e.target.checked; } })),
-      row("额外请求头", input("headers", { placeholder: '{"X-Key": "value"}' })),
-      row("额外查询参数", input("query", { placeholder: '{"api-version": "2024-10-01"}' }))),
-    error,
-    h("div", { class: "modal-foot" }, p && p.is_custom ? h("button", { class: "btn danger", onclick: remove }, "删除") : null, h("span", { class: "spacer" }),
-      h("button", { class: "btn primary", onclick: save }, "保存")));
+function settingsModels(body) {
+  put(body, h("iframe", { class: "model-settings-frame", title: "模型设置", src: "/model-ui/" }));
 }
 
 // -- benchmarks ----------------------------------------------------------------
@@ -946,10 +815,10 @@ function settingsBenchmarks(body) {
   const s = S.config.settings || {};
   const wheel = h("input", { class: "input mono", value: s.runtime_wheel || "", placeholder: "/path/to/evoab_runtime-…-py3-none-any.whl" });
   put(body, h("div", { class: "page wide" },
-    pageHead("评测集", "已接入的评测集与其运行环境；也可以按通用接口接入自己的评测集。",
+    pageHead("评测环境", null,
       h("button", { class: "btn", onclick: async (e) => { e.currentTarget.disabled = true; await loadBenchmarks(); route(); toast("已重新检查"); } }, "重新检查"),
       h("button", { class: "btn primary", onclick: () => customBenchmarkDialog() }, "＋ 添加评测集")),
-    h("div", { class: "card" }, row("运行时安装包", h("div", { class: "row" }, wheel,
+    h("div", { class: "card card-pad runtime-wheel" }, row("运行时安装包", h("div", { class: "row" }, wheel,
       h("button", { class: "btn", onclick: async () => { S.config.settings = await api("/api/settings", { method: "PUT", json: { runtime_wheel: wheel.value.trim() || null } }); toast("已保存"); } }, "保存")),
       "安装评测环境时装入的 evoab-runtime wheel；留空则从软件源安装")),
     benchmarkCards()));
@@ -1051,7 +920,6 @@ async function init() {
     put($("main"), h("div", { class: "page" }, h("div", { class: "notice error" }, `无法连接 Studio 服务：${error.message}`)));
     return;
   }
-  $("hostInfo").textContent = S.config.runs_root;
   applyDefaults();
   window.addEventListener("hashchange", route);
   route();

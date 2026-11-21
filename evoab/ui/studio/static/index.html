@@ -8,22 +8,16 @@
   </head>
   <body>
     <div class="shell">
-      <aside class="sidebar">
-        <a class="brand" href="#new">
-          <span class="brand-mark">E</span>
-          <span class="brand-text"><b>EvoAB</b><small>工作台</small></span>
-        </a>
-        <nav class="nav" id="nav">
-          <a href="#new" data-page="new"><span class="ico">＋</span>发起评测</a>
-          <a href="#history" data-page="history"><span class="ico">≡</span>运行记录</a>
-        </nav>
-        <div class="nav-bottom">
-          <nav class="nav">
-            <a href="#settings" data-page="settings"><span class="ico">⚙</span>设置</a>
+      <header class="app-header">
+        <div class="header-inner">
+          <a class="wordmark" href="#new">EvoAB</a>
+          <nav class="main-nav" aria-label="主导航">
+            <a href="#new" data-page="new">发起评测</a>
+            <a href="#history" data-page="history">运行记录</a>
+            <a href="#settings" data-page="settings">设置</a>
           </nav>
-          <div class="host" id="hostInfo"></div>
         </div>
-      </aside>
+      </header>
       <main class="main" id="main"></main>
     </div>
     <div class="toast" id="toast" hidden></div>
