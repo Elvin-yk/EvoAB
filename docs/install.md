@@ -29,12 +29,16 @@ Use Python 3.11 in a dedicated virtual environment (with `uv` if available):
 
 ```bash
 cd ~/evoab
-uv venv --python 3.11 .venv || python3.11 -m venv .venv
-uv pip install --python .venv/bin/python -e '.[agent]' || .venv/bin/pip install -e '.[agent]'
+uv venv --seed --python 3.11 .venv || python3.11 -m venv .venv
+uv pip install --python .venv/bin/python -e '.[agent]' || .venv/bin/python -m pip install -e '.[agent]'
 .venv/bin/evoab --help
 ```
 
-In mainland China, add `--index-url https://pypi.tuna.tsinghua.edu.cn/simple`
+If downloads fail with TLS errors such as `tls handshake eof`, the shell's proxy
+variables may be breaking HTTPS to PyPI: test `curl https://pypi.org/simple/`
+with and without them, and run the install without the proxy
+(`env -u https_proxy -u http_proxy …`) when the direct connection works. In
+mainland China, add `--index-url https://pypi.tuna.tsinghua.edu.cn/simple`
 (or set `UV_DEFAULT_INDEX` / `PIP_INDEX_URL`) if PyPI is slow or unreachable.
 
 ## 4. Docker with GPU access
@@ -46,7 +50,8 @@ Benchmarks run in Docker containers. Skip what is already in place:
 - NVIDIA Container Toolkit (`nvidia-container-toolkit` from NVIDIA's apt
   repository), then `sudo nvidia-ctk runtime configure --runtime=docker` and
   restart Docker.
-- Verify: `docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi`.
+- Verify: `docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi`
+  (retry once if the pull ends with a bare `EOF`; registry connections can drop).
 - If `ghcr.io` or Docker Hub needs a proxy, configure the Docker daemon's proxy
   (systemd drop-in `HTTP_PROXY`/`HTTPS_PROXY`) or a registry mirror.
 
