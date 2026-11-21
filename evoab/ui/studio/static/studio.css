@@ -577,3 +577,5 @@ details.sys.inner { margin: 6px 0; }
 .dp-switch { margin-left: auto; }
 .dp-switch .row { display: flex; gap: 6px; align-items: center; }
 .dp-switch select { max-width: 340px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
+.dp-player.waiting .dp-output, .dp-player.waiting .dp-note, .dp-player.waiting .dp-alert { display: none !important; }
+.dp-player.waiting .dp-telemetry::after { content: "模型推理中：动作块返回后才会执行"; font-size: 12px; color: var(--muted); align-self: center; }

@@ -179,8 +179,9 @@ function drawDirect() {
     if (path && img.dataset.path !== path) { img.src = fileUrl(path); img.dataset.path = path; }
   }
   preload(s.step);
-  for (const overlay of document.querySelectorAll(".dp-overlay")) {
-    overlay.hidden = s.kind !== "wait";
+  document.querySelector(".dp-player").classList.toggle("waiting", s.kind === "wait");
+  for (const [i, overlay] of [...document.querySelectorAll(".dp-overlay")].entries()) {
+    overlay.hidden = s.kind !== "wait" || i > 0;
     if (s.kind === "wait") put(overlay, h("span", { class: "eyebrow" }, `Inference ${pad2(s.call + 1)} · model thinking`),
       h("b", { class: "mono" }, `${s.into.toFixed(1)} s / ${s.dur.toFixed(1)} s`));
   }
