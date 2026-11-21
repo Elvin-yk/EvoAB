@@ -10,7 +10,7 @@ not included.
 
 Studio's 部署 button (or `evoab benchmarks prepare robotwin --container`) builds
 `evoab/integrations/robotwin/Dockerfile` locally: the pinned revision below,
-PyTorch 2.7 / CUDA 12.8, SAPIEN 3.0.0b1, mplib 0.2.1, CuRobo v0.7.8 compiled for
+PyTorch 2.8 / CUDA 12.8, SAPIEN 3.0.0b1, mplib 0.2.1, CuRobo v0.7.8 compiled for
 SM 8.0–12.0, and the official assets from `TianxingChen/RoboTwin2.0`. Studio
 runs use the `demo_clean` configuration without depth; the seed defaults to 1.
 

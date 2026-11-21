@@ -3,7 +3,8 @@
 # Adapted from docker/Dockerfile.robotwin in allenai/vla-evaluation-harness
 # (Apache-2.0). Their published image pins an older RoboTwin revision and a
 # CUDA 12.1 PyTorch that cannot run on Blackwell GPUs, so this recipe builds the
-# revision EvoAB pins with PyTorch 2.7 / CUDA 12.8 and CuRobo compiled up to SM 12.0.
+# revision EvoAB pins with PyTorch 2.8 (its PyPI wheels use CUDA 12.8,
+# so mirrors of PyPI serve them) and CuRobo compiled up to SM 12.0.
 # The base image is public. EvoAB adds its runtime in a separate local layer.
 FROM ghcr.io/allenai/vla-evaluation-harness/base@sha256:9198417200a2675b436b33e454dc75103c375bfee11b22bba8eb07380674c07c
 
@@ -26,7 +27,7 @@ SHELL ["conda", "run", "-n", "robotwin", "/bin/bash", "-c"]
 # honour (no upload dates): drop it when a mirror is used; exact pins keep the
 # resolution identical either way.
 RUN uv pip install --no-cache-dir $( [ -n "${UV_DEFAULT_INDEX}${UV_INDEX_URL}" ] && echo --no-config ) \
-        "torch==2.7.0" "torchvision==0.22.0" --torch-backend cu128
+        "torch==2.8.0" "torchvision==0.23.0"
 # sapien imports pkg_resources (removed from setuptools 70+).
 RUN uv pip install --no-cache-dir $( [ -n "${UV_DEFAULT_INDEX}${UV_INDEX_URL}" ] && echo --no-config ) \
         "setuptools==69.5.1" wheel==0.45.1 \

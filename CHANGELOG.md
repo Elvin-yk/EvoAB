@@ -19,7 +19,7 @@
   on the host and mounted. Without a runtime wheel, the local layer installs the
   `evoab` package Studio runs. CALVIN uses allenai's public image (revisions
   match EvoAB's pins); RoboTwin builds its pinned revision locally with
-  PyTorch 2.7 / CUDA 12.8 and CuRobo compiled for SM 8.0–12.0. Studio lists only
+  PyTorch 2.8 / CUDA 12.8 and CuRobo compiled for SM 8.0–12.0. Studio lists only
   benchmarks it can deploy in one step, each with one status and one button
   (部署, or 已部署 once ready; the LIBERO catalog placeholder is gone), plus a
   部署条件 check (Docker, GPU containers, disk, model presets; also

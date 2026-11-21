@@ -89,10 +89,33 @@ class Preparation:
 
     def install_harness(self):
         wheel = self.wheel
-        requirement = str(wheel.expanduser().absolute()) if wheel else f'evoab-runtime=={__version__}'
-        if wheel and (not wheel.is_file() or wheel.suffix != '.whl'):
+        if wheel is None:
+            self.install_source_harness()
+            return
+        if not wheel.is_file() or wheel.suffix != '.whl':
             raise ValueError('--wheel must be an existing wheel')
-        self.pip(requirement)
+        self.pip(str(wheel.expanduser().absolute()))
+
+    def install_source_harness(self):
+        """Without a wheel, install the running ``evoab`` package (as containers do).
+
+        The package is copied into the runtime root and added to the venv with a
+        ``.pth`` file; an ``evoab-runtime`` metadata record keeps version checks working.
+        """
+        from .container import _installed_package
+        source, requirements, _ = _installed_package()
+        if requirements:
+            self.pip(*requirements)
+        target = self.root / 'runtime-source'
+        shutil.rmtree(target, ignore_errors=True)
+        shutil.copytree(source, target / 'evoab', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        site = Path(subprocess.check_output([str(self.python), '-c', 'import sysconfig; print(sysconfig.get_paths()["purelib"])'],
+                                            text=True).strip())
+        (site / 'evoab-runtime.pth').write_text(str(target) + '\n')
+        record = site / f'evoab_runtime-{__version__}.dist-info'
+        record.mkdir(exist_ok=True)
+        (record / 'METADATA').write_text(f'Metadata-Version: 2.1\nName: evoab-runtime\nVersion: {__version__}\n')
+        (record / 'INSTALLER').write_text('evoab\n')
 
     def git(self, url, revision, target, *, submodules=False):
         target = Path(target)

@@ -9,7 +9,7 @@ pinned by digest, or ships a build recipe that the user's machine builds once.
 | LIBERO-PRO | public image | `ghcr.io/allenai/vla-evaluation-harness/libero-pro` (pinned digest) plus the official perturbation suites from `zhouxueyang/LIBERO-Pro` |
 | LIBERO-Plus | local build | `evoab/integrations/libero_plus/Dockerfile` (based on allenai's public base image; their LIBERO-Plus image is not public) |
 | CALVIN | public image | `ghcr.io/allenai/vla-evaluation-harness/calvin` (pinned digest; same `calvin` / `calvin_env` revisions as EvoAB) |
-| RoboTwin 2.0 | local build | `evoab/integrations/robotwin/Dockerfile` (pinned revision, PyTorch 2.7 / CUDA 12.8, CuRobo for SM 8.0–12.0; allenai's image pins an older revision) |
+| RoboTwin 2.0 | local build | `evoab/integrations/robotwin/Dockerfile` (pinned revision, PyTorch 2.8 / CUDA 12.8, CuRobo for SM 8.0–12.0; allenai's image pins an older revision) |
 | RoboDojo | local build | the Dockerfile in RoboDojo's pinned upstream checkout (Isaac Sim 5.1); requires accepting the NVIDIA Isaac Sim EULA; assets (~38.5 GiB) downloaded on the host and mounted |
 
 ## A new machine, step by step
