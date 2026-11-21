@@ -11,6 +11,19 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(process.argv[2], "webui");
 const require = createRequire(path.join(root, "package.json"));
 const { build } = await import(pathToFileURL(path.join(path.dirname(require.resolve("vite/package.json")), "dist/node/index.js")).href);
+function svgToDataUri(svg) {
+  const normalized = svg.trim().replaceAll('"', "'");
+  return (
+    "data:image/svg+xml," +
+    normalized
+      .replaceAll("%", "%25")
+      .replaceAll("<", "%3c")
+      .replaceAll(">", "%3e")
+      .replaceAll("#", "%23")
+      .replace(/\s+/g, "%20")
+  );
+}
+const antigravityLogoDataUri = svgToDataUri(await readFile(path.join(here, "antigravity-color.svg"), "utf8"));
 // All other settings panels share the upstream SettingsView. Keep its optional
 // modules in a separate download without changing the model controls.
 const entry = path.join(here, "entry.tsx");
@@ -32,7 +45,30 @@ const result = await build({
   plugins: [{
     name: "studio-settings-api",
     transform(code, id) {
-      if (id === path.join(root, "src/lib/api.ts")) return code.replaceAll('${base}/api/settings', '${base}/model-ui/settings');
+      let next = code;
+      if (id === path.join(root, "src/lib/api.ts")) {
+        next = next.replaceAll('${base}/api/settings', '${base}/model-ui/settings');
+      }
+      if (!id.startsWith(path.join(root, "src") + path.sep)) return next === code ? undefined : next;
+      if (next.includes('"gemini.google.com"') && !/\bantigravity\s*:/.test(next)) {
+        next = next.replace(
+          /(\bgemini\s*:\s*)([A-Za-z_$][\w$]*)\(\s*"gemini\.google\.com"/,
+          (_, prefix, fn) => `antigravity: ${fn}("antigravity.google", "#4285F4", "AG", [${JSON.stringify(antigravityLogoDataUri)}]), ${prefix}${fn}("gemini.google.com"`,
+        );
+      }
+      if (/\bbrave_search\s*:\s*["']Brave Search["']/.test(next) && !/\bantigravity\s*:\s*["']Google Antigravity["']/.test(next)) {
+        next = next.replace(
+          /(\bbrave_search\s*:\s*["']Brave Search["'])/,
+          'antigravity: "Google Antigravity", $1',
+        );
+      }
+      if (next.includes("claude 克劳德 克勞德") && !/\bantigravity\s*:\s*["']google antigravity/i.test(next)) {
+        next = next.replace(
+          /(\banthropic\s*:\s*["']claude 克劳德 克勞德["'])/,
+          'antigravity: "google antigravity agy 谷歌 反重力", $1',
+        );
+      }
+      return next === code ? undefined : next;
     },
   }],
   build: { write: false, target: "es2022", reportCompressedSize: false, modulePreload: false,

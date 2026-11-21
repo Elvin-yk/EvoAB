@@ -110,12 +110,17 @@ class HttpMcpServer:
                     or not isinstance(body.get("params", {}), dict)):
                 return JSONResponse(self._error(None, -32600, "Invalid request"), status_code=400)
             if "id" not in body:
-                if body["method"] == "notifications/initialized":
+                if body["method"] in (
+                    "notifications/initialized",
+                    "notifications/roots/list_changed",
+                    "notifications/cancelled",
+                    "notifications/progress",
+                ):
                     return Response(status_code=202)
                 # This adapter does not offer generic JSON-RPC fire-and-forget tools.
                 # Reject at the HTTP boundary, without a JSON-RPC notification reply.
                 return Response(
-                    "Only notifications/initialized may omit an id; MCP requests require an id",
+                    "Only MCP client notifications may omit an id; MCP requests require an id",
                     status_code=400, media_type="text/plain",
                 )
             if body["id"] is None or isinstance(body["id"], bool) or not isinstance(body["id"], (str, int)):
