@@ -138,10 +138,10 @@ function drawStatic() {
         c.safe_hold ? h("span", { class: "tag bad" }, "保持") : null,
         (c.output_attempts || 1) > 1 ? h("span", { class: "tag warn" }, `重试×${c.output_attempts - 1}`) : null,
         c.safety_clamped ? h("span", { class: "tag" }, "限幅") : null),
-      h("span", { class: "dp-call-note" }, reviewText(c.note) || errorLabel(c.error))),
+      h("span", { class: "dp-call-note" }, c.note || errorLabel(c.error))),
     h("span", { class: "dp-call-open", title: "查看这次推理的完整请求与回复", onclick: (e) => { e.stopPropagation(); openInference(i); } }, "详情"))));
   put($("dpPrompt"), Object.entries(tr.prompt_blocks || {}).map(([name, text]) =>
-    h("details", { class: "sys" }, h("summary", {}, `${PROMPT_BLOCKS[name] || name} · ${fmtInt(text.length)} 字`), h("pre", { class: "txt" }, reviewText(text)))),
+    h("details", { class: "sys" }, h("summary", {}, `${PROMPT_BLOCKS[name] || name} · ${fmtInt(text.length)} 字`), h("pre", { class: "txt" }, text))),
     h("button", { class: "btn small ghost", onclick: () => openFile("direct/prompt.md") }, "完整提示词"),
     h("button", { class: "btn small ghost", onclick: () => openFile("direct/policy.json") }, "策略配置"));
   if ($("dpChart").closest("details").open) drawChart();
@@ -208,7 +208,7 @@ function drawDirect() {
   $("dpAlert").hidden = !alerts.length;
   $("dpAlert").textContent = alerts.join(" · ");
   $("dpNote").parentElement.hidden = !call?.note;
-  $("dpNote").textContent = reviewText(call?.note);
+  $("dpNote").textContent = call?.note || "";
   drawOutput(call, s);
   drawChartCursor(s.step);
   document.querySelectorAll(".dp-call").forEach((el) => el.classList.toggle("active", Number(el.dataset.call) === s.call));

@@ -168,6 +168,10 @@ class Workbench:
         """All runs, newest first. ``live(monitor_id)`` may add live progress to running ones."""
         items = scan_runs(self.runs_root)
         for run in items:
+            if not run["instruction"] and run.get("task") and run.get("profile"):
+                entry = benchmarks.task_info(run["integration"], run["profile"], run["task"])
+                if entry:
+                    run["instruction"] = entry.get("instruction")
             if live and run["status"] == "running" and run.get("monitor_id"):
                 run["live"] = live(run["monitor_id"])
         return items

@@ -1,4 +1,4 @@
-// EvoAB Studio: new run, running, history, run detail with replay, benchmarks, settings.
+// EvoAB Studio: new run, history, run detail with replay, benchmarks, settings.
 "use strict";
 
 // -- helpers -----------------------------------------------------------------
@@ -109,15 +109,15 @@ function effortLabel(value) {
     max: "最高" })[value] || value;
 }
 
-function taskLabel(text) {
-  const match = /^pick up the (.+?) and place it in the basket[.]?$/i.exec((text || "").replaceAll("_", " "));
-  const item = match && ({ "cream cheese": "奶油奶酪", "alphabet soup": "字母汤罐头", "tomato sauce": "番茄酱",
-    "orange juice": "橙汁", ketchup: "番茄沙司", milk: "牛奶", butter: "黄油", "salad dressing": "沙拉酱",
-    "bbq sauce": "烧烤酱", "chocolate pudding": "巧克力布丁" })[match[1].toLowerCase()];
-  return item ? `拿起${item}，放进篮子里` : text;
+const taskName = (task) => String(task || "").split("/").pop();
+const runTask = (run) => run.instruction || taskName(run.task) || "—";
+
+function runBenchmark(run) {
+  const custom = run.integration === "custom";
+  const bench = S.benchmarks.find((b) => b.integration === run.integration && (!custom || b.name === run.profile));
+  return bench?.title || (custom && run.profile) || run.integration || "—";
 }
 
-const taskName = (task) => taskLabel(String(task || "").split("/").pop());
 const runTitle = (run) => `#${run.short_id || "—"}`;
 const pill = (status, labels = RUN_STATUS) => h("span", { class: `pill ${status}` }, labels[status] || status);
 const isLive = (run) => run && (run.status === "running" || run.status === "starting");
@@ -142,9 +142,6 @@ async function loadRuns() {
   const data = await api("/api/runs");
   S.runs = data.runs;
   S.totals = data.totals;
-  const live = S.runs.filter(isLive).length;
-  $("runningBadge").hidden = !live;
-  $("runningBadge").textContent = live;
 }
 async function loadBenchmarks() {
   const integrations = await api("/api/benchmarks");
@@ -175,6 +172,7 @@ let current = { page: null, arg: null };
 function route() {
   const hash = location.hash.slice(1) || "new";
   const [section, ...rest] = hash.split("/");
+  if (section === "running") { location.replace("#history"); return; }
   const page = section === "launch" ? "run" : section;
   const arg = section === "launch" ? hash : rest.join("/");
   const same = current.page === page && current.arg === arg;
@@ -187,7 +185,7 @@ function route() {
   const main = $("main");
   if (!same) main.scrollTop = 0;
   if (page === "benchmarks") { location.replace("#settings/benchmarks"); return; }
-  const pages = { new: pageNew, running: pageRunning, history: pageHistory, run: pageRun, settings: pageSettings };
+  const pages = { new: pageNew, history: pageHistory, run: pageRun, settings: pageSettings };
   (pages[page] || pageNew)(main, arg);
 }
 function pageHead(title, subtitle, ...actions) {
@@ -318,7 +316,7 @@ async function stepTask(body) {
     },
       h("div", { class: "t", title: t.task }, taskName(t.task)),
       h("span", {}, t.difficulty ? h("span", { class: "tag" }, t.difficulty) : null, " ", h("span", { class: "tag" }, suiteLabel(t.suite))),
-      h("div", { class: "s", title: t.instruction }, [taskLabel(t.instruction) || "（无说明）", `本体 ${t.embodiment}`, t.category,
+      h("div", { class: "s", title: t.instruction }, [t.instruction || "（无说明）", `本体 ${t.embodiment}`, t.category,
         t.max_steps ? `步数上限 ${t.max_steps}` : null].filter(Boolean).join(" · ")),
     )) : [h("div", { class: "empty" }, "没有匹配的任务")]));
   };
@@ -433,7 +431,7 @@ function stepConfirm(body) {
   const method = selectedMethod();
   const rows = [
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`], ["任务", taskName(w.task.task)],
-    ["说明", taskLabel(w.task.instruction) || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
+    ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", methodLabel(method.label)], ["推理强度", effortLabel(w.effort)],
     ["模型预设", w.model],
     ...(method.interaction === "direct_policy" ? [["直接策略设置", Object.entries(directPayload()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
@@ -452,54 +450,21 @@ async function launchRun(event) {
   const button = event.currentTarget;
   button.disabled = true;
   try {
-    const { launch_id } = await api("/api/runs", {
+    await api("/api/runs", {
       method: "POST",
       json: { integration: w.bench.integration, profile: w.bench.profile, task: w.task.task,
               model: w.model, reasoning_effort: w.effort, method: w.method,
               ...(selectedMethod()?.interaction === "direct_policy" ? { direct: directPayload() } : {}) },
     });
-    toast("已启动，环境准备约需 30 秒");
-    await loadRuns();
-    location.hash = `#run/launch/${launch_id}`;
   } catch (error) {
     toast(`启动失败：${error.message}`, true);
     button.disabled = false;
+    return;
   }
-}
-
-// -- running -----------------------------------------------------------------
-
-function pageRunning(main) {
-  const live = S.runs.filter(isLive);
-  const cards = live.map((run) => {
-    const lp = run.live || {};
-    const budget = lp.max_steps || run.max_steps;
-    const steps = lp.steps ?? run.environment_steps;
-    const pct = budget && steps != null ? Math.min(100, (100 * steps) / budget) : 0;
-    return h("div", { class: "card run-card" },
-      h("a", { class: "thumb", href: `#${run.key}` },
-        lp.frame_url ? h("img", { src: lp.frame_url, alt: "最新画面" }) : h("span", {}, run.status === "starting" ? "环境准备中…" : "等待画面"),
-        pill(run.status)),
-      h("div", { class: "body" },
-        h("a", { class: "t", href: `#${run.key}`, title: run.task }, h("span", { class: "mono" }, runTitle(run)), " ", taskName(run.task)),
-        h("div", { class: "muted small" }, `${suiteLabel(run.benchmark)} · ${methodLabel(run.method)} · ${run.model}`),
-        h("div", { class: "row small" }, h("span", { class: "muted" }, "环境步数"), h("span", { class: "spacer" }),
-          h("span", {}, `${steps ?? "—"} / ${budget ?? "—"}`)),
-        h("div", { class: "progress" }, h("i", { style: `width:${pct}%` })),
-        h("div", { class: "kv" },
-          h("div", {}, h("span", {}, "已运行"), fmtDuration(run.elapsed_s)),
-          h("div", {}, h("span", {}, "模型请求"), fmtInt(run.usage.requests)),
-          h("div", {}, h("span", {}, "词元"), fmtTokens(run.usage.total_tokens)))),
-      h("div", { class: "foot" },
-        h("a", { class: "btn small", href: `#${run.key}` }, "查看详情"),
-        h("span", { class: "spacer" }),
-        run.launch_id ? h("button", { class: "btn small danger", onclick: (e) => stopRun(run, e.currentTarget) }, "停止") : null));
-  });
-  put(main, h("div", { class: "page wide" },
-    pageHead("进行中", live.length ? `${live.length} 个运行正在进行，每 5 秒刷新` : "当前没有正在进行的运行",
-      h("a", { class: "btn primary", href: "#new" }, "＋ 发起评测")),
-    live.length ? h("div", { class: "run-cards" }, cards)
-      : h("div", { class: "card empty" }, h("b", {}, "没有正在进行的运行"), "在“发起评测”里启动一次运行，进度会显示在这里。")));
+  Object.assign(S.history, { query: "", status: "all", bench: "all", model: "all" });
+  toast("已提交评测");
+  location.hash = "#history";
+  await refresh();
 }
 
 async function stopRun(run, button) {
@@ -523,7 +488,7 @@ function filteredRuns() {
     if (f.status !== "all" && r.status !== f.status) return false;
     if (f.bench !== "all" && `${r.integration}/${r.profile}` !== f.bench) return false;
     if (f.model !== "all" && r.model !== f.model) return false;
-    if (q && ![r.task, r.model, r.benchmark, r.provider, r.id].some((v) => (v || "").toLowerCase().includes(q))) return false;
+    if (q && ![r.task, r.instruction, runBenchmark(r), r.model, r.benchmark, r.provider, r.id].some((v) => (v || "").toLowerCase().includes(q))) return false;
     return true;
   });
 }
@@ -535,10 +500,14 @@ function pageHistory(main) {
   const uniq = (fn) => [...new Set(S.runs.map(fn).filter(Boolean))].sort();
   const select = (key, all, values, labels = {}) => h("select", { class: "select", onchange: (e) => { f[key] = e.target.value; renderTable(); } },
     h("option", { value: "all" }, all), values.map((v) => h("option", { value: v, selected: f[key] === v }, labels[v] || v)));
+  const heading = pageHead("运行记录");
+  const count = h("p", {});
+  heading.firstElementChild.append(count);
   const renderTable = () => {
+    count.textContent = `共 ${S.runs.length} 次运行 · 运行目录 ${S.config.runs_root}`;
     const runs = filteredRuns();
     put(tableHolder, runs.length ? h("div", { class: "card table-wrap" }, h("table", { class: "table" },
-      h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "运行 ID"), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "套件"), h("th", {}, "方法"),
+      h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "运行 ID"), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "评测集"), h("th", {}, "方法"),
         h("th", {}, "模型"), h("th", { class: "num" }, "第几次"), h("th", { class: "num" }, "步数"), h("th", { class: "num" }, "用时"),
         h("th", { class: "num" }, "词元"), h("th", {}, "开始时间"))),
       h("tbody", {}, runs.map((r) => h("tr", { class: "clickable", onclick: () => (location.hash = `#${r.key}`) },
@@ -548,12 +517,12 @@ function pageHistory(main) {
         } })),
         h("td", { class: "mono" }, runTitle(r)),
         h("td", {}, pill(r.status)),
-        h("td", { class: "task-cell", title: r.task }, taskName(r.task) || "—"),
-        h("td", {}, suiteLabel(r.benchmark), h("div", { class: "faint small" }, r.integration || "")),
+        h("td", { class: "task-cell", title: runTask(r) }, runTask(r)),
+        h("td", {}, runBenchmark(r), r.benchmark && h("div", { class: "faint small" }, suiteLabel(r.benchmark))),
         h("td", {}, methodLabel(r.method)),
         h("td", {}, r.model || "—", h("div", { class: "faint small" }, r.provider || "")),
         h("td", { class: "num" }, r.attempt ?? "—"),
-        h("td", { class: "num" }, r.environment_steps ?? "—"),
+        h("td", { class: "num" }, r.live?.steps ?? r.environment_steps ?? "—"),
         h("td", { class: "num" }, fmtDuration(r.elapsed_s)),
         h("td", { class: "num" }, fmtTokens(r.usage.total_tokens)),
         h("td", {}, fmtTime(r.started_at)))))))
@@ -573,11 +542,11 @@ function pageHistory(main) {
     if (f.compare && keys.length >= 2) compareHolder.append(compareTable(keys.map(findRun)));
   };
   put(main, h("div", { class: "page wide" },
-    pageHead("运行记录", `共 ${S.runs.length} 次运行 · 运行目录 ${S.config.runs_root}`),
+    heading,
     h("div", { class: "toolbar" },
       h("input", { class: "input", type: "search", placeholder: "搜索任务、模型、API…", value: f.query, style: "width:280px",
         oninput: (e) => { f.query = e.target.value; renderTable(); } }),
-      select("status", "全部状态", ["success", "failure", "error", "interrupted", "running", "failed"], RUN_STATUS),
+      select("status", "全部状态", ["success", "failure", "error", "interrupted", "starting", "running", "failed"], RUN_STATUS),
       select("bench", "全部环境", uniq((r) => r.integration && `${r.integration}/${r.profile}`)),
       select("model", "全部模型", uniq((r) => r.model))),
     tableHolder, compareHolder));
@@ -587,7 +556,7 @@ function pageHistory(main) {
 
 function compareTable(runs) {
   const rows = [
-    ["状态", (r) => pill(r.status)], ["任务", (r) => taskName(r.task)], ["套件", (r) => suiteLabel(r.benchmark)],
+    ["状态", (r) => pill(r.status)], ["任务", runTask], ["评测集", runBenchmark], ["套件", (r) => suiteLabel(r.benchmark)],
     ["方法", (r) => methodLabel(r.method)], ["模型", (r) => r.model], ["推理强度", (r) => effortLabel(r.reasoning_effort) || "—"],
     ["运行 ID", (r) => runTitle(r)], ["第几次", (r) => r.attempt ?? "—"], ["环境步数", (r) => r.environment_steps ?? "—"], ["用时", (r) => fmtDuration(r.elapsed_s)],
     ["模型请求", (r) => fmtInt(r.usage.requests)], ["输入词元", (r) => fmtInt(r.usage.input_tokens)],
@@ -1054,8 +1023,7 @@ function applyDefaults(force = false) {
 async function refresh() {
   try { await loadRuns(); } catch { return; }
   const page = current.page;
-  if (page === "running") route();
-  else if (page === "history" && pageHistory.refresh) pageHistory.refresh();
+  if (page === "history" && pageHistory.refresh) pageHistory.refresh();
   else if (page === "run") {
     const run = findRun(current.arg);
     if (run) refreshRun(run);

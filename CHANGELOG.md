@@ -46,9 +46,8 @@
   action chunk with measured tracking error, model note, repair / clamp / hold
   alerts and per-inference requests and replies. The single-column Chinese
   review shows the task and playback first, with expandable configuration,
-  ending details, trajectories and inference history. Recorded prose can have
-  display translations in an optional run-local `direct/zh-CN.json` object
-  keyed by the original text. Each launch picks a free environment port.
+  ending details, trajectories and inference history. Task instructions, model notes and prompts are
+  displayed as recorded. Each launch picks a free environment port.
 
 - Studio's operations move to `evoab/workbench/` and are exposed as
   `evoab runs | providers | benchmarks | usage | settings | studio` commands

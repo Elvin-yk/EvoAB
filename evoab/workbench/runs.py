@@ -153,6 +153,9 @@ def summarize_run(
         return None
     outcome = _read_json(run_dir / "native_outcome.json") or {}
     config = (result or {}).get("config") or {}
+    instruction = (result or {}).get("instruction") or launch.get("instruction")
+    if not instruction:
+        instruction = (_read_json(run_dir / "monitor.json") or {}).get("instruction")
     finished = result is not None
     if finished:
         status = "success" if result.get("task_success") else ("error" if result.get("error") else "failure")
@@ -170,10 +173,11 @@ def summarize_run(
         "monitor_id": hashlib.sha256(str(run_dir.resolve()).encode()).hexdigest()[:16],
         "launch_id": launch.get("launch_id"),
         "status": status,
+        "instruction": instruction,
         "task": (result or {}).get("task_id") or launch.get("task"),
         "integration": (result or {}).get("integration") or launch.get("integration"),
         "profile": launch.get("profile") or config.get("runtime_profile"),
-        "benchmark": launch.get("benchmark"),
+        "benchmark": (result or {}).get("suite") or launch.get("benchmark"),
         "embodiment": launch.get("embodiment"),
         "simulated": launch.get("simulated", True),
         "provider_id": launch.get("provider_id"),
@@ -205,6 +209,7 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
         "launch_id": launch.get("launch_id"),
         "status": "starting" if alive else "failed",
         "task": launch.get("task"),
+        "instruction": launch.get("instruction"),
         "integration": launch.get("integration"),
         "profile": launch.get("profile"),
         "benchmark": launch.get("benchmark"),

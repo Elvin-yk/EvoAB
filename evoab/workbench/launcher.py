@@ -124,6 +124,7 @@ def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
         profile=request.profile,
         simulated=True,
         benchmark=task["suite"],
+        instruction=task.get("instruction"),
         embodiment=task["embodiment"],
         max_steps=task.get("max_steps"),
         task=request.task,

@@ -8,7 +8,7 @@
 "use strict";
 
 const RV = {
-  run: null, translations: null, trace: null, timer: null, playTimer: null,
+  run: null, trace: null, timer: null, playTimer: null,
   t: null, follow: true, playing: false, speed: 1, selected: null, open: new Set(),
 };
 
@@ -27,11 +27,6 @@ const clock = (t) => (t == null ? "—" : `+${fmtClock(rel(t))}`);
 const secs = (s) => (s == null ? "—" : s < 1 ? `${Math.round(s * 1000)} 毫秒` : s < 60 ? `${s.toFixed(1)} 秒` : fmtDuration(s));
 const pretty = (value) => (typeof value === "string" ? value : JSON.stringify(value, null, 2));
 
-function reviewText(source) {
-  const translated = RV.translations?.[source];
-  return typeof translated === "string" ? translated : source || "";
-}
-
 function cameraLabel(name, index) {
   return ({ agentview: "全景相机", wrist: "腕部相机", robot0_eye_in_hand: "腕部相机", frontview: "正面相机",
     sideview: "侧面相机" })[name] || `相机 ${index + 1}（${name}）`;
@@ -47,7 +42,7 @@ function pageRun(main, key) {
   if (run.id && location.hash !== `#${run.key}`) history.replaceState(null, "", `#${run.key}`);
   if (RV.run?.key !== run.key) {
     closeReplay();
-    Object.assign(RV, { run, translations: null, trace: null, t: null, follow: true, selected: null, open: new Set() });
+    Object.assign(RV, { run, trace: null, t: null, follow: true, selected: null, open: new Set() });
     put(main, h("div", { class: "page review", "data-run": run.key },
       h("div", { id: "rvHead" }), h("div", { id: "rvBody" }), h("div", { id: "rvLog" })));
     current.arg = run.key;
@@ -86,12 +81,6 @@ async function loadTrace() {
   }
   if (RV.run !== run) return;
   const first = !RV.trace;
-  if (first && trace.kind === "direct") {
-    // Optional display translations are keyed by the exact recorded text.
-    const translations = await api(fileUrl("direct/zh-CN.json")).catch(() => ({}));
-    if (RV.run !== run) return;
-    RV.translations = translations;
-  }
   RV.trace = trace;
   if (trace.kind === "direct") {
     renderHead();
@@ -146,7 +135,7 @@ function renderHead() {
   const policy = direct ? tr.policy : {};
   const model = policy.model || {};
   const metadata = [
-    ["类型", run.simulated === false ? "真机" : "仿真"], ["评测集", run.integration === "custom" ? "自定义" : run.integration],
+    ["类型", run.simulated === false ? "真机" : "仿真"], ["评测集", runBenchmark(run)],
     ["套件", run.benchmark && suiteLabel(run.benchmark)], ["本体", run.embodiment],
     ["API 提供商", model.provider || run.provider], ["推理强度", effortLabel(model.reasoning_effort || run.reasoning_effort)],
     ["动作表示", ({ abs_eef: "末端绝对位姿", delta_eef: "末端位姿增量" })[policy.representation] || policy.representation_label], ["动作块长度", policy.horizon?.join("–")],
@@ -168,7 +157,7 @@ function renderHead() {
       h("button", { class: "back", title: "返回", onclick: () => (history.length > 1 ? history.back() : (location.hash = "#history")) }, "←"),
       h("span", { class: "mono muted" }, runTitle(run)), pill(run.status),
       isLive(run) && run.launch_id ? h("button", { class: "btn small danger", onclick: (e) => stopRun(run, e.currentTarget) }, "停止") : null),
-    h("h1", {}, taskLabel(reviewText(tr?.instruction)) || taskName(run.task) || runTitle(run)),
+    h("h1", {}, tr?.instruction || runTask(run)),
     h("div", { class: "run-facts" }, h("b", {}, context), facts.map(([k, v]) => h("span", {}, k, " ", h("strong", {}, v)))),
     h("div", { class: "run-disclosures" }, h("details", { id: "rvConfig", open: $("rvConfig")?.open }, h("summary", {}, "运行配置与用量"),
       h("dl", { class: "run-meta" }, metadata.filter(([, v]) => v != null && v !== false && v !== "").map(([k, v]) =>
