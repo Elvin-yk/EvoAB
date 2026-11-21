@@ -27,8 +27,9 @@
   and runtimes from an older container recipe show 未部署. RoboDojo's container
   points Vulkan at the ICD the NVIDIA Container Toolkit mounts. Plus a
   部署条件 check (Docker, GPU containers, disk, model presets; also
-  `evoab benchmarks check`), a 构建镜像源 setting (Tsinghua + hf-mirror) forwarded
-  to every build, marks container runtimes and launches runs in them. Native
+  `evoab benchmarks check`), picks build download sources itself (Tsinghua +
+  hf-mirror when huggingface.co is unreachable; Studio has no mirror or runtime
+  wheel settings), marks container runtimes and launches runs in them. Native
   source checks accept a recorded `.evoab-revision` in images without `.git`.
 
 - Rerunning setup for a recorded LIBERO-Plus or LIBERO-PRO installation may

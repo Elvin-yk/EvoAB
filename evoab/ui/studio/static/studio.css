@@ -579,14 +579,12 @@ details.sys.inner { margin: 6px 0; }
 .usage-table th, .usage-table td { padding: 8px 12px; }
 .usage-table .empty { margin: 0; padding-block: 16px; }
 .settings-body .card { margin-bottom: 12px; }
-.runtime-wheel .input { flex: 1; min-width: 0; }
 @media (max-width: 560px) {
   .usage-metrics { grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .bench-head { grid-template-columns: minmax(0, 1fr); }
   .choice-grid { grid-template-columns: 1fr; }
   .toolbar > * { max-width: 100%; }
   .profile-row .acts { margin-left: 0; }
-  .runtime-wheel .form-row { grid-template-columns: 1fr; }
   .page-head .actions { flex-wrap: wrap; }
 }
 

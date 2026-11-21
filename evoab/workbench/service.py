@@ -18,20 +18,41 @@ from evoab.workbench import benchmarks, direct_trace, jobs, trace
 from evoab.workbench.launcher import DIRECT_OPTIONS, METHODS, REASONING_EFFORTS, LaunchRequest, launch, validate
 from evoab.workbench.runs import STUDIO_DIR, load_launches, scan_runs, usage_totals
 
-# Launch defaults (remembered from the last launch) and the benchmark runtime wheel.
-SETTING_KEYS = ("default_model", "default_effort", "default_method", "runtime_wheel", "hf_endpoint", "build_mirror")
+# Launch defaults, remembered from the last launch.
+SETTING_KEYS = ("default_model", "default_effort", "default_method")
 
-#: Mirror presets for container builds: each maps to variables upstream recipes and EvoAB's layer read.
-BUILD_MIRRORS = {
-    "tuna": {
+#: Mirrors for benchmark builds where the public package and model hubs are unreachable
+#: (mainland China): variables that upstream recipes and EvoAB's layer read.
+CHINA_MIRRORS = {
         "UBUNTU_MIRROR": "mirrors.tuna.tsinghua.edu.cn",
         "PIP_INDEX_URL": "https://pypi.tuna.tsinghua.edu.cn/simple",
         "UV_DEFAULT_INDEX": "https://pypi.tuna.tsinghua.edu.cn/simple",
         "MINICONDA_URL": "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh",
         "CONDA_CHANNEL_MIRROR": "https://mirrors.tuna.tsinghua.edu.cn/anaconda",
         "HF_ENDPOINT": "https://hf-mirror.com",
-    },
 }
+_mirrors: dict[str, str] | None = None
+
+
+def build_mirrors() -> dict[str, str]:
+    """Mirror variables for benchmark builds, chosen once per Studio process.
+
+    Variables already set in Studio's environment win. Otherwise builds use the
+    public hubs when huggingface.co answers directly (builds do not use a proxy),
+    and the mainland China mirrors when it does not.
+    """
+    global _mirrors
+    if any(os.environ.get(key) for key in CHINA_MIRRORS):
+        return {}
+    if _mirrors is None:
+        import urllib.request
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            opener.open(urllib.request.Request("https://huggingface.co/api/health", method="HEAD"), timeout=6)
+            _mirrors = {}
+        except Exception:  # unreachable, refused or timed out: use the mirrors
+            _mirrors = dict(CHINA_MIRRORS)
+    return dict(_mirrors)
 
 
 class WorkbenchError(Exception):
@@ -114,13 +135,9 @@ class Workbench:
     def prepare(self, integration: str, profile: str = "default", container: bool = False,
                 accept_license: str | None = None) -> dict[str, Any]:
         """Prepare a runtime; ``container`` pulls or builds the benchmark's Docker image instead."""
-        settings = self.settings()
-        environment = dict(BUILD_MIRRORS.get(settings.get("build_mirror") or "", {}))
-        if settings.get("hf_endpoint"):
-            environment["HF_ENDPOINT"] = settings["hf_endpoint"]
         try:
-            pid = benchmarks.start_setup(self.runs_root, integration, profile, settings.get("runtime_wheel"),
-                                         container=container, environment=environment, accept_license=accept_license)
+            pid = benchmarks.start_setup(self.runs_root, integration, profile, None, container=container,
+                                         environment=build_mirrors(), accept_license=accept_license)
         except ValueError as error:
             raise Conflict(str(error)) from error
         return {"pid": pid, "integration": integration, "profile": profile, "container": container}
@@ -157,8 +174,9 @@ class Workbench:
             add("agent_runtime", False, str(error), "pip install 'evoab[agent]'")
         add("model_presets", presets, f"{len(presets)} model presets",
             "Add a provider and a model preset under 设置 → 模型.")
-        return {"ok": all(c["ok"] for c in checks), "checks": checks,
-                "mirror": self.settings().get("build_mirror"), "mirrors": sorted(BUILD_MIRRORS)}
+        mirrors = build_mirrors()
+        add("network", True, "mainland China mirrors (Tsinghua, hf-mirror)" if mirrors else "public package and model hubs")
+        return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
     # -- models: providers, presets and usage ---------------------------------
 

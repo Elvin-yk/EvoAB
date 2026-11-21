@@ -863,14 +863,9 @@ function settingsModels(body) {
 // -- benchmarks ----------------------------------------------------------------
 
 const CHECK_LABELS = { docker: "Docker", docker_access: "Docker 权限", gpu_containers: "GPU 容器", disk: "磁盘空间",
-  agent_runtime: "Agent 运行时", model_presets: "模型预设" };
+  agent_runtime: "Agent 运行时", model_presets: "模型预设", network: "下载源" };
 
 function settingsBenchmarks(body) {
-  const s = S.config.settings || {};
-  const wheel = h("input", { class: "input mono", value: s.runtime_wheel || "", placeholder: "/path/to/evoab_runtime-…-py3-none-any.whl" });
-  const hf = h("input", { class: "input mono", value: s.hf_endpoint || "", placeholder: "https://hf-mirror.com" });
-  const mirror = h("select", { class: "input" }, [["", "官方源（海外网络）"], ["tuna", "清华镜像 + hf-mirror（国内网络）"]]
-    .map(([value, label]) => h("option", { value, selected: (s.build_mirror || "") === value }, label)));
   const checks = h("div", { class: "card card-pad system-check" }, h("div", { class: "muted small" }, "检查部署条件…"));
   api("/api/system/check").then((r) => put(checks,
     h("div", { class: "section-title" }, r.ok ? "部署条件：全部满足" : "部署条件：还有未满足的项"),
@@ -880,15 +875,6 @@ function settingsBenchmarks(body) {
   put(body, h("div", { class: "page wide" },
     pageHead("评测环境"),
     checks,
-    h("div", { class: "card card-pad runtime-wheel" }, row("运行时安装包", h("div", { class: "row" }, wheel,
-      h("button", { class: "btn", onclick: async () => { S.config.settings = await api("/api/settings", { method: "PUT", json: { runtime_wheel: wheel.value.trim() || null } }); toast("已保存"); } }, "保存")),
-      "安装评测环境时装入的 evoab-runtime wheel；留空则使用 Studio 当前运行的 EvoAB"),
-      row("构建镜像源", h("div", { class: "row" }, mirror,
-        h("button", { class: "btn", onclick: async () => { S.config.settings = await api("/api/settings", { method: "PUT", json: { build_mirror: mirror.value || null } }); toast("已保存"); } }, "保存")),
-        "Docker 构建时使用的软件源：国内网络选清华镜像（apt、PyPI、conda）+ hf-mirror（任务资源）"),
-      row("Hugging Face 镜像", h("div", { class: "row" }, hf,
-        h("button", { class: "btn", onclick: async () => { S.config.settings = await api("/api/settings", { method: "PUT", json: { hf_endpoint: hf.value.trim() || null } }); toast("已保存"); } }, "保存")),
-      "单独覆盖任务资源的下载地址，例如 https://hf-mirror.com；留空则跟随上面的镜像源")),
     benchmarkCards()));
 }
 

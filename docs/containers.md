@@ -23,15 +23,15 @@ pinned by digest, or ships a build recipe that the user's machine builds once.
 3. In Studio, 设置 → 模型: add a provider and at least one model preset.
 4. 设置 → 评测集: the 部署条件 panel checks Docker access, GPU containers, disk
    space (120 GiB recommended) and model presets, with the fix for anything
-   missing. On a network in mainland China choose 构建镜像源 → 清华镜像 + hf-mirror.
+   missing. Its 下载源 row shows which package and model sources builds use.
 5. Click 部署 on a benchmark. Progress appears in the card. Deployment ends by
    starting one task's environment service once (`evoab setup --check-launch`);
    only then does the card read 已就绪 with an 已部署 button. Start runs from 发起评测.
    A runtime built from an older container recipe shows 未部署 again.
 
-No runtime wheel is needed: when 运行时安装包 is empty, the local layer installs
-the exact `evoab` package Studio runs plus its service dependencies. A wheel
-set there takes precedence. `evoab benchmarks check` and
+No runtime wheel is needed: the local layer installs the exact `evoab` package
+Studio runs plus its service dependencies (`evoab setup --wheel` still accepts a
+runtime wheel for development). `evoab benchmarks check` and
 `evoab benchmarks prepare INTEGRATION --container` do the same from a shell.
 
 ## Prepare and run
@@ -56,9 +56,13 @@ host user's identity and only the run directory mounted, at the same path, so
 service URLs and artifacts match native runs; the container is removed when
 the run ends.
 
-Builds use the host network. The 构建镜像源 setting forwards apt, PyPI, conda and
-Hugging Face mirrors to every build (upstream recipes such as RoboDojo's accept
-the same arguments); `HF_ENDPOINT` alone overrides the asset source, and
+Builds use the host network. Studio picks their download sources itself: when
+huggingface.co does not answer directly (as in mainland China), it forwards the
+Tsinghua apt, PyPI and conda mirrors and hf-mirror to every build (upstream
+recipes such as RoboDojo's accept the same arguments). Setting any of
+`UBUNTU_MIRROR`, `PIP_INDEX_URL`, `UV_DEFAULT_INDEX`, `MINICONDA_URL`,
+`CONDA_CHANNEL_MIRROR` or `HF_ENDPOINT` in Studio's environment replaces that
+choice with exactly those variables, and
 `EVOAB_CONTAINER_BUILD_PROXY=1` forwards the host's proxy variables into builds
 (only for a proxy that does not intercept TLS: containers do not trust a host CA).
 Git sources a recipe declares under `[[sources]]` are fetched on the host with
