@@ -4,7 +4,7 @@ A Direct prompt is assembled from blocks:
 
 ``robot``   the embodiment and its frame conventions (bundled per embodiment,
             or supplied by the user with ``--direct-prompt-file``)
-``timing``  control interval, per-row step limits and the episode step budget
+``timing``  control interval and per-row step limits (never the episode step budget)
 ``gripper`` grasp-point geometry measured from the environment
 ``camera``  camera extrinsics and intrinsics from the environment's calibration
 ``action``  the representation's output contract (always included)
@@ -40,7 +40,8 @@ def embodiment_text(integration: str, description) -> str:
     return text.strip().format(control_frame=arm.control_frame, grasp_site=arm.grasp_site_description)
 
 
-def timing_text(control_hz: float, limits: Limits, max_steps: int) -> str:
+def timing_text(control_hz: float, limits: Limits) -> str:
+    """Control timing and step limits. The episode's step budget is evaluation-side and never shown."""
     return (
         "EXECUTION TIMING\n"
         f"Each action row runs for one control interval: {1 / control_hz:.8g} seconds ({control_hz:g} Hz) in this "
@@ -49,7 +50,7 @@ def timing_text(control_hz: float, limits: Limits, max_steps: int) -> str:
         f"Translation targets are limited to {limits.translation_m:g} m per row and rotation changes to "
         f"{limits.rotation_rad:g} rad per row. Actual movement may be smaller. The gripper command still "
         "executes even when the requested arm movement is shortened. Use measured ee_pos/ee_quat to assess "
-        f"arrival. The episode ends after {max_steps} control steps; each observation reports how many remain.")
+        "arrival.")
 
 
 def _axes(quaternion_wxyz) -> np.ndarray:
@@ -120,7 +121,7 @@ def assemble(*, integration: str, description, representation: Representation, h
         raise ValueError(f"unknown Direct prompt blocks: {sorted(unknown)}")
     parts = {
         "robot": (robot_text or embodiment_text(integration, description)).strip(),
-        "timing": timing_text(description.control_frequency_hz, limits, description.max_episode_steps),
+        "timing": timing_text(description.control_frequency_hz, limits),
     }
     if "gripper" in blocks:
         parts["gripper"] = gripper_text(initial_state["ee_quat"])

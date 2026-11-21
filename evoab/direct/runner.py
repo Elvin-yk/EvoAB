@@ -141,12 +141,11 @@ class DirectPolicy:
     def _messages(self, system: str, history: list[dict]) -> tuple[list[dict], list[dict]]:
         """Messages for the provider and the same messages with images as file references."""
         current = history[-1]
-        remaining = self.description.max_episode_steps - current["step"]
         proprio = [{"frame": i, "control_step": f["step"], **f["proprio"]} for i, f in enumerate(history)]
         text = (f"Observation history window: {self.config.history_length} control step(s); "
                 f"sample stride {self.config.history_stride}.\nInstruction: {self.instruction}\n"
                 f"This request contains the latest {len(history)} chronological observation(s), oldest first. "
-                f"Camera order per frame: {self.cameras}.\nControl steps remaining in the episode: {remaining}.\n"
+                f"Camera order per frame: {self.cameras}.\n"
                 f"Synchronized proprioception: {json.dumps(proprio, separators=(',', ':'))}")
         live, stored = [{"type": "text", "text": text}], [{"type": "text", "text": text}]
         for index, frame in enumerate(history):

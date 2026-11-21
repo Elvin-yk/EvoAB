@@ -8,7 +8,8 @@
   prompt packs, environment-derived timing/gripper/camera geometry blocks,
   complete validation, output repair and a measured-pose safe hold. Records in
   `direct/` (policy, prompt, per-step frames, per-inference calls and requests).
-  This replaces "Direct" meaning tool calls to `move`.
+  This replaces "Direct" meaning tool calls to `move`. The episode's step
+  budget and remaining steps are never shown to the model.
 
 - Built-in agent `--agent native` (`pip install 'evoab[agent]'`): model presets,
   providers and usage records in `~/.config/evoab/agent/`; tool calling with only
