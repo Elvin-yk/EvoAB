@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Rerunning setup for a recorded LIBERO-Plus or LIBERO-PRO installation may
+  publish an empty task catalog: removing every eligible asset now disables the
+  stale tasks in Studio, the task API and launch validation instead of failing
+  before `runtime.json` is updated. Other installations and failed scans keep
+  the previous record, and restored assets return on the next setup. LIBERO-Plus
+  setup also rejects a native runtime whose `evoab` version differs and runs the
+  pinned-revision and `robosuite==1.4.0` checks through that version check.
+
+- Studio marks a registered runtime with no selectable tasks instead of showing
+  it as ready, with recovery guidance for RoboDojo layouts and LIBERO assets;
+  setup reports the same condition, and the CLI still accepts an explicit
+  `--layout` for RoboDojo.
+
 - CALVIN resolves the Panda URDF from its native asset directory regardless of
   the working directory used to start the service.
 

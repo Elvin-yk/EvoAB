@@ -85,6 +85,7 @@ namespaces = false
 "evoab.integrations.robolab" = ["SOURCE.md"]
 "evoab.integrations.piper_x" = ["templates/*.json", "SOURCE.md", "README.md"]
 "evoab.integrations.custom" = ["template.toml"]
+"evoab.integrations.libero_plus" = ["deployment.toml"]
 "evoab.integrations.libero_pro" = ["deployment.toml", "previews/sources.json", "previews/NOTICE", "previews/LICENSE"]
 "evoab.integrations.dexjoco" = ["deployment.toml", "SOURCE.md"]
 "evoab.integrations.behavior" = ["deployment.toml", "SOURCE.md"]

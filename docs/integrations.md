@@ -39,6 +39,15 @@ setup/deploy recipe. Use SAM3 only where supported; otherwise pass `--no-sam3`.
 Depth localization requires paired depth and calibration; RGB triangulation
 requires at least two calibrated views.
 
+Studio lists RoboDojo tasks with a native task configuration and a frozen layout at index zero. To register an existing prepared checkout, run `evoab setup --integration robodojo --runtime-python /path/to/native/bin/python --native-root /path/to/RoboDojo` on the Studio host. Rerun the original setup command to refresh the catalog after adding layouts or upgrading an older installation. This also refreshes an existing isolated RoboDojo runtime without reinstalling it.
+
+A registered RoboDojo runtime whose configs have no frozen layout at
+`Assets/Eval_Layout/RoboDojo/arx_x5/0/<task>_0.json` is marked in Studio as
+registered with no selectable tasks, with the recovery steps for that asset
+layout; setup reports the same condition. The CLI can still run such a task when
+`--layout` names a layout explicitly. Other integrations show the same notice
+with a generic recovery step instead of RoboDojo's layout instructions.
+
 ## Real-robot release status
 
 `arx_one` supports a dual-arm ARX ONE with its own Body runtime, on the shared gripper

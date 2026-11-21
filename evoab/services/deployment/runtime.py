@@ -1,7 +1,6 @@
 """Versioned runtime records; deployment never repairs an installation."""
 from contextlib import contextmanager
 from dataclasses import replace
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -13,8 +12,8 @@ from evoab.artifacts.run import write_json_atomic
 from .config import Runtime, environment_options
 
 
-def cache_root(args):
-    path = args.cache_dir or os.environ.get('EVOAB_CACHE_DIR')
+def cache_root(args=None):
+    path = getattr(args, 'cache_dir', None) or os.environ.get('EVOAB_CACHE_DIR')
     return Path(path or Path.home() / '.cache' / 'evoab').expanduser().absolute()
 
 
@@ -24,6 +23,8 @@ def runtime_root(args, recipe):
 
 @contextmanager
 def runtime_lock(root, timeout=14400):
+    import fcntl
+
     root.mkdir(parents=True, exist_ok=True)
     with (root / '.prepare.lock').open('a') as lock:
         # One producer publishes this immutable recipe/version; processes may read the old record.

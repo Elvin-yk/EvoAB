@@ -11,19 +11,19 @@ from __future__ import annotations
 
 import ast
 import json
-import os
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, Literal
 
 import yaml
 
+from evoab import __version__
+from evoab.services.deployment.config import adapter_for
+from evoab.services.deployment.runtime import cache_root, runtime_root
 from evoab.workbench import jobs
-
-#: Integrations Studio can launch runs for today (others are listed for setup only).
-LAUNCHABLE = ("libero_pro", "custom")
 
 
 @dataclass(frozen=True)
@@ -37,18 +37,19 @@ class BenchmarkInfo:
     description: str
     profiles: tuple[str, ...] = field(default_factory=tuple)
     requirements: str = ""
+    task_selector: Literal["task", "suite/task", "profile"] | None = None
 
 
 REGISTRY: tuple[BenchmarkInfo, ...] = (
     BenchmarkInfo("robodojo", "RoboDojo", "simulation", "Isaac Sim 5.1", "Dual ARX X5",
-                  "auto", "42 bimanual tasks: generalization, memory, precision, long-horizon, open",
-                  requirements="Isaac Sim / Isaac Lab runtime; NVIDIA GPU"),
+                  "auto", "Bimanual tasks with frozen evaluation layouts",
+                  requirements="Isaac Sim / Isaac Lab runtime; NVIDIA GPU", task_selector="task"),
     BenchmarkInfo("libero_pro", "LIBERO-PRO", "simulation", "MuJoCo (robosuite)", "Franka Panda",
                   "external", "LIBERO suites under instruction and position perturbations",
-                  requirements="Adopt a pinned installation with evoab setup --integration libero_pro --runtime-python PYTHON --native-root ROOT"),
+                  requirements="Adopt a pinned installation with evoab setup --integration libero_pro --runtime-python PYTHON --native-root ROOT", task_selector="suite/task"),
     BenchmarkInfo("libero_plus", "LIBERO-Plus", "simulation", "MuJoCo (robosuite 1.4)", "Franka Panda",
                   "external", "Official LIBERO-Plus perturbation suites",
-                  requirements="Separately prepared LIBERO-Plus service (--env-url)"),
+                  requirements="Adopt an existing LIBERO-Plus installation with --runtime-python and --native-root, or connect with --env-url", task_selector="suite/task"),
     BenchmarkInfo("robotwin", "RoboTwin 2.0", "simulation", "SAPIEN", "ALOHA AgileX dual-arm",
                   "external", "Dual-arm tasks with domain randomization",
                   requirements="Separately prepared RoboTwin service (--env-url)"),
@@ -70,7 +71,7 @@ REGISTRY: tuple[BenchmarkInfo, ...] = (
     BenchmarkInfo("navila", "NaVILA-Bench", "simulation", "Isaac Lab", "Go2 quadruped",
                   "auto", "Experimental quadruped navigation (Hybrid NaVILA)"),
     BenchmarkInfo("custom", "Custom benchmark", "simulation", "—", "—", "custom",
-                  "User-defined Gym-style benchmark registered with a manifest"),
+                  "User-defined Gym-style benchmark registered with a manifest", task_selector="profile"),
     BenchmarkInfo("arx_one", "ARX ONE", "real", "—", "Dual ARX X5 + RealSense D405",
                   "real", "Physical dual-arm station behind a device process"),
     BenchmarkInfo("piper_x", "Piper-X", "real", "—", "Dual Piper arms + RealSense",
@@ -78,9 +79,17 @@ REGISTRY: tuple[BenchmarkInfo, ...] = (
 )
 
 
-def cache_root() -> Path:
-    """Directory holding prepared runtimes (``EVOAB_CACHE_DIR`` or ``~/.cache/evoab``)."""
-    return Path(os.environ.get("EVOAB_CACHE_DIR") or Path.home() / ".cache" / "evoab")
+_BY_INTEGRATION = {info.integration: info for info in REGISTRY}
+
+
+def launch_target(integration: str, profile: str, task: str) -> tuple[str | None, str]:
+    info = _BY_INTEGRATION.get(integration)
+    if not info or not info.task_selector:
+        raise ValueError(f"Studio cannot launch {integration} runs yet")
+    if info.task_selector == "suite/task":
+        suite, name = task.split("/", 1)
+        return suite, name
+    return (profile if info.task_selector == "profile" else None), task
 
 
 def _spec(value: Any) -> dict[str, Any]:
@@ -137,9 +146,12 @@ class PreparedRuntime:
     package_version: str
     tasks: dict[str, dict[str, Any]]
     validation: dict[str, Any]
+    python: Path
+    recipe_digest: str
+    native_root: Path | None
 
 
-_parsed: dict[Path, tuple[float, PreparedRuntime | None]] = {}
+_parsed: dict[Path, tuple[tuple[int, int, int, int], PreparedRuntime | None]] = {}
 
 
 def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
@@ -147,13 +159,28 @@ def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
     root = root or cache_root()
     runtimes = []
     for record in sorted(root.glob("*/*/runtime.json")):
-        mtime = record.stat().st_mtime
+        stat = record.stat()
+        # Setup replaces records atomically, even on mounts with coarse timestamps.
+        fingerprint = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
         cached = _parsed.get(record)
-        if cached is None or cached[0] != mtime:
-            cached = (mtime, _parse_runtime(record))
+        if cached is None or cached[0] != fingerprint:
+            cached = (fingerprint, _parse_runtime(record))
             _parsed[record] = cached
-        if cached[1] is not None:
-            runtimes.append(cached[1])
+        runtime = cached[1]
+        if runtime is None:
+            continue
+        if _BY_INTEGRATION[runtime.integration].task_selector:
+            args = SimpleNamespace(integration=runtime.integration, runtime_profile=runtime.profile, cache_dir=root)
+            try:
+                recipe = adapter_for(args).recipe(args)
+            except (FileNotFoundError, ValueError):
+                continue
+            if (runtime.root.resolve() != runtime_root(args, recipe).resolve()
+                    or runtime.recipe_digest != recipe.digest or runtime.package_version != __version__
+                    or not runtime.python.is_file()
+                    or (runtime.native_root is not None and not runtime.native_root.is_dir())):
+                continue
+        runtimes.append(runtime)
     return runtimes
 
 
@@ -168,8 +195,15 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
     if integration is None:
         return None
     profile = name[len(integration) + 1:] or "default"
+    payload = data.get("data") or {}
+    selector = _BY_INTEGRATION[integration].task_selector
+    if selector and (data.get("schema_version") != 1 or name != record.parent.parent.name
+                     or Path(data.get("root") or ".").resolve() != record.parent.resolve()):
+        return None
     tasks = {}
-    for task_id, entry in (data.get("data", {}).get("tasks") or {}).items():
+    for task_id, entry in (payload.get("tasks") or {}).items():
+        if selector == "suite/task" and "/" not in task_id:
+            continue
         spec = _spec(entry.get("spec"))
         meta = _task_metadata(entry["path"]) if entry.get("path") else {}
         scenario = spec.get("scenario") if isinstance(spec.get("scenario"), dict) else {}
@@ -184,12 +218,16 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
             "embodiment": _embodiment(spec),
             "max_steps": spec.get("max_steps"),
         }
+        if selector:
+            runtime_profile, task_name = launch_target(integration, profile, task_id)
+            tasks[task_id].update(runtime_profile=runtime_profile, native_task=task_name)
     try:
         validation = json.loads((record.parent / "validation.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         validation = {}
     return PreparedRuntime(integration, profile, record.parent, record.stat().st_mtime,
-                           str(data.get("package_version", "")), tasks, validation)
+                           str(data.get("package_version", "")), tasks, validation, Path(data.get("python") or "."),
+                           str(data.get("recipe_digest", "")), Path(payload["native_root"]) if payload.get("native_root") else None)
 
 
 def _setup_record(runs_root: Path, integration: str, profile: str) -> Path:
@@ -232,7 +270,9 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 "suites": suites,
                 "prepared_at": runtime.prepared_at if runtime else None,
                 "package_version": runtime.package_version if runtime else None,
-                "launchable": runtime is not None and info.integration in LAUNCHABLE and bool(runtime.tasks),
+                "launchable": runtime is not None and info.task_selector is not None and bool(runtime.tasks),
+                "empty": (status == "ready" and runtime is not None and info.task_selector is not None
+                          and not runtime.tasks),
                 "setup_log": jobs.log_tail(record_path, 12) if job else "",
             })
         items.append({
@@ -274,6 +314,7 @@ def _custom_items(runs_root: Path, prepared: dict) -> list[dict[str, Any]]:
                           "prepared_at": runtime.prepared_at if runtime else None,
                           "package_version": runtime.package_version if runtime else None,
                           "launchable": bool(runtime and runtime.tasks),
+                          "empty": status == "ready" and runtime is not None and not runtime.tasks,
                           "setup_log": jobs.log_tail(record_path, 12) if job else ""}],
         })
     return items

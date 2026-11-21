@@ -33,6 +33,16 @@ def build_simulation_spec(name, *, tool_profiles):
                               tool_profiles=tool_profiles, validate_cli=validate)
 
 
+def materialized_asset(path: Path) -> bool:
+    """Return whether a catalog input is present as data on this host."""
+    if not path.is_file():
+        return False
+    size = path.stat().st_size
+    if size > 1024:
+        return True
+    return size > 0 and not path.read_bytes().startswith(b"version https://git-lfs.github.com/spec/")
+
+
 def source_root(path, revision):
     """Reject a different or modified native implementation before importing it."""
     root = path.expanduser().resolve(strict=True)

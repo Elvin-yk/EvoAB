@@ -1,9 +1,16 @@
 """Prepare the pinned official runtime and resolve one frozen RoboDojo episode."""
 from pathlib import Path
 
+from evoab.integrations.simulation import materialized_asset
 from evoab.services.deployment.config import LaunchPlan, Recipe
 from evoab.services.deployment.runtime import check_python, query_python
 from evoab.services.deployment.setup import file_hash
+
+empty_catalog_hint = (
+    "RoboDojo lists a task only when its config and the frozen layout at "
+    "Assets/Eval_Layout/RoboDojo/arx_x5/0/<task>_0.json are both present. Add both, then rerun "
+    "this setup command; the CLI can still run with an explicit --layout."
+)
 
 
 def recipe(args):
@@ -19,6 +26,15 @@ def validate(args):
         raise ValueError('--no-camera-calibration requires --no-depth')
     if getattr(args, 'runtime_profile', None):
         raise ValueError('RoboDojo does not use --runtime-profile')
+
+
+def catalog_tasks(data):
+    native = Path(data['native_root'])
+    layouts = Path(data['assets_dir']) / 'Eval_Layout/RoboDojo/arx_x5/0'
+    return {config.stem: {'spec': {'backend': 'RoboDojo', 'robots': ['Dual ARX X5'],
+                                    'scenario': {'title': config.stem.replace('_', ' ')}}}
+            for config in sorted((native / 'task/RoboDojo/config').glob('*.yml'))
+            if materialized_asset(config) and materialized_asset(layouts / f'{config.stem}_0.json')}
 
 
 def external_data(args):

@@ -175,6 +175,24 @@ def _prepare_previews(args, adapter, runtime, report):
             report(message)
 
 
+def _with_task_catalog(runtime, adapter):
+    catalog = getattr(adapter, 'catalog_tasks', None)
+    if catalog is None:
+        return runtime
+    return replace(runtime, data={**runtime.data, 'tasks': catalog(runtime.data)})
+
+
+def _report_empty_catalog(adapter, runtime, report):
+    """Report a registered runtime with no selectable tasks instead of ready."""
+    if 'tasks' not in runtime.data or runtime.data['tasks']:
+        return False
+    if report is not None:
+        hint = getattr(adapter, 'empty_catalog_hint', None)
+        report('Runtime registered without selectable tasks: setup succeeded, but no task can be '
+               'launched.' + (f' {hint}' if hint else ''))
+    return True
+
+
 def prepare(args, adapter, *, report=print):
     if args.wheel:
         validate_runtime_wheel(args.wheel)
@@ -196,17 +214,20 @@ def prepare(args, adapter, *, report=print):
             expected = args.checkpoint_sha256
             if expected and expected != runtime.data.get('checkpoint_sha256'):
                 raise ValueError('Checkpoint SHA256 differs from the prepared runtime')
+            refreshed = runtime
             if args.runtime_python:
-                refreshed = replace(runtime, data=adapter.external_data(args))
-                validation = adapter.verify(refreshed)
-                if refreshed.data != runtime.data:
-                    previous = json.loads((root / "validation.json").read_text())
-                    publish_runtime(refreshed, {**previous, **validation})
-                runtime = refreshed
-            else:
-                adapter.verify(runtime)
+                # The validated record above identifies the installation being rescanned.
+                refresh = getattr(adapter, 'refresh_external_data', None)
+                data = refresh(args, runtime) if refresh else adapter.external_data(args)
+                refreshed = replace(runtime, data=data)
+            refreshed = _with_task_catalog(refreshed, adapter)
+            validation = adapter.verify(refreshed)
+            if refreshed.data != runtime.data:
+                previous = json.loads((root / "validation.json").read_text())
+                publish_runtime(refreshed, {**previous, **validation})
+            runtime = refreshed
             _prepare_previews(args, adapter, runtime, report)
-            if report is not None:
+            if not _report_empty_catalog(adapter, runtime, report) and report is not None:
                 report(f'Runtime ready (reused): {root}')
             return runtime
         context = Preparation(args, recipe, root, report=report)
@@ -234,6 +255,7 @@ def prepare(args, adapter, *, report=print):
                 context.check_dependencies()
                 frozen = subprocess.check_output([str(context.python), '-m', 'pip', 'freeze', '--all'], text=True)
                 (root / 'installed.txt').write_text(frozen)
+            runtime = _with_task_catalog(runtime, adapter)
             validation = adapter.verify(runtime)
             validation.update(preparation='external' if args.runtime_python else 'isolated',
                               elapsed_s=time.time()-started, gpu_verified=False)
@@ -243,7 +265,7 @@ def prepare(args, adapter, *, report=print):
                                                               elapsed_s=time.time()-started))
             raise
         _prepare_previews(args, adapter, runtime, report)
-        if report is not None:
+        if not _report_empty_catalog(adapter, runtime, report) and report is not None:
             report(f'Runtime ready: {root}')
         return runtime
 

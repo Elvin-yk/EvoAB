@@ -408,9 +408,9 @@ async function stepModel(body) {
 function commandPreview() {
   const w = S.wizard;
   const method = selectedMethod();
-  const [profile, task] = w.bench.integration === "libero_pro" ? w.task.task.split("/") : [w.bench.profile, w.task.task];
+  const {runtime_profile: profile, native_task: task} = w.task;
   const parts = [
-    "evoab run", `--integration ${w.bench.integration}`, "--deploy local", `--runtime-profile ${profile}`,
+    "evoab run", `--integration ${w.bench.integration}`, "--deploy local", ...(profile ? [`--runtime-profile ${profile}`] : []),
     `--task ${task}`, `--tool-profile ${method.tool_profile}`, "--no-sam3", `--agent ${method.agent}`,
     `--model ${w.model}`, `--reasoning-effort ${w.effort}`, `--interaction-mode ${method.interaction}`,
   ];
@@ -956,13 +956,21 @@ function settingsBenchmarks(body) {
 }
 
 function benchmarkCards() {
+  // A registered runtime may legitimately have nothing selectable; explain the
+  // specific native assets each family needs instead of claiming it is ready.
+  const emptyHelp = {
+    robodojo: "任务需要原生配置与该任务在 Assets/Eval_Layout/RoboDojo/arx_x5/0/ 下的第 0 号冻结布局同时存在。补齐 <任务>_0.json 后，重新运行同一条 evoab setup --integration robodojo … 命令；CLI 启动时仍可用 --layout 指定自定义布局。",
+    libero_plus: "仅列出同时具备官方 BDDL 与匹配初始状态的扰动任务。把官方资源解压到 <native-root>/libero/libero/assets，并确认 BDDL 位于 <native-root>/libero/libero/bddl_files/<suite>/、初始状态位于 <native-root>/libero/libero/init_files/<suite>/（新增物体扰动使用 <native-root>/libero/libero/init_files/libero_newobj/<suite>/），然后重新运行同一条 evoab setup --integration libero_plus … 命令。",
+    libero_pro: "仅列出同时具备官方 BDDL 与匹配初始状态的任务。补齐 <native-root>/libero/libero/bddl_files/<suite>/ 下的 BDDL 与 <native-root>/libero/libero/init_files/<suite>/ 下的初始状态文件后，重新运行同一条 evoab setup --integration libero_pro … 命令。",
+  };
+  const emptyFallback = "该运行环境已注册，但当前没有可启动的任务。补齐原生任务资源后，重新运行对应的 evoab setup 命令。";
   const profileRow = (bench, p) => {
     const guide = PROJECT_SOURCES[bench.integration]?.guide;
     const canInstall = ["auto", "custom"].includes(bench.setup) && ["not_prepared", "setup_failed"].includes(p.status);
     return [
       h("div", { class: "profile-row" },
         h("strong", {}, p.profile === "default" ? "运行环境" : `运行环境 · ${p.profile}`),
-        pill(p.status, BENCH_STATUS),
+        p.status === "ready" && p.empty === true ? h("span", { class: "pill warn" }, "已注册，无可选任务") : pill(p.status, BENCH_STATUS),
         h("span", { class: "acts" },
           canInstall ? h("button", { class: "btn small", onclick: (e) => prepare(bench, p, e.currentTarget) },
             p.status === "setup_failed" ? "重新检查" : bench.setup === "custom" ? "检查环境" : "安装环境") : null,
@@ -972,6 +980,9 @@ function benchmarkCards() {
           p.launchable ? h("button", { class: "btn small", onclick: () => startWith(bench, p) }, "发起评测") : null,
           bench.setup === "custom" ? h("button", { class: "btn small", onclick: () => customBenchmarkDialog(bench.name) }, "清单") : null,
           bench.setup === "custom" ? h("button", { class: "btn small danger", onclick: () => removeCustom(bench.name) }, "移除") : null)),
+      p.status === "ready" && p.empty === true ? h("div", { class: "notice info empty-tasks" },
+        h("strong", {}, "已注册，但没有可选任务"),
+        h("div", {}, emptyHelp[bench.integration] || emptyFallback)) : null,
       p.setup_log && ["preparing", "setup_failed"].includes(p.status) ? h("pre", { class: "profile-log log" }, p.setup_log) : null,
     ];
   };

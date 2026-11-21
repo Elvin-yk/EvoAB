@@ -5,6 +5,34 @@ The
 initial states, corrupted observations and success predicates with the shared
 Direct gripper tools.
 
+### Launch LIBERO-Plus from Studio
+
+On the Studio host, register the prepared interpreter and pinned checkout in the same runtime cache used by Studio:
+
+```bash
+evoab setup --integration libero_plus --runtime-python /path/to/native/bin/python --native-root /path/to/LIBERO-plus --runtime-env MUJOCO_GL=egl
+```
+
+The task picker groups installed perturbations by suite. Each entry requires its official BDDL file and the initial state used by that perturbation. Studio starts a fresh environment service for each run.
+
+### Registration and verification contract
+
+Rerunning `evoab setup` with the same inputs rescans the recorded installation
+and replaces its task catalog. When that rescan succeeds and finds no eligible
+task asset, the empty result is authoritative: the runtime stays registered with
+zero tasks, and Studio, the benchmark task API and launch validation stop
+offering the removed tasks. A request that names another installation, including
+an argument path that now resolves to a different checkout such as a retargeted
+symlink, or a scan that fails for another reason leaves the previous record
+unchanged; an empty catalog is never inferred from a failure. Restored assets
+return after the next matching setup. LIBERO-Plus and LIBERO-PRO share this rule.
+
+LIBERO-Plus setup first checks that the native interpreter's `evoab`
+distribution matches this checkout, then verifies the pinned revision,
+unmodified tracked files and `robosuite==1.4.0` inside that interpreter. The
+version probe reads distribution metadata instead of importing the simulator,
+and the deployment module itself imports no native or GPU dependency.
+
 ## Prepare a native runtime
 
 Use an isolated Linux service environment with Python 3.11+, `robosuite==1.4.0`,

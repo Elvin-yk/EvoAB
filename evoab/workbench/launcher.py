@@ -53,15 +53,13 @@ def free_port() -> int:
 def build_command(request: LaunchRequest, output_root: Path) -> list[str]:
     """The exact ``evoab run`` command for one Studio launch."""
     method = next(m for m in METHODS if m["id"] == request.method)
-    profile, task = request.profile, request.task
-    if request.integration == "libero_pro":
-        profile, task = task.split("/", 1)
+    profile, task = benchmarks.launch_target(request.integration, request.profile, request.task)
     command = [
         sys.executable, "-m", "evoab", "run",
         "--integration", request.integration,
         "--deploy", "local",
         "--env-port", str(free_port()),
-        "--runtime-profile", profile,
+        *(["--runtime-profile", profile] if profile is not None else []),
         "--task", task,
         "--tool-profile", method["tool_profile"],
         "--no-sam3",
@@ -81,8 +79,7 @@ def build_command(request: LaunchRequest, output_root: Path) -> list[str]:
 
 
 def validate(request: LaunchRequest) -> dict:
-    if request.integration not in benchmarks.LAUNCHABLE:
-        raise ValueError(f"Studio cannot launch {request.integration} runs yet")
+    benchmarks.launch_target(request.integration, request.profile, request.task)
     task = benchmarks.task_info(request.integration, request.profile, request.task)
     if task is None:
         raise ValueError(f"task {request.task!r} is not prepared in {request.integration}/{request.profile}")
