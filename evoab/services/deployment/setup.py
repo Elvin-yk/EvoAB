@@ -196,6 +196,11 @@ def _report_empty_catalog(adapter, runtime, report):
 def prepare(args, adapter, *, report=print):
     if args.wheel:
         validate_runtime_wheel(args.wheel)
+    if getattr(args, 'container', False):
+        from .container import prepare as prepare_container
+        runtime = prepare_container(args, adapter, report=report)
+        _prepare_previews(args, adapter, runtime, report)
+        return runtime
     recipe = adapter.recipe(args)
     root = runtime_root(args, recipe)
     with runtime_lock(root, args.setup_timeout_s):

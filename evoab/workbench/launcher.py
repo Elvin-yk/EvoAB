@@ -68,6 +68,9 @@ def build_command(request: LaunchRequest, output_root: Path) -> list[str]:
         "--reasoning-effort", request.reasoning_effort,
         "--interaction-mode", method["interaction"],
     ]
+    runtime = benchmarks.runtime_for_launch(request.integration, request.profile)
+    if runtime is not None and runtime.container:
+        command.append("--container")
     if method["interaction"] == "direct_policy":
         for key, value in (request.direct or {}).items():
             command += [DIRECT_OPTIONS[key][0], str(value)]

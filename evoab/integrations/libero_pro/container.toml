@@ -1,0 +1,22 @@
+# LIBERO-PRO in the public image from allenai/vla-evaluation-harness (Apache-2.0),
+# pinned by digest. Its Dockerfile.libero_pro checks out LIBERO-PRO at
+# eafdb809426b13153aa1e4c42d6601844217dfec (the revision EvoAB pins) with
+# robosuite 1.4.0 and MuJoCo EGL rendering; the image removes .git, so the local
+# layer records that revision for the native-source check. The image carries the
+# four original suites; the local layer adds the official perturbation suites
+# (_env, _object, _swap, _task, _lan: BDDL files and initial states) from the
+# CC-BY-4.0 dataset zhouxueyang/LIBERO-Pro at a pinned revision. Set HF_ENDPOINT
+# on the host to use a Hugging Face mirror.
+image = "ghcr.io/allenai/vla-evaluation-harness/libero-pro@sha256:8ecd18bfcca2ffdb3803ac8954da1cd046db15db963cca9369fac7ceb66426db"
+python = "/opt/conda/envs/libero/bin/python"
+native_root = "/app/libero-pro"
+gpu = true
+prepare = [
+  "printf %s eafdb809426b13153aa1e4c42d6601844217dfec > /app/libero-pro/.evoab-revision",
+  """/opt/conda/envs/libero/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('zhouxueyang/LIBERO-Pro', repo_type='dataset', revision='c86fc3b8293185a6f373677018ff3e37f8391602', local_dir='/app/libero-pro/libero/libero', allow_patterns=[f'{kind}/{base}_{variant}/*' for kind in ('bddl_files', 'init_files') for base in ('libero_10', 'libero_goal', 'libero_object', 'libero_spatial') for variant in ('env', 'object', 'swap', 'task', 'lan')])" && rm -rf /app/libero-pro/libero/libero/.cache""",
+]
+
+[environment]
+MUJOCO_GL = "egl"
+PYOPENGL_PLATFORM = "egl"
+TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD = "1"

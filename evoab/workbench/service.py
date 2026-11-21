@@ -19,7 +19,19 @@ from evoab.workbench.launcher import DIRECT_OPTIONS, METHODS, REASONING_EFFORTS,
 from evoab.workbench.runs import STUDIO_DIR, load_launches, scan_runs, usage_totals
 
 # Launch defaults (remembered from the last launch) and the benchmark runtime wheel.
-SETTING_KEYS = ("default_model", "default_effort", "default_method", "runtime_wheel")
+SETTING_KEYS = ("default_model", "default_effort", "default_method", "runtime_wheel", "hf_endpoint", "build_mirror")
+
+#: Mirror presets for container builds: each maps to variables upstream recipes and EvoAB's layer read.
+BUILD_MIRRORS = {
+    "tuna": {
+        "UBUNTU_MIRROR": "mirrors.tuna.tsinghua.edu.cn",
+        "PIP_INDEX_URL": "https://pypi.tuna.tsinghua.edu.cn/simple",
+        "UV_DEFAULT_INDEX": "https://pypi.tuna.tsinghua.edu.cn/simple",
+        "MINICONDA_URL": "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh",
+        "CONDA_CHANNEL_MIRROR": "https://mirrors.tuna.tsinghua.edu.cn/anaconda",
+        "HF_ENDPOINT": "https://hf-mirror.com",
+    },
+}
 
 
 class WorkbenchError(Exception):
@@ -99,12 +111,54 @@ class Workbench:
                     return path
         raise NotFound("expert preview is not installed")
 
-    def prepare(self, integration: str, profile: str = "default") -> dict[str, Any]:
+    def prepare(self, integration: str, profile: str = "default", container: bool = False,
+                accept_license: str | None = None) -> dict[str, Any]:
+        """Prepare a runtime; ``container`` pulls or builds the benchmark's Docker image instead."""
+        settings = self.settings()
+        environment = dict(BUILD_MIRRORS.get(settings.get("build_mirror") or "", {}))
+        if settings.get("hf_endpoint"):
+            environment["HF_ENDPOINT"] = settings["hf_endpoint"]
         try:
-            pid = benchmarks.start_setup(self.runs_root, integration, profile, self.settings().get("runtime_wheel"))
+            pid = benchmarks.start_setup(self.runs_root, integration, profile, settings.get("runtime_wheel"),
+                                         container=container, environment=environment, accept_license=accept_license)
         except ValueError as error:
             raise Conflict(str(error)) from error
-        return {"pid": pid, "integration": integration, "profile": profile}
+        return {"pid": pid, "integration": integration, "profile": profile, "container": container}
+
+    def system_check(self) -> dict[str, Any]:
+        """What a machine needs before one-click benchmark deployment, each with a fix."""
+        import shutil
+        import subprocess
+        from evoab.provider import catalog
+        checks = []
+
+        def add(key, ok, detail, fix=""):
+            checks.append({"key": key, "ok": bool(ok), "detail": detail, "fix": "" if ok else fix})
+
+        docker = shutil.which("docker")
+        add("docker", docker, docker or "docker not found", "Install Docker Engine (docs.docker.com/engine/install).")
+        info = None
+        if docker:
+            result = subprocess.run([docker, "info", "--format", "{{json .Runtimes}}"], capture_output=True, text=True,
+                                    timeout=30)
+            info = result.stdout if result.returncode == 0 else None
+            add("docker_access", info is not None, "Docker daemon reachable" if info else (result.stderr.strip()[-200:]),
+                "Add this user to the docker group (sudo usermod -aG docker $USER), then log in again.")
+        toolkit = shutil.which("nvidia-ctk") or shutil.which("nvidia-container-runtime")
+        add("gpu_containers", toolkit and info and "nvidia" in info,
+            "NVIDIA Container Toolkit configured" if toolkit and info and "nvidia" in info else "GPU containers unavailable",
+            "Install nvidia-container-toolkit, run sudo nvidia-ctk runtime configure --runtime=docker, restart Docker.")
+        free = shutil.disk_usage(Path.home()).free / 2**30
+        add("disk", free >= 120, f"{free:.0f} GiB free", "Free at least 120 GiB (images and assets).")
+        try:
+            presets = catalog.presets()
+        except RuntimeError as error:
+            presets = []
+            add("agent_runtime", False, str(error), "pip install 'evoab[agent]'")
+        add("model_presets", presets, f"{len(presets)} model presets",
+            "Add a provider and a model preset under 设置 → 模型.")
+        return {"ok": all(c["ok"] for c in checks), "checks": checks,
+                "mirror": self.settings().get("build_mirror"), "mirrors": sorted(BUILD_MIRRORS)}
 
     def add_benchmark(self, text: str) -> dict[str, Any]:
         """Register a custom benchmark manifest and check it in its interpreter."""

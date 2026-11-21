@@ -25,6 +25,7 @@ class Deployment:
         self.info = None
         self.url = None
         self.record = dict(run_id=run_id, state='preparing', owned=True)
+        self.container = None
 
     def save(self):
         write_json_atomic(self.output / 'deployment.json', self.record)
@@ -42,6 +43,12 @@ class Deployment:
             runtime = runtime_for(self.args, recipe, self.adapter)
             self.adapter.verify(runtime)
             plan = self.adapter.plan(self.args, runtime, self.output, self.run_id)
+            from .container import is_container, wrap_plan
+            if is_container(runtime.python):
+                self.container = f"evoab-{self.run_id}"[:63]
+                self.container_python = runtime.python
+                plan = wrap_plan(plan, runtime, gpu_index=self.args.deploy_gpu, name=self.container)
+                self.record.update(container=self.container, image=runtime.data["container"]["image"])
             self.url = plan.url
             require_free_port(plan.url)
             self.record.update(runtime=runtime.name, recipe_digest=runtime.recipe_digest,
@@ -75,6 +82,10 @@ class Deployment:
             self.process.close()
             self.record.update(closed=True, forced_cleanup=self.process.forced,
                                service_exit_code=self.process.process.returncode)
+        if self.container is not None:
+            from .container import hand_back, remove
+            remove(self.container)
+            hand_back(self.container_python, self.output)
         self.save()
         self._closed = True
 

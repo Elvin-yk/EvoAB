@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Container runtimes (`docs/containers.md`): `evoab setup --container` /
+  `evoab benchmarks prepare --container` pull a public upstream image pinned by
+  digest, or build a recipe shipped with the integration, then add the
+  `evoab-runtime` wheel in a local layer; `evoab run --container` launches the
+  environment service in it (host network, host user, GPU, run directory
+  mounted at the same path) and removes the container afterwards. LIBERO-PRO
+  uses allenai/vla-evaluation-harness's public image plus the official
+  perturbation suites (200 tasks); LIBERO-Plus builds locally from a pinned
+  recipe; RoboDojo builds its pinned upstream Isaac Sim 5.1 Dockerfile
+  (`--accept-license "NVIDIA Isaac Sim EULA"`) with sources and assets prepared
+  on the host and mounted. Without a runtime wheel, the local layer installs the
+  `evoab` package Studio runs. Studio shows 一键部署（Docker） per benchmark, a
+  部署条件 check (Docker, GPU containers, disk, model presets; also
+  `evoab benchmarks check`), a 构建镜像源 setting (Tsinghua + hf-mirror) forwarded
+  to every build, marks container runtimes and launches runs in them. Native
+  source checks accept a recorded `.evoab-revision` in images without `.git`.
+
 - Rerunning setup for a recorded LIBERO-Plus or LIBERO-PRO installation may
   publish an empty task catalog: removing every eligible asset now disables the
   stale tasks in Studio, the task API and launch validation instead of failing

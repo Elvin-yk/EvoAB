@@ -226,6 +226,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     setup.add_argument("--wheel", type=Path, help="Install a matching evoab-runtime wheel in the native environment")
     setup.add_argument("--setup-timeout-s", type=float, default=14400)
     setup.add_argument("--skip-demo-download", action="store_true", help="Skip optional expert demonstration videos")
+    setup.add_argument("--accept-license", metavar="NAME",
+                       help="Accept the named licence a container recipe requires (for example the NVIDIA Isaac Sim EULA)")
     add_runtime_arguments(setup)
     deploy = subparsers.add_parser("deploy", help="Run a prepared service in the foreground", allow_abbrev=False)
     kinds = deploy.add_subparsers(dest="service", required=True)

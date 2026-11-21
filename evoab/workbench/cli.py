@@ -232,8 +232,11 @@ def _benchmarks(bench, args) -> None:
         if args.json:
             _print_json(items)
             return
-        _table([[b["integration"], b["title"], b["kind"], p["profile"], p["status"], p["task_count"]]
-                for b in items for p in b["profiles"]], ["INTEGRATION", "TITLE", "KIND", "PROFILE", "STATUS", "TASKS"])
+        _table([[b["integration"], b["title"], b["kind"], p["profile"], p["status"], p["task_count"],
+                 p.get("runtime_kind") or "-", ("image" if (b.get("container") or {}).get("source") == "image"
+                                                else "build" if b.get("container") else "-")]
+                for b in items for p in b["profiles"]],
+               ["INTEGRATION", "TITLE", "KIND", "PROFILE", "STATUS", "TASKS", "RUNTIME", "DOCKER"])
     elif args.action == "tasks":
         tasks = bench.tasks(args.integration, args.profile)
         if args.suite:
@@ -244,7 +247,15 @@ def _benchmarks(bench, args) -> None:
         _table([[t["task"], t.get("embodiment"), t.get("max_steps"), (t.get("instruction") or "")[:60]] for t in tasks],
                ["TASK", "EMBODIMENT", "MAX_STEPS", "INSTRUCTION"])
     elif args.action == "prepare":
-        _print_json(bench.prepare(args.integration, args.profile))
+        _print_json(bench.prepare(args.integration, args.profile, container=args.container,
+                                  accept_license=args.accept_license))
+    elif args.action == "check":
+        result = bench.system_check()
+        if args.json:
+            _print_json(result)
+            return
+        for check in result["checks"]:
+            print(f"{'ok ' if check['ok'] else 'NO '} {check['key']:<15} {check['detail']}" + (f"\n      fix: {check['fix']}" if check["fix"] else ""))
     elif args.action == "add":
         result = bench.add_benchmark(args.manifest.read_text(encoding="utf-8"))
         _print_json(result) if args.json else print(f"registered {result['name']}; checking it in its interpreter "
@@ -371,8 +382,14 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--profile", default="default")
         if name == "tasks":
             p.add_argument("--suite")
+        else:
+            p.add_argument("--container", action="store_true",
+                           help="Pull or build the benchmark's Docker image instead of a native installation")
+            p.add_argument("--accept-license", metavar="NAME", help="Accept the licence the container recipe names")
         p.set_defaults(handler=_benchmarks)
 
+    p = bm.add_parser("check", parents=[common], help="Check Docker, GPU containers, disk and model presets for deployment")
+    p.set_defaults(handler=_benchmarks)
     p = bm.add_parser("add", parents=[common], help="Register a custom Gym-style benchmark from a manifest (see template)")
     p.add_argument("manifest", type=Path)
     p.set_defaults(handler=_benchmarks)

@@ -23,8 +23,8 @@ def recipe(args):
 def validate(args):
     if args.runtime_profile is not None and args.runtime_profile not in SUITES:
         raise ValueError("Unknown LIBERO-PRO suite")
-    if args.command == "setup" and not (args.runtime_python and args.native_root):
-        raise ValueError("Supply --runtime-python and --native-root to adopt a LIBERO-PRO installation")
+    if args.command == "setup" and not getattr(args, "container", False) and not (args.runtime_python and args.native_root):
+        raise ValueError("Supply --runtime-python and --native-root to adopt a LIBERO-PRO installation, or use --container")
 
 
 def external_data(args):

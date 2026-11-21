@@ -614,3 +614,8 @@ details.sys.inner { margin: 6px 0; }
 .run-diagnostics { margin-block: 12px; }
 .run-diagnostics ul { margin-block: 4px; }
 .dp-segments .error, .dp-legend .error { background: #ed9441; }
+
+.system-check .check-row { display: grid; grid-template-columns: 20px 110px 1fr; gap: 6px 10px; padding: 5px 0; align-items: baseline; }
+.system-check .check-row .mark { font-weight: 700; }
+.system-check .check-row.ok .mark { color: var(--ok); } .system-check .check-row.bad .mark { color: var(--bad); }
+.system-check .check-row .fix { grid-column: 3; color: var(--bad); }

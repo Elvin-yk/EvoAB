@@ -22,8 +22,8 @@ def recipe(args):
 def validate(args):
     if args.runtime_profile is not None and args.runtime_profile not in BUDGETS:
         raise ValueError("Unknown LIBERO-Plus suite")
-    if args.command == "setup" and not (args.runtime_python and args.native_root):
-        raise ValueError("Adopting LIBERO-Plus requires --runtime-python and --native-root")
+    if args.command == "setup" and not getattr(args, "container", False) and not (args.runtime_python and args.native_root):
+        raise ValueError("Adopting LIBERO-Plus requires --runtime-python and --native-root, or --container")
 
 
 def _state_path(root, suite, name):

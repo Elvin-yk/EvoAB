@@ -43,8 +43,8 @@ def runtime_lock(root, timeout=14400):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def read_runtime(args, recipe):
-    root = runtime_root(args, recipe)
+def read_runtime(args, recipe, root=None):
+    root = root or runtime_root(args, recipe)
     path = root / 'runtime.json'
     if not path.is_file():
         raise ValueError(f'Runtime {recipe.name} is not prepared. Run the matching evoab setup command.')
@@ -54,12 +54,16 @@ def read_runtime(args, recipe):
     runtime = Runtime(**{**data, 'root': Path(data['root'])})
     if runtime.recipe_digest != recipe.digest or runtime.package_version != __version__:
         raise ValueError('Runtime version mismatch; rerun setup')
-    if not Path(runtime.python).is_file():
+    from .container import is_container
+    if not is_container(runtime.python) and not Path(runtime.python).is_file():
         raise ValueError('Prepared interpreter is missing; rerun setup')
     return runtime
 
 
 def runtime_for(args, recipe, adapter):
+    if getattr(args, 'container', False):
+        from .container import container_root
+        return read_runtime(args, recipe, root=container_root(args, recipe))
     if args.runtime_python:
         python = str(args.runtime_python.expanduser().absolute())
         if not Path(python).is_file():
@@ -82,9 +86,11 @@ def check_python(python, imports=(), *, environment=None, timeout=120):
               'names=json.loads(sys.argv[1]); '
               '[importlib.import_module(n) for n in names]; '
               'print(json.dumps(dict(python=sys.version.split()[0],package_version=__version__)))')
+    from .container import python_command
     env = {**os.environ, **(environment or {}), 'PYTHONPATH': '', 'PYTHONNOUSERSITE': '1'}
-    result = subprocess.run([str(python), '-c', script, json.dumps(['evoab.services.hosting', *imports])], env=env,
-                            capture_output=True, text=True, timeout=timeout, cwd='/')
+    command = python_command(python, ['-c', script, json.dumps(['evoab.services.hosting', *imports])],
+                             environment=environment)
+    result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=timeout, cwd='/')
     if result.returncode:
         raise RuntimeError(f'Runtime import check failed: {result.stderr[-3000:]}')
     info = json.loads(result.stdout.strip().splitlines()[-1])
@@ -99,6 +105,9 @@ def publish_runtime(runtime, validation):
 
 
 def query_python(python, code, *arguments, environment=None, timeout=120):
+    from .container import is_container, query
+    if is_container(python):
+        return query(python, code, *map(str, arguments), environment=environment, timeout=max(timeout, 600))
     result = subprocess.run([str(python), '-c', code, *map(str, arguments)],
         env={**os.environ, **(environment or {}), 'PYTHONPATH': '', 'PYTHONNOUSERSITE': '1'},
         capture_output=True, text=True, timeout=timeout, cwd='/')

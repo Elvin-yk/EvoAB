@@ -628,6 +628,26 @@ async function prepare(bench, p, button) {
   route();
 }
 
+async function prepareContainer(bench, p, button) {
+  const what = benchmarkName(bench, p.profile);
+  const docker = bench.container;
+  const how = docker.source === "image"
+    ? `从 ${docker.image.split("@")[0]} 拉取现成镜像（约数 GB），在其上加装 EvoAB 运行时，生成本机容器环境。`
+    : "按仓库中的构建配方在本机构建镜像（首次可能需要较长时间），再加装 EvoAB 运行时。";
+  const license = docker.license ? `\n\n构建需要接受 ${docker.license}（https://docs.omniverse.nvidia.com/eula/）。点“确定”即表示接受。` : "";
+  if (!confirm(`用 Docker 部署 ${what}？\n${how}\n完成后，这个评测集的运行都会在容器里启动。${license}`)) return;
+  button.disabled = true;
+  try {
+    const query = docker.license ? `&accept_license=${encodeURIComponent(docker.license)}` : "";
+    await api(`/api/benchmarks/${bench.integration}/${p.profile}/setup?container=true${query}`, { method: "POST" });
+    toast(`已开始部署 ${what}，进度见下方日志`);
+  } catch (error) {
+    toast(`无法开始：${error.message}`, true);
+  }
+  await loadBenchmarks();
+  route();
+}
+
 async function openTasks(bench, p) {
   const close = () => { backdrop.remove(); drawer.remove(); };
   const backdrop = h("div", { class: "drawer-backdrop", onclick: close });
@@ -844,16 +864,35 @@ function settingsModels(body) {
 
 // -- benchmarks ----------------------------------------------------------------
 
+const CHECK_LABELS = { docker: "Docker", docker_access: "Docker 权限", gpu_containers: "GPU 容器", disk: "磁盘空间",
+  agent_runtime: "Agent 运行时", model_presets: "模型预设" };
+
 function settingsBenchmarks(body) {
   const s = S.config.settings || {};
   const wheel = h("input", { class: "input mono", value: s.runtime_wheel || "", placeholder: "/path/to/evoab_runtime-…-py3-none-any.whl" });
+  const hf = h("input", { class: "input mono", value: s.hf_endpoint || "", placeholder: "https://hf-mirror.com" });
+  const mirror = h("select", { class: "input" }, [["", "官方源（海外网络）"], ["tuna", "清华镜像 + hf-mirror（国内网络）"]]
+    .map(([value, label]) => h("option", { value, selected: (s.build_mirror || "") === value }, label)));
+  const checks = h("div", { class: "card card-pad system-check" }, h("div", { class: "muted small" }, "检查部署条件…"));
+  api("/api/system/check").then((r) => put(checks,
+    h("div", { class: "section-title" }, r.ok ? "部署条件：全部满足" : "部署条件：还有未满足的项"),
+    r.checks.map((c) => h("div", { class: `check-row ${c.ok ? "ok" : "bad"}` },
+      h("span", { class: "mark" }, c.ok ? "✓" : "✗"), h("b", {}, CHECK_LABELS[c.key] || c.key), h("span", { class: "muted" }, c.detail),
+      c.fix ? h("div", { class: "fix mono small" }, c.fix) : null)))).catch((e) => put(checks, h("div", { class: "notice error" }, e.message)));
   put(body, h("div", { class: "page wide" },
     pageHead("评测环境", null,
       h("button", { class: "btn", onclick: async (e) => { e.currentTarget.disabled = true; await loadBenchmarks(); route(); toast("已重新检查"); } }, "重新检查"),
       h("button", { class: "btn primary", onclick: () => customBenchmarkDialog() }, "＋ 添加评测集")),
+    checks,
     h("div", { class: "card card-pad runtime-wheel" }, row("运行时安装包", h("div", { class: "row" }, wheel,
       h("button", { class: "btn", onclick: async () => { S.config.settings = await api("/api/settings", { method: "PUT", json: { runtime_wheel: wheel.value.trim() || null } }); toast("已保存"); } }, "保存")),
-      "安装评测环境时装入的 evoab-runtime wheel；留空则从软件源安装")),
+      "安装评测环境时装入的 evoab-runtime wheel；留空则使用 Studio 当前运行的 EvoAB"),
+      row("构建镜像源", h("div", { class: "row" }, mirror,
+        h("button", { class: "btn", onclick: async () => { S.config.settings = await api("/api/settings", { method: "PUT", json: { build_mirror: mirror.value || null } }); toast("已保存"); } }, "保存")),
+        "Docker 构建时使用的软件源：国内网络选清华镜像（apt、PyPI、conda）+ hf-mirror（任务资源）"),
+      row("Hugging Face 镜像", h("div", { class: "row" }, hf,
+        h("button", { class: "btn", onclick: async () => { S.config.settings = await api("/api/settings", { method: "PUT", json: { hf_endpoint: hf.value.trim() || null } }); toast("已保存"); } }, "保存")),
+      "单独覆盖任务资源的下载地址，例如 https://hf-mirror.com；留空则跟随上面的镜像源")),
     benchmarkCards()));
 }
 
@@ -869,11 +908,17 @@ function benchmarkCards() {
   const profileRow = (bench, p) => {
     const guide = PROJECT_SOURCES[bench.integration]?.guide;
     const canInstall = ["auto", "custom"].includes(bench.setup) && ["not_prepared", "setup_failed"].includes(p.status);
+    const docker = bench.container;
+    const canDocker = docker && docker.docker && p.status !== "preparing" && p.runtime_kind !== "container";
     return [
       h("div", { class: "profile-row" },
         h("strong", {}, p.profile === "default" ? "运行环境" : `运行环境 · ${p.profile}`),
         p.status === "ready" && p.empty === true ? h("span", { class: "pill warn" }, "已注册，无可选任务") : pill(p.status, BENCH_STATUS),
+        p.runtime_kind === "container" ? h("span", { class: "tag", title: p.image || "" }, "Docker") : null,
         h("span", { class: "acts" },
+          canDocker ? h("button", { class: "btn small primary", onclick: (e) => prepareContainer(bench, p, e.currentTarget),
+            title: docker.source === "image" ? `拉取镜像 ${docker.image}` : "在本机按构建配方生成镜像" },
+            docker.source === "image" ? "一键部署（Docker）" : "构建并部署（Docker）") : null,
           canInstall ? h("button", { class: "btn small", onclick: (e) => prepare(bench, p, e.currentTarget) },
             p.status === "setup_failed" ? "重新检查" : bench.setup === "custom" ? "检查环境" : "安装环境") : null,
           p.status === "external" && guide ? h("a", { class: "btn small", target: "_blank", rel: "noopener noreferrer",

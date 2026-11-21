@@ -92,6 +92,56 @@ def prepare(context):
                                XDG_CONFIG_HOME=str(context.root / 'config'))
 
 
+def container_data(args, root, report):
+    """Host side of a container runtime: pinned checkout (the build context) and prepared assets.
+
+    The checkout and assets stay on the host and are mounted into the container
+    at the same paths, so task, layout and asset checks read the files the
+    container service uses.
+    """
+    from evoab.services.deployment.setup import Preparation
+    from .assets import asset_overlay
+    settings = recipe(args).settings
+    context = Preparation(args, recipe(args), root, report=report)
+    native = Path(context.step('source', lambda: context.git(settings['repository'], settings['revision'],
+                                                           root / 'source', submodules=True)))
+    if args.assets_dir:
+        source = args.assets_dir.expanduser().resolve()
+    else:
+        source = Path(context.step('assets', lambda: context.snapshot(settings['asset_repository'],
+            settings['asset_revision'], root / 'assets', patterns=['Assets/**']))) / 'Assets'
+    prepared = asset_overlay(source, root / 'build/Assets')
+    link = native / 'Assets'
+    if link.is_symlink() and link.resolve() != prepared.resolve():
+        link.unlink()
+    if not link.exists():
+        link.symlink_to(prepared, target_is_directory=True)
+    # Isaac Sim's shader and extension caches persist across runs (containers are removed).
+    xdg = root / 'xdg'
+    for name in ('cache', 'data', 'config'):
+        (xdg / name).mkdir(parents=True, exist_ok=True)
+    return dict(native_root=str(native), assets_dir=str(prepared), asset_source_dir=str(source),
+                mounts=[str(native), str(root / 'build'), str(source), str(xdg)],
+                environment={'XDG_CACHE_HOME': str(xdg / 'cache'), 'XDG_DATA_HOME': str(xdg / 'data'),
+                             'XDG_CONFIG_HOME': str(xdg / 'config')})
+
+
+def container_finalize(python, data, report):
+    """Initialize the robot configurations with the image's interpreter, as native setup does."""
+    import subprocess
+    from evoab.services.deployment.container import options, parse, run_prefix
+    from .assets import verify_robot_configs
+    image, inner = parse(python)
+    root, mounts = options(python)
+    assets = Path(data['assets_dir'])
+    command = run_prefix(image, gpu=False, environment={}, mounts=mounts, root=root, workdir=str(assets.parent)) \
+        + [inner, str(Path(data['native_root']) / 'utils/update_embodiment_config_path.py')]
+    if report is not None:
+        report('Initializing RoboDojo robot configurations in the image')
+    subprocess.run(command, check=True, capture_output=True, text=True)
+    verify_robot_configs(assets)
+
+
 def verify(runtime):
     from .assets import verify_robot_configs
     info = check_python(runtime.python, ['scipy', 'trimesh', 'sklearn', 'h5py', 'omegaconf', 'hydra'],

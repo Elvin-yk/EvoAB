@@ -94,9 +94,14 @@ def create_app(runs_root: Path) -> FastAPI:
     def custom_remove(name: str) -> dict[str, Any]:
         return bench.remove_benchmark(name)
 
+    @app.get("/api/system/check")
+    def system_check() -> dict[str, Any]:
+        return bench.system_check()
+
     @app.post("/api/benchmarks/{integration}/{profile}/setup")
-    def benchmark_setup(integration: str, profile: str) -> dict[str, Any]:
-        return bench.prepare(integration, profile)
+    def benchmark_setup(integration: str, profile: str, container: bool = False,
+                        accept_license: str | None = None) -> dict[str, Any]:
+        return bench.prepare(integration, profile, container=container, accept_license=accept_license)
 
     # -- models: providers, presets, usage ------------------------------------
 

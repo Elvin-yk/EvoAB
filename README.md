@@ -101,6 +101,12 @@ Your own benchmark can be added without an integration: provide
 its observations, actions and success signal. See
 [custom benchmarks](docs/custom-benchmarks.md).
 
+Benchmarks with a container recipe deploy as Docker runtimes in one step
+(Studio: 设置 → 评测集 → 一键部署（Docker）, or `evoab benchmarks prepare
+INTEGRATION --container`): public upstream images are pulled by digest and
+others are built locally; nothing is hosted by EvoAB. See
+[container runtimes](docs/containers.md).
+
 ## Studio
 
 EvoAB Studio is a local web page for launching prepared LIBERO-PRO tasks,

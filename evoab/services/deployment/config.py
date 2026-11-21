@@ -124,6 +124,8 @@ def add_runtime_arguments(parser):
     parser.add_argument('--checkpoint-sha256')
     parser.add_argument('--worker-python', type=Path)
     parser.add_argument('--runtime-profile', help='Native runtime profile selected by the environment integration')
+    parser.add_argument('--container', action='store_true',
+                        help="Use (or, with setup, prepare) the integration's Docker runtime instead of a native one")
     parser.add_argument('--runtime-env', action='append', default=[], metavar='KEY=VALUE',
                         help='Explicit native runtime environment setting, persisted by setup')
 
@@ -177,6 +179,8 @@ class RuntimeConfig(BaseModel):
     worker_python: Path | None = None
     runtime_profile: str | None = None
     runtime_env: list[str] = Field(default_factory=list)
+    container: bool = False
+    accept_license: str | None = None
 
     def resolve(self):
         args = SimpleNamespace(**self.model_dump())

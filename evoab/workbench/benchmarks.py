@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -146,9 +147,14 @@ class PreparedRuntime:
     package_version: str
     tasks: dict[str, dict[str, Any]]
     validation: dict[str, Any]
-    python: Path
+    python: str
     recipe_digest: str
     native_root: Path | None
+    container: dict[str, Any] | None = None
+
+    @property
+    def kind(self) -> str:
+        return "container" if self.container else "native"
 
 
 _parsed: dict[Path, tuple[tuple[int, int, int, int], PreparedRuntime | None]] = {}
@@ -175,10 +181,14 @@ def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
                 recipe = adapter_for(args).recipe(args)
             except (FileNotFoundError, ValueError):
                 continue
-            if (runtime.root.resolve() != runtime_root(args, recipe).resolve()
-                    or runtime.recipe_digest != recipe.digest or runtime.package_version != __version__
-                    or not runtime.python.is_file()
-                    or (runtime.native_root is not None and not runtime.native_root.is_dir())):
+            if runtime.container:
+                from evoab.services.deployment.container import container_root
+                expected_root, local = container_root(args, recipe), True
+            else:
+                expected_root = runtime_root(args, recipe)
+                local = Path(runtime.python).is_file() and (runtime.native_root is None or runtime.native_root.is_dir())
+            if (runtime.root.resolve() != expected_root.resolve() or runtime.recipe_digest != recipe.digest
+                    or runtime.package_version != __version__ or not local):
                 continue
         runtimes.append(runtime)
     return runtimes
@@ -226,17 +236,42 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
     except (OSError, ValueError):
         validation = {}
     return PreparedRuntime(integration, profile, record.parent, record.stat().st_mtime,
-                           str(data.get("package_version", "")), tasks, validation, Path(data.get("python") or "."),
-                           str(data.get("recipe_digest", "")), Path(payload["native_root"]) if payload.get("native_root") else None)
+                           str(data.get("package_version", "")), tasks, validation, str(data.get("python") or "."),
+                           str(data.get("recipe_digest", "")), Path(payload["native_root"]) if payload.get("native_root") else None,
+                           payload.get("container"))
 
 
 def _setup_record(runs_root: Path, integration: str, profile: str) -> Path:
     return runs_root / ".studio" / "setup" / f"{integration}-{profile}.json"
 
 
+def preferred_runtimes() -> dict[tuple[str, str], PreparedRuntime]:
+    """One runtime per (integration, profile); a container runtime wins over a native one."""
+    result: dict[tuple[str, str], PreparedRuntime] = {}
+    for runtime in prepared_runtimes():
+        key = (runtime.integration, runtime.profile)
+        if key not in result or (runtime.container and not result[key].container):
+            result[key] = runtime
+    return result
+
+
+def container_info(integration: str) -> dict[str, Any] | None:
+    """The integration's container recipe as Studio shows it, or None."""
+    import shutil
+    from evoab.services.deployment.container import spec_for
+    try:
+        spec = spec_for(integration)
+    except ValueError:
+        return None
+    if spec is None:
+        return None
+    return {"source": "image" if spec.image else "build", "image": spec.image, "dockerfile": spec.dockerfile,
+            "gpu": spec.gpu, "license": spec.license, "docker": shutil.which("docker") is not None}
+
+
 def overview(runs_root: Path) -> list[dict[str, Any]]:
     """Every registered benchmark with the status of each runtime profile."""
-    prepared = {(r.integration, r.profile): r for r in prepared_runtimes()}
+    prepared = preferred_runtimes()
     items = []
     for info in REGISTRY:
         if info.integration == "custom":
@@ -274,8 +309,11 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 "empty": (status == "ready" and runtime is not None and info.task_selector is not None
                           and not runtime.tasks),
                 "setup_log": jobs.log_tail(record_path, 12) if job else "",
+                "runtime_kind": runtime.kind if runtime else None,
+                "image": (runtime.container or {}).get("image") if runtime else None,
             })
         items.append({
+            "container": container_info(info.integration),
             "integration": info.integration,
             "title": info.title,
             "kind": info.kind,
@@ -368,15 +406,19 @@ def demo_file(runtime: PreparedRuntime, task: str) -> Path | None:
     return None
 
 
+def runtime_for_launch(integration: str, profile: str) -> PreparedRuntime | None:
+    return preferred_runtimes().get((integration, profile))
+
+
 def tasks_for(integration: str, profile: str) -> list[dict[str, Any]]:
-    for runtime in prepared_runtimes():
-        if runtime.integration == integration and runtime.profile == profile:
-            rows = []
-            for task, entry in runtime.tasks.items():
-                if demo_file(runtime, task):
-                    entry = {**entry, "demo_url": f"/api/benchmarks/{integration}/{profile}/demos/{task}"}
-                rows.append(entry)
-            return sorted(rows, key=lambda t: (t["suite"], t["task"]))
+    runtime = runtime_for_launch(integration, profile)
+    if runtime is not None:
+        rows = []
+        for task, entry in runtime.tasks.items():
+            if demo_file(runtime, task):
+                entry = {**entry, "demo_url": f"/api/benchmarks/{integration}/{profile}/demos/{task}"}
+            rows.append(entry)
+        return sorted(rows, key=lambda t: (t["suite"], t["task"]))
     return []
 
 
@@ -384,7 +426,9 @@ def task_info(integration: str, profile: str, task: str) -> dict[str, Any] | Non
     return next((t for t in tasks_for(integration, profile) if t["task"] == task), None)
 
 
-def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | None = None) -> int:
+def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | None = None, *,
+                container: bool = False, environment: dict[str, str] | None = None,
+                accept_license: str | None = None) -> int:
     """Run ``evoab setup`` for one profile in the background.
 
     ``wheel`` is the evoab-runtime wheel installed into the isolated runtime;
@@ -401,6 +445,28 @@ def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | No
         command = [sys.executable, "-m", "evoab", "setup", "--integration", "custom", "--runtime-profile", profile,
                    "--runtime-python", manifest.python]
         return jobs.start(command, record_path, integration=integration, profile=profile, requested_at=time.time())
+    if container:
+        if container_info(integration) is None:
+            raise ValueError(f"{integration} has no container recipe")
+        record_path = _setup_record(runs_root, integration, profile)
+        existing = jobs.read_record(record_path)
+        if existing and jobs.is_running(existing):
+            raise ValueError(f"{integration}/{profile} is already being prepared")
+        command = [sys.executable, "-m", "evoab", "setup", "--integration", integration, "--container",
+                   "--skip-demo-download"]
+        if accept_license:
+            command += ["--accept-license", accept_license]
+        if info is not None and info.profiles:
+            command += ["--runtime-profile", profile]
+        if wheel:
+            wheel_path = Path(wheel).expanduser()
+            if not wheel_path.is_file():
+                raise ValueError(f"runtime wheel not found: {wheel_path}")
+            command += ["--wheel", str(wheel_path)]
+        # Unbuffered so pull/build progress reaches the setup log Studio shows while it runs.
+        return jobs.start(command, record_path, env={**os.environ, **(environment or {}), "PYTHONUNBUFFERED": "1"},
+                          integration=integration,
+                          profile=profile, container=True, requested_at=time.time())
     if info is None or info.setup != "auto":
         raise ValueError(f"{integration} cannot be prepared automatically")
     if info.profiles and profile not in info.profiles:
