@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- CALVIN resolves the Panda URDF from its native asset directory regardless of
+  the working directory used to start the service.
+
 - The episode step budget is evaluation-side for every method: the environment
   description in system prompts drops `max_episode_steps`, model-facing state
   drops `remaining_steps` / `max_episode_steps` metadata, robot tool results and
