@@ -8,6 +8,7 @@ from email.parser import BytesParser
 from http.client import HTTPException
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -74,8 +75,10 @@ class Preparation:
         self.command([str(self.python), '-m', 'pip', 'install', *constraints, *options, *map(str, requirements)])
 
     def check_dependencies(self):
+        env = {**os.environ, **self.environment}
         result = subprocess.run([str(self.python), '-m', 'pip', 'check'], capture_output=True,
-                                text=True, timeout=max(.01, self.deadline-time.monotonic()))
+                                text=True, cwd='/', env=env,
+                                timeout=max(.01, self.deadline-time.monotonic()))
         if not result.returncode:
             return
         reported = [line.strip() for line in result.stdout.splitlines() if line.strip()]
