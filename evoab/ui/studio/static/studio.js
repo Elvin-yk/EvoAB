@@ -149,9 +149,6 @@ async function loadBenchmarks() {
   catalog.push({
     integration: "libero", kind: "simulation", title: "LIBERO", simulator: "MuJoCo（robosuite）",
     embodiment: "Franka Panda", profiles: [], description: "官方终身机器人学习评测集，测试跨任务的知识迁移。",
-  }, {
-    integration: "metaworld", kind: "simulation", title: "MetaWorld MT50", simulator: "MuJoCo",
-    embodiment: "Sawyer", profiles: [], description: "50 个单臂桌面操作任务。",
   });
   S.benchmarks = catalog;
   return catalog;
@@ -179,6 +176,7 @@ function route() {
   const same = current.page === page && current.arg === arg;
   if (current.page !== page) {
     clearInterval(runRefreshTimer);
+    if (page === "settings" || current.page === "settings") S.modelSettings = null;
     if (page === "history" || page === "run") {
       runRefreshTimer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
     }
@@ -390,32 +388,50 @@ function directPayload() {
 
 async function stepModel(body) {
   const w = S.wizard;
-  const holder = h("div", {}, h("div", { class: "muted" }, "读取模型预设…"));
+  let m = S.modelSettings;
+  const holder = h("div", {}, !m ? h("div", { class: "muted" }, "读取模型预设…") : null);
   body.append(holder);
-  let m;
-  try { m = await loadModelSettings(); } catch (error) { put(holder, h("div", { class: "notice error" }, `读取失败：${error.message}`)); return; }
+  if (!m) {
+    try { m = await loadModelSettings(); } catch (error) { put(holder, h("div", { class: "notice error" }, `读取失败：${error.message}`)); return; }
+  }
   const manage = h("a", { class: "btn small", href: "#settings/models" }, "管理模型");
   if (!m.presets.length) {
     put(holder, h("div", { class: "card empty" }, h("b", {}, "还没有模型预设"), "先在设置中添加提供商并新建预设。", manage));
     return;
   }
   if (!m.presets.some((p) => p.name === w.model)) w.model = null;
+  if (!w.model && m.presets.length === 1) {
+    const only = m.presets[0];
+    w.model = only.name;
+    if (!w.effortPicked && only.reasoning_effort && S.config.reasoning_efforts.includes(only.reasoning_effort)) {
+      w.effort = only.reasoning_effort;
+    }
+    route();
+    return;
+  }
   const label = (name) => m.providers.find((p) => p.name === name)?.label || name;
   const groups = {};
   for (const p of m.presets) (groups[p.resolved_provider || p.provider] ||= []).push(p);
   put(holder,
-    h("div", { class: "toolbar" }, h("span", { class: "section-title", style: "margin:0" }, "模型预设"), h("span", { class: "spacer" }), manage),
+    h("div", { class: "toolbar" },
+      h("span", { class: "section-title", style: "margin:0" }, "模型预设"),
+      !w.model ? h("span", { class: "muted small" }, "请点击下方预设以选中") : null,
+      h("span", { class: "spacer" }), manage),
     h("div", { class: "list" }, Object.entries(groups).map(([provider, items]) => [
       h("div", { class: "list-group" }, label(provider)),
       items.map((p) => h("div", { class: `list-item${w.model === p.name ? " selected" : ""}`,
-        onclick: () => { w.model = p.name; if (p.reasoning_effort && S.config.reasoning_efforts.includes(p.reasoning_effort)) w.effort = p.reasoning_effort; route(); } },
+        onclick: () => {
+          w.model = p.name;
+          if (!w.effortPicked && p.reasoning_effort && S.config.reasoning_efforts.includes(p.reasoning_effort)) w.effort = p.reasoning_effort;
+          route();
+        } },
         h("div", { class: "t mono" }, p.name),
         h("span", { class: "muted small" }, `${p.model} · 最多输出 ${fmtInt(p.max_tokens)} · ${fmtTokens(p.context_window_tokens)} 上下文${p.reasoning_effort ? ` · 预设推理 ${effortLabel(p.reasoning_effort)}` : ""}`)))])),
     h("div", { class: "model-effort" },
       h("div", { class: "section-title", id: "effort-label" }, "推理强度"),
       h("div", { class: "segmented", role: "group", "aria-labelledby": "effort-label" },
         S.config.reasoning_efforts.map((e) => h("button", { class: w.effort === e ? "active" : "",
-          "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; route(); } }, effortLabel(e))))));
+          "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; w.effortPicked = true; route(); } }, effortLabel(e))))));
 }
 
 function commandPreview() {

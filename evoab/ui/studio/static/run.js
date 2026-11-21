@@ -668,9 +668,15 @@ async function openFile(name) {
 
 // Periodic refresh from the shell: keep the header current; the trace polls itself.
 function refreshRun(run) {
-  if (RV.run?.key !== run.key) return;
+  const same = RV.run && (RV.run.key === run.key || (RV.run.launch_id && RV.run.launch_id === run.launch_id));
+  if (!same) return;
+  const promoted = !RV.run.id && !!run.id;
   RV.run = run;
+  if (promoted) {
+    current.arg = run.key;
+    if (location.hash !== `#${run.key}`) history.replaceState(null, "", `#${run.key}`);
+  }
   renderHead();
   if (run.id && !RV.trace) loadTrace();
-  if (!run.id) renderLaunchLog(run);
+  if (!run.id || promoted) renderLaunchLog(run);
 }
