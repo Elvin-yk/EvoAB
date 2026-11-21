@@ -23,8 +23,13 @@
   waits), play / replay call / previous-next call / speed, CALL·STEP·ACTION
   telemetry, the action chunk with measured tracking error, model note, repair /
   clamp / hold alerts, a trajectory chart, an inference list and per-inference
-  request/reply drawer. Each launch picks a free environment port, so LIBERO-PRO
-  runs can overlap.
+  request/reply drawer and a switcher across Direct rollouts. Each launch picks a
+  free environment port, so LIBERO-PRO runs can overlap.
+
+- Studio settings open on "模型与提供商": nanobot's presets and providers plus
+  nanobot's own settings page embedded (same config file). The earlier provider
+  list remains as "旧版提供商（Codex）" for the Codex method. EvoAB model calls are
+  recorded in nanobot's usage store.
 
 - Studio's operations move to `evoab/workbench/` and are exposed as
   `evoab runs | providers | benchmarks | usage | settings | studio` commands

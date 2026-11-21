@@ -112,7 +112,7 @@ function drawStatic() {
     field("Model", `${model.model || "—"}${model.reasoning_effort ? ` · ${model.reasoning_effort}` : ""}`),
     field("Horizon", p.horizon ? `${p.horizon[0]}–${p.horizon[1]} rows` : null),
     field("History", p.history_length ? `${p.history_length} steps · stride ${p.history_stride}` : null),
-    field("Control", p.control_hz ? `${p.control_hz} Hz` : null));
+    field("Control", p.control_hz ? `${p.control_hz} Hz` : null), runSwitcher());
   $("dpInstruction").textContent = tr.instruction || "";
   const ok = tr.ending?.task_success;
   const result = $("dpResult");
@@ -147,6 +147,20 @@ function drawStatic() {
     h("button", { class: "btn small ghost", onclick: () => openFile("direct/prompt.md") }, "完整提示词"),
     h("button", { class: "btn small ghost", onclick: () => openFile("direct/policy.json") }, "策略配置"));
   drawChart();
+}
+
+// Other Direct runs, newest first: step through rollouts like a gallery.
+function runSwitcher() {
+  const runs = (S.runs || []).filter((r) => r.id && r.method_id === "direct_policy");
+  if (runs.length < 2) return null;
+  const index = runs.findIndex((r) => r.key === RV.run.key);
+  const go = (i) => { location.hash = `#${runs[(i + runs.length) % runs.length].key}`; };
+  return h("div", { class: "dp-field dp-switch" }, h("span", { class: "eyebrow" }, `Rollout ${index + 1} / ${runs.length}`),
+    h("div", { class: "row" },
+      h("button", { class: "btn small", title: "上一个 Direct 运行", onclick: () => go(index - 1) }, "←"),
+      h("select", { onchange: (e) => go(Number(e.target.value)) }, runs.map((r, i) => h("option", { value: i, selected: i === index },
+        `#${r.short_id} · ${taskName(r.task) || r.task} · ${r.model || ""} · ${RUN_STATUS[r.status] || r.status}`))),
+      h("button", { class: "btn small", title: "下一个 Direct 运行", onclick: () => go(index + 1) }, "→")));
 }
 
 const PROMPT_BLOCKS = { robot: "本体与坐标系", timing: "执行时序与步长限制", gripper: "夹爪几何", camera: "相机几何", action: "输出格式" };

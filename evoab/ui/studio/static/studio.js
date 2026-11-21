@@ -846,7 +846,7 @@ async function openTasks(bench, p) {
 
 // -- settings ----------------------------------------------------------------
 
-const SETTINGS_TABS = [["providers", "提供商"], ["models", "模型能力"], ["usage", "用量"], ["general", "通用"]];
+const SETTINGS_TABS = [["nanobot", "模型与提供商"], ["providers", "旧版提供商（Codex）"], ["models", "模型能力探测"], ["usage", "用量"], ["general", "通用"]];
 const PRESETS = [
   { label: "OpenAI 兼容（自定义）", base_url: "", profile: "omnirouter.chat_completions" },
   { label: "OpenRouter", base_url: "https://openrouter.ai/api/v1", profile: "omnirouter.chat_completions" },
@@ -857,13 +857,38 @@ const PRESETS = [
 ];
 
 function pageSettings(main, arg) {
-  const [tab, sub] = (arg || "providers").split("/");
+  const [tab, sub] = (arg || "nanobot").split("/");
   const body = h("div", { class: "settings-body" });
   put(main, h("div", { class: "settings" },
     h("div", { class: "settings-nav" }, h("h1", {}, "设置"),
       h("nav", { class: "nav" }, SETTINGS_TABS.map(([id, label]) => h("a", { href: `#settings/${id}`, class: tab === id ? "active" : "" }, label)))),
     body));
-  ({ providers: settingsProviders, models: settingsModels, usage: settingsUsage, general: settingsGeneral }[tab] || settingsProviders)(body, sub);
+  ({ nanobot: settingsNanobot, providers: settingsProviders, models: settingsModels, usage: settingsUsage, general: settingsGeneral }[tab] || settingsNanobot)(body, sub);
+}
+
+// Providers, model presets and usage are nanobot's: Studio shows what EvoAB will use and embeds
+// nanobot's own settings page, which edits the same configuration file.
+async function settingsNanobot(body) {
+  const holder = h("div", {}, h("div", { class: "muted" }, "读取 nanobot 配置…"));
+  put(body, h("div", { class: "page wide" }, holder));
+  let info;
+  try { info = await api("/api/models"); } catch (error) { put(holder, h("div", { class: "notice error" }, error.message)); return; }
+  if (!info.available) { put(holder, h("div", { class: "notice error" }, info.error)); return; }
+  const frame = h("iframe", { class: "nanobot-frame", src: `${info.webui}/#/settings`, title: "nanobot settings" });
+  put(holder,
+    pageHead("模型与提供商", `由 nanobot 管理：提供商、模型预设、推理设置和用量统计都来自 ${info.config}。在下方 nanobot 设置页修改后，发起评测时即可使用。`,
+      h("a", { class: "btn", href: info.webui, target: "_blank", rel: "noopener" }, "打开 nanobot ↗")),
+    h("div", { class: "nanobot-summary" },
+      h("div", { class: "card" }, h("div", { class: "section-title" }, `模型预设（${info.presets.length}）· 发起评测时选择`),
+        h("table", { class: "table" }, h("thead", {}, h("tr", {}, ["预设", "提供商", "模型", "推理", "最大输出"].map((x) => h("th", {}, x)))),
+          h("tbody", {}, info.presets.map((p) => h("tr", {}, h("td", { class: "mono" }, p.name), h("td", {}, p.provider), h("td", { class: "mono" }, p.model),
+            h("td", {}, p.reasoning_effort || "—"), h("td", {}, fmtInt(p.max_tokens))))))),
+      h("div", { class: "card" }, h("div", { class: "section-title" }, `已配置的提供商（${info.providers.length}）`),
+        h("table", { class: "table" }, h("tbody", {}, info.providers.map((p) => h("tr", {}, h("td", {}, h("b", {}, p.label), h("div", { class: "faint small mono" }, p.name)),
+          h("td", { class: "mono small" }, p.api_base || "内置地址"), h("td", {}, p.has_key ? "已设密钥" : "无密钥"), h("td", { class: "small" }, p.apis.join(", ")))))))),
+    h("div", { class: "section-title", style: "margin-top:18px" }, "nanobot 设置"),
+    frame,
+    h("p", { class: "muted small" }, `内嵌页面来自 ${info.webui}（nanobot webui）。若显示空白，请在服务器上运行 nanobot webui 并转发该端口。`));
 }
 
 function settingsProviders(body, selectedId) {

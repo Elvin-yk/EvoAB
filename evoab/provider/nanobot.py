@@ -112,6 +112,9 @@ class ModelClient:
         self.max_tokens = max_tokens or resolved.max_tokens
         self.temperature = resolved.temperature
         self._provider = make_provider(config, preset_name=preset)
+        # Record every physical call in nanobot's usage store, as nanobot's own gateway does.
+        from nanobot.llm_usage.service import record_llm_call
+        self._provider.set_llm_call_observer(record_llm_call)
         self._loop = asyncio.new_event_loop()
 
     def describe(self) -> dict[str, Any]:
