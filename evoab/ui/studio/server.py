@@ -78,22 +78,6 @@ def create_app(runs_root: Path) -> FastAPI:
     def benchmark_demo(integration: str, profile: str, task: str) -> FileResponse:
         return FileResponse(bench.demo(integration, profile, task), media_type="video/mp4")
 
-    @app.get("/api/benchmarks/custom/template", response_class=Response)
-    def custom_template() -> Response:
-        return Response(bench.benchmark_manifest(), media_type="text/plain; charset=utf-8")
-
-    @app.get("/api/benchmarks/custom/{name}", response_class=Response)
-    def custom_manifest(name: str) -> Response:
-        return Response(bench.benchmark_manifest(name), media_type="text/plain; charset=utf-8")
-
-    @app.post("/api/benchmarks/custom", status_code=201)
-    def custom_add(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        return bench.add_benchmark(str(payload.get("manifest") or ""))
-
-    @app.delete("/api/benchmarks/custom/{name}")
-    def custom_remove(name: str) -> dict[str, Any]:
-        return bench.remove_benchmark(name)
-
     @app.get("/api/system/check")
     def system_check() -> dict[str, Any]:
         return bench.system_check()

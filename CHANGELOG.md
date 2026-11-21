@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Studio serves the nanobot settings UI as versioned, cacheable assets. Benchmark
+  registration and manifest management have been removed from Studio, the HTTP
+  API and the CLI. Existing profiles and historical runs remain readable.
+
 - Container runtimes (`docs/containers.md`): `evoab setup --container` /
   `evoab benchmarks prepare --container` pull a public upstream image pinned by
   digest, or build a recipe shipped with the integration, then add the

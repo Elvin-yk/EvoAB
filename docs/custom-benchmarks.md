@@ -1,7 +1,6 @@
 # Custom benchmarks
 
-Any simulator that exposes the usual Gym shape can be evaluated with every
-EvoAB method (Direct Policy, Agentic Policy) without writing an integration.
+Existing installations can continue using their registered Gym environments and viewing recorded runs. Studio and the CLI no longer register or edit benchmark manifests.
 
 ## What the benchmark provides
 
@@ -22,7 +21,7 @@ when reset needs extra steps (see `examples/benchmarks/libero_gym.py`).
 
 ## The manifest
 
-`evoab benchmarks template` prints a documented manifest. Its sections:
+Existing manifests contain these sections:
 
 - **Where it runs** — `python` (an interpreter that imports the benchmark and the
   `evoab-runtime` package), `path` (added to `sys.path`), `make`, tasks, and
@@ -42,17 +41,9 @@ EvoAB converts every pose target to the benchmark's action convention, serves
 the episode through its standard environment service, and records frames,
 state and outcome like any built-in benchmark.
 
-## Register and run
+## Run an existing environment
 
 ```bash
-evoab benchmarks template > my_bench.toml   # edit paths and keys
-evoab benchmarks add my_bench.toml          # validates, then checks it in its interpreter
-evoab benchmarks list                       # status: ready, with the task count
-evoab runs launch --integration custom --profile my_bench --task TASK_ID \
-  --method direct_policy --model PRESET
+evoab benchmarks list
+evoab runs launch --integration custom --profile EXISTING_PROFILE --task TASK_ID --method direct_policy --model PRESET
 ```
-
-In Studio: 设置 → 评测集 → 添加评测集 (paste or edit the manifest). Registered
-manifests live in `~/.config/evoab/benchmarks/`; the check runs
-`evoab setup --integration custom --runtime-profile NAME --runtime-python PYTHON`,
-which imports `make` and lists the tasks inside that interpreter.

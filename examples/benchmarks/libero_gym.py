@@ -3,8 +3,7 @@
 EvoAB only needs ``make(task_id, seed)`` returning an object with ``reset()``
 and ``step(action)``; ``TASKS`` lists the tasks. Set ``LIBERO_ROOT`` to a LIBERO
 checkout (the directory containing ``libero/libero``) in the manifest's
-``[environment]`` table, then register it with
-``evoab benchmarks add examples/benchmarks/libero_gym.toml``.
+``[environment]`` table.
 """
 import os
 import sys

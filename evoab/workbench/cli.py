@@ -256,17 +256,6 @@ def _benchmarks(bench, args) -> None:
             return
         for check in result["checks"]:
             print(f"{'ok ' if check['ok'] else 'NO '} {check['key']:<15} {check['detail']}" + (f"\n      fix: {check['fix']}" if check["fix"] else ""))
-    elif args.action == "add":
-        result = bench.add_benchmark(args.manifest.read_text(encoding="utf-8"))
-        _print_json(result) if args.json else print(f"registered {result['name']}; checking it in its interpreter "
-                                                    f"(evoab benchmarks list shows the status)")
-    elif args.action == "remove":
-        result = bench.remove_benchmark(args.name)
-        _print_json(result) if args.json else print(f"removed {args.name}")
-    elif args.action == "template":
-        print(bench.benchmark_manifest(), end="")
-    elif args.action == "manifest":
-        print(bench.benchmark_manifest(args.name), end="")
 
 
 def _usage(bench, args) -> None:
@@ -389,17 +378,6 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(handler=_benchmarks)
 
     p = bm.add_parser("check", parents=[common], help="Check Docker, GPU containers, disk and model presets for deployment")
-    p.set_defaults(handler=_benchmarks)
-    p = bm.add_parser("add", parents=[common], help="Register a custom Gym-style benchmark from a manifest (see template)")
-    p.add_argument("manifest", type=Path)
-    p.set_defaults(handler=_benchmarks)
-    p = bm.add_parser("remove", parents=[common], help="Unregister a custom benchmark")
-    p.add_argument("name")
-    p.set_defaults(handler=_benchmarks)
-    p = bm.add_parser("template", parents=[common], help="Print the documented manifest template")
-    p.set_defaults(handler=_benchmarks)
-    p = bm.add_parser("manifest", parents=[common], help="Print a registered custom benchmark's manifest")
-    p.add_argument("name")
     p.set_defaults(handler=_benchmarks)
     p = sub.add_parser("usage", parents=[common], help="Recorded model calls and token usage by run")
     p.set_defaults(handler=_usage)

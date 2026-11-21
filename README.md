@@ -96,11 +96,6 @@ Without `direct_policy`, `--agent native` runs an agent loop with only EvoAB's
 robot tools registered, consolidating the transcript when it outgrows the
 model's context window.
 
-Your own benchmark can be added without an integration: provide
-`make(task_id, seed)` returning a Gym-style environment and a manifest mapping
-its observations, actions and success signal. See
-[custom benchmarks](docs/custom-benchmarks.md).
-
 Benchmarks with a container recipe deploy as Docker runtimes in one step
 (Studio: 设置 → 评测集 → 一键部署（Docker）, or `evoab benchmarks prepare
 INTEGRATION --container`): public upstream images are pulled by digest and
@@ -132,7 +127,6 @@ evoab runs trace 721e018e --round 4   # full input and output of one model reque
 evoab runs stop 721e018e
 evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_KEY
 evoab models add-preset my-model --provider my_api --model some-model --effort medium
-evoab benchmarks add my_bench.toml   # a custom Gym-style benchmark
 evoab usage
 ```
 
@@ -143,7 +137,7 @@ Benchmarks (设置 → 评测集) before using one-click Benchmark setup. See
 Settings (设置) has three pages: 概览 (token and request usage of every model
 call), 模型 (model presets and the providers they call; keys stay on the
 server, mode 600 under `~/.config/evoab/agent/`) and 评测集 (benchmark runtimes,
-including custom benchmarks). The CLI reads keys only from standard input or an
+including previously registered Gym benchmarks). The CLI reads keys only from standard input or an
 environment variable, never from arguments.
 
 ## Repository layout

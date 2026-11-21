@@ -160,29 +160,6 @@ class Workbench:
         return {"ok": all(c["ok"] for c in checks), "checks": checks,
                 "mirror": self.settings().get("build_mirror"), "mirrors": sorted(BUILD_MIRRORS)}
 
-    def add_benchmark(self, text: str) -> dict[str, Any]:
-        """Register a custom benchmark manifest and check it in its interpreter."""
-        try:
-            return benchmarks.add_custom(self.runs_root, text)
-        except ValueError as error:
-            raise Invalid(str(error)) from error
-
-    def remove_benchmark(self, name: str) -> dict[str, Any]:
-        try:
-            return benchmarks.remove_custom(name)
-        except ValueError as error:
-            raise NotFound(str(error)) from error
-
-    def benchmark_manifest(self, name: str | None = None) -> str:
-        """A registered manifest, or the documented template when ``name`` is empty."""
-        if not name:
-            from importlib import resources
-            return resources.files("evoab.integrations.custom").joinpath("template.toml").read_text(encoding="utf-8")
-        try:
-            return benchmarks.custom_manifest(name)
-        except ValueError as error:
-            raise NotFound(str(error)) from error
-
     # -- models: providers, presets and usage ---------------------------------
 
     @staticmethod

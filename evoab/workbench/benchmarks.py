@@ -358,47 +358,6 @@ def _custom_items(runs_root: Path, prepared: dict) -> list[dict[str, Any]]:
     return items
 
 
-def add_custom(runs_root: Path, text: str) -> dict[str, Any]:
-    """Validate and register a manifest, then check it in its interpreter (background setup)."""
-    from evoab.integrations.custom import manifest as manifests
-    manifest = manifests.parse(text)
-    path = manifests.path_for(manifest.name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    _forget_custom_runtimes(manifest.name)
-    pid = start_setup(runs_root, "custom", manifest.name)
-    return {"name": manifest.name, "manifest": str(path), "pid": pid}
-
-
-def _forget_custom_runtimes(name: str) -> None:
-    """Drop adoption records of earlier manifest versions (metadata only; nothing installed)."""
-    import shutil
-    root = cache_root() / f"custom-{name}"
-    if root.is_dir():
-        shutil.rmtree(root)
-    for record in list(_parsed):
-        if record.is_relative_to(root):
-            _parsed.pop(record, None)
-
-
-def remove_custom(name: str) -> dict[str, Any]:
-    from evoab.integrations.custom import manifest as manifests
-    path = manifests.path_for(name)
-    if not path.is_file():
-        raise ValueError(f"custom benchmark {name!r} is not registered")
-    path.unlink()
-    _forget_custom_runtimes(name)
-    return {"removed": name}
-
-
-def custom_manifest(name: str) -> str:
-    from evoab.integrations.custom import manifest as manifests
-    path = manifests.path_for(name)
-    if not path.is_file():
-        raise ValueError(f"custom benchmark {name!r} is not registered")
-    return path.read_text(encoding="utf-8")
-
-
 def demo_file(runtime: PreparedRuntime, task: str) -> Path | None:
     if runtime.integration == "libero_pro" and task in runtime.tasks:
         from evoab.integrations.libero_pro.demo_assets import preview_path

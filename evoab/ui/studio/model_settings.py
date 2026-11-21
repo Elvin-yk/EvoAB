@@ -1,4 +1,6 @@
 """Serve nanobot's Models view with the Studio agent's configuration."""
+import gzip
+import re
 from functools import lru_cache, partial
 from importlib.resources import files
 from pathlib import Path
@@ -10,6 +12,8 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from evoab.provider import catalog
 
 STATIC = Path(__file__).parent / "static"
+MODEL_ASSETS = STATIC / "model-assets"
+IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
 _OPERATIONS = {
     "settings.model_configuration.create": "create_model_configuration",
     "settings.model_configuration.update": "update_model_configuration",
@@ -44,6 +48,7 @@ def model_settings_router():
             assets = files("nanobot.web").joinpath("dist/assets")
         except ModuleNotFoundError:
             raise HTTPException(503, catalog.INSTALL_HINT)
+        script = (MODEL_ASSETS / "entry.txt").read_text(encoding="utf-8").strip()
         styles = [next(assets.glob(pattern)).name for pattern in ("index-*.css", "SettingsView-*.css")]
         links = "".join(f'<link rel="stylesheet" href="assets/{name}">' for name in styles)
         return ('<!doctype html><html lang="zh-CN" class="dark"><head><meta charset="utf-8">'
@@ -53,17 +58,21 @@ def model_settings_router():
                 'syncTheme();theme.addEventListener("change",syncTheme);</script>'
                 + links + '<link rel="stylesheet" href="/static/layout.css"><style>html,body,#root{height:100%;margin:0}#root{display:flex;flex-direction:column}'
                 '.settings-feature-header{display:none}.settings-grid.settings-feature-page{padding-top:18px}</style></head><body><div id="root"></div>'
-                '<script type="module" src="app.js"></script></body></html>')
+                f'<script type="module" src="bundle/{script}"></script></body></html>')
 
-    @router.get("/assets/{name}")
-    def stylesheet(name: str):
+    @lru_cache(maxsize=2)
+    def stylesheet_bytes(name: str) -> bytes:
         assets = files("nanobot.web").joinpath("dist/assets")
         if not name.endswith(".css") or not name.startswith(("index-", "SettingsView-")):
             raise HTTPException(404)
         path = assets.joinpath(name)
         if not path.is_file():
             raise HTTPException(404)
-        return Response(path.read_text().replace("/assets/", "/model-ui/fonts/"), media_type="text/css")
+        return gzip.compress(path.read_text().replace("/assets/", "/model-ui/fonts/").encode(), mtime=0)
+
+    @router.get("/assets/{name}")
+    def stylesheet(name: str):
+        return Response(stylesheet_bytes(name), media_type="text/css", headers={**IMMUTABLE, "Content-Encoding": "gzip"})
 
     @router.get("/fonts/{name}")
     def font(name: str):
@@ -72,12 +81,17 @@ def model_settings_router():
         path = files("nanobot.web").joinpath("dist/assets", name)
         if not path.is_file():
             raise HTTPException(404)
-        return FileResponse(path, media_type="font/woff2")
+        return FileResponse(path, media_type="font/woff2", headers=IMMUTABLE)
 
-    @router.get("/app.js")
-    def script():
-        return FileResponse(STATIC / "nanobot-models.js.gz", media_type="text/javascript",
-                            headers={"Content-Encoding": "gzip", "Cache-Control": "no-cache"})
+    @router.get("/bundle/{name}")
+    def bundle(name: str):
+        if not re.fullmatch(r"(?:(?:models|chunk)-[\w-]+\.js|asset-[\w-]+\.css)", name):
+            raise HTTPException(404)
+        path = MODEL_ASSETS / f"{name}.gz"
+        if not path.is_file():
+            raise HTTPException(404)
+        media_type = "text/javascript" if name.endswith(".js") else "text/css"
+        return FileResponse(path, media_type=media_type, headers={**IMMUTABLE, "Content-Encoding": "gzip"})
 
     @router.get("/settings")
     def settings():

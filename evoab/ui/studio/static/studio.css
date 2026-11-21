@@ -543,14 +543,6 @@ details.sys.inner { margin: 6px 0; }
 .dp-player.waiting .dp-telemetry::after { content: "模型推理中：动作块返回后才会执行"; font-size: 12px; color: var(--muted); align-self: center; }
 
 /* -- settings: dialogs, models, usage, benchmarks ------------------------------ */
-.modal { position: fixed; z-index: 60; top: 8vh; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px));
-  max-height: 84vh; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
-  border-radius: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.18); }
-.modal.wide { width: min(920px, calc(100vw - 32px)); }
-.modal-head { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-.modal-head h2 { margin: 0; font-size: 15px; }
-.modal-body { padding: 14px 18px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-.modal-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .form-row { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 12px; }
 .form-label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; }
 .form-label small { font-size: 11px; color: var(--faint); }
@@ -597,7 +589,7 @@ details.sys.inner { margin: 6px 0; }
   .runtime-wheel .form-row { grid-template-columns: 1fr; }
   .page-head .actions { flex-wrap: wrap; }
 }
-.manifest-editor { width: 100%; min-height: 52vh; font-size: 12.5px; line-height: 1.5; white-space: pre; tab-size: 2; }
+
 
 .run-summary { margin-bottom: 10px; }
 .run-disclosures { display: flex; flex-wrap: wrap; gap: 0 20px; }

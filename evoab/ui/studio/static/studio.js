@@ -788,15 +788,6 @@ function pageSettings(main, arg) {
   ({ overview: settingsOverview, models: settingsModels, benchmarks: settingsBenchmarks }[tab] || settingsOverview)(body);
 }
 
-function dialog(title, ...content) {
-  const close = () => { backdrop.remove(); box.remove(); };
-  const backdrop = h("div", { class: "drawer-backdrop", onclick: close });
-  const box = h("div", { class: "modal", role: "dialog", "aria-label": title },
-    h("div", { class: "modal-head" }, h("h2", {}, title), h("span", { class: "spacer" }), h("button", { class: "btn small ghost", onclick: close, "aria-label": "关闭" }, "×")),
-    h("div", { class: "modal-body" }, ...content));
-  document.body.append(backdrop, box);
-  return { close, box };
-}
 const row = (label, control, hint) => h("label", { class: "form-row" }, h("span", { class: "form-label" }, label, hint ? h("small", {}, hint) : null), control);
 
 // -- overview ----------------------------------------------------------------
@@ -880,9 +871,7 @@ function settingsBenchmarks(body) {
       h("span", { class: "mark" }, c.ok ? "✓" : "✗"), h("b", {}, CHECK_LABELS[c.key] || c.key), h("span", { class: "muted" }, c.detail),
       c.fix ? h("div", { class: "fix mono small" }, c.fix) : null)))).catch((e) => put(checks, h("div", { class: "notice error" }, e.message)));
   put(body, h("div", { class: "page wide" },
-    pageHead("评测环境", null,
-      h("button", { class: "btn", onclick: async (e) => { e.currentTarget.disabled = true; await loadBenchmarks(); route(); toast("已重新检查"); } }, "重新检查"),
-      h("button", { class: "btn primary", onclick: () => customBenchmarkDialog() }, "＋ 添加评测集")),
+    pageHead("评测环境"),
     checks,
     h("div", { class: "card card-pad runtime-wheel" }, row("运行时安装包", h("div", { class: "row" }, wheel,
       h("button", { class: "btn", onclick: async () => { S.config.settings = await api("/api/settings", { method: "PUT", json: { runtime_wheel: wheel.value.trim() || null } }); toast("已保存"); } }, "保存")),
@@ -924,9 +913,7 @@ function benchmarkCards() {
           p.status === "external" && guide ? h("a", { class: "btn small", target: "_blank", rel: "noopener noreferrer",
             href: `https://github.com/Elvin-yk/EvoAB/blob/main/docs/${guide}` }, "配置指南") : null,
           p.status === "ready" && p.task_count > 0 ? h("button", { class: "btn small", onclick: () => openTasks(bench, p) }, `浏览任务（${p.task_count}）`) : null,
-          p.launchable ? h("button", { class: "btn small", onclick: () => startWith(bench, p) }, "发起评测") : null,
-          bench.setup === "custom" ? h("button", { class: "btn small", onclick: () => customBenchmarkDialog(bench.name) }, "清单") : null,
-          bench.setup === "custom" ? h("button", { class: "btn small danger", onclick: () => removeCustom(bench.name) }, "移除") : null)),
+          p.launchable ? h("button", { class: "btn small", onclick: () => startWith(bench, p) }, "发起评测") : null)),
       p.status === "ready" && p.empty === true ? h("div", { class: "notice info empty-tasks" },
         h("strong", {}, "已注册，但没有可选任务"),
         h("div", {}, emptyHelp[bench.integration] || emptyFallback)) : null,
@@ -937,35 +924,6 @@ function benchmarkCards() {
     h("div", { class: "bench-head" }, benchmarkIdentity(b, "h2"), b.setup === "custom" ? h("span", { class: "tag" }, "自定义") : projectLinks(b)),
     b.profiles.length ? b.profiles.map((p) => profileRow(b, p)) :
       h("div", { class: "profile-row" }, h("strong", {}, "运行环境"), h("span", { class: "muted" }, b.description?.startsWith("Invalid") ? b.description : "仅收录资料，暂不支持运行"))));
-}
-
-async function customBenchmarkDialog(name) {
-  let text;
-  try {
-    const response = await fetch(name ? `/api/benchmarks/custom/${encodeURIComponent(name)}` : "/api/benchmarks/custom/template");
-    text = await response.text();
-  } catch (error) { toast(error.message, true); return; }
-  const editor = h("textarea", { class: "input mono manifest-editor", spellcheck: "false" }, text);
-  const error = h("div", { class: "notice error", hidden: true });
-  const save = async (button) => {
-    button.disabled = true;
-    try {
-      const r = await api("/api/benchmarks/custom", { method: "POST", json: { manifest: editor.value } });
-      d.close(); toast(`已登记 ${r.name}，正在检查环境`); await loadBenchmarks(); route();
-    } catch (e) { error.textContent = e.message; error.hidden = false; button.disabled = false; }
-  };
-  const d = dialog(name ? `评测集清单 · ${name}` : "添加评测集",
-    h("p", { class: "small muted" }, "评测集提供一个 make(task_id, seed) 函数，返回 Gym 风格的环境（reset / step，观测为字典）。清单说明在哪个 Python 里导入它、观测里哪些键是相机图像和末端位姿、动作怎么写、怎样判定成功。保存后会在该 Python 中检查能否导入并列出任务。",
-      h("a", { href: "https://github.com/Elvin-yk/EvoAB/blob/main/docs/custom-benchmarks.md", target: "_blank", rel: "noopener" }, " 接口说明")),
-    editor, error,
-    h("div", { class: "modal-foot" }, h("span", { class: "spacer" }), h("button", { class: "btn primary", onclick: (e) => save(e.currentTarget) }, name ? "保存并重新检查" : "校验并添加")));
-  d.box.classList.add("wide");
-}
-
-async function removeCustom(name) {
-  if (!confirm(`移除评测集 ${name}？已有的运行记录不受影响。`)) return;
-  try { await api(`/api/benchmarks/custom/${encodeURIComponent(name)}`, { method: "DELETE" }); toast("已移除"); await loadBenchmarks(); route(); }
-  catch (e) { toast(e.message, true); }
 }
 
 function applyDefaults(force = false) {
@@ -991,17 +949,30 @@ async function refresh() {
   }
 }
 
-async function init() {
-  bindSettingsDropdown();
-  try {
-    [S.config] = await Promise.all([api("/api/config"), loadBenchmarks(), loadRuns()]);
-  } catch (error) {
-    put($("main"), h("div", { class: "page" }, h("div", { class: "notice error" }, `无法连接 Studio 服务：${error.message}`)));
-    return;
-  }
+async function loadWorkspace() {
+  [S.config] = await Promise.all([api("/api/config"), loadBenchmarks(), loadRuns()]);
   applyDefaults();
-  window.addEventListener("hashchange", route);
-  route();
-  setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 }
-init();
+
+function init() {
+  bindSettingsDropdown();
+  let workspace;
+  async function navigate() {
+    const hash = location.hash;
+    if (hash !== "#settings/models" && !S.config) {
+      workspace ??= loadWorkspace().catch(error => { workspace = null; throw error; });
+      try {
+        await workspace;
+      } catch (error) {
+        if (location.hash === hash) put($("main"), h("div", { class: "page" },
+          h("div", { class: "notice error" }, `无法连接 Studio 服务：${error.message}`)));
+        return;
+      }
+    }
+    if (location.hash === hash) route();
+  }
+  window.addEventListener("hashchange", navigate);
+  navigate();
+  setInterval(() => { if (S.config && !document.hidden && location.hash !== "#settings/models") refresh(); }, 5000);
+}
+window.addEventListener("DOMContentLoaded", init, { once: true });
