@@ -6,7 +6,7 @@ must answer with exactly one action-chunk tool call; the chunk is decoded and
 step-limited completely, then executed one row per control step through the
 environment's own controller, after which the policy observes and replans.
 Malformed output is re-requested on the unchanged observation; if every attempt
-fails, the policy holds the measured pose for one step and replans.
+fails, the policy records the inference error and ends without advancing the environment.
 
 Records (under ``direct/`` in the run directory):
 
@@ -232,6 +232,10 @@ class DirectPolicy:
                         record["output_attempts"], record["horizon"], " [safe hold]" if record["safe_hold"] else "",
                         record["note"][:160])
             result.calls = index
+            if record["error"]:
+                result.stop_reason = record["failure_kind"]
+                result.error = record["error"]
+                break
             if record.get("execution_error"):
                 result.stop_reason, result.error = "execution_error", record["execution_error"]
                 break
@@ -269,6 +273,9 @@ class DirectPolicy:
                 error = str(failure)
                 entry["error"] = error
                 attempts.append(entry)
+                entry["failure_kind"] = "provider_error" if completion.error else "invalid_output"
+                if completion.error or attempt == self.config.repair_attempts:
+                    continue
                 messages = messages + [{"role": "user", "content": (
                     f"Your previous reply was rejected: {error}. Nothing was executed. Respond again with exactly "
                     f"one {self.representation.tool} tool call for the same observation.")}]
@@ -276,14 +283,12 @@ class DirectPolicy:
         request_path.write_text(json.dumps({"messages": stored, "tools": tools, "tool_choice": "required",
                                             "model": self.model.describe()}, ensure_ascii=False, indent=1),
                                 encoding="utf-8")
-        safe_hold = targets is None
-        if safe_hold:
-            targets = [self._target(current["proprio"])]
+        targets = targets or []
         record = {
             "index": index, "start_step": current["step"], "observed_steps": [f["step"] for f in history],
             "requested_at": attempts[0]["started_at"], "request_build_s": round(request_build_s, 4),
             "api_latency_s": round(sum(a["latency_s"] for a in attempts), 3), "attempts": attempts,
-            "output_attempts": len(attempts), "error": error, "safe_hold": safe_hold,
+            "output_attempts": len(attempts), "error": error, "failure_kind": attempts[-1].get("failure_kind"), "safe_hold": False,
             "tool": self.representation.tool, "arguments": arguments,
             "note": (arguments or {}).get("note", ""), "request": str(request_path.relative_to(self.root.parent)),
             "targets": [t.row() for t in targets], "clamped": [t.clamped for t in targets],
@@ -302,7 +307,7 @@ class DirectPolicy:
             record["executed"].append({"row": row, "step": frame["step"], "at": frame["captured_at"],
                                        "measured": frame["proprio"]})
         record["horizon"] = len(record["executed"])
-        record["execution_s"] = round(time.perf_counter() - execution_started, 3)
+        record["execution_s"] = round(time.perf_counter() - execution_started, 3) if targets else 0.0
         return record
 
     def cancel(self) -> None:

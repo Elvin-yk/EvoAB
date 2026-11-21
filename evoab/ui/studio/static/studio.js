@@ -97,7 +97,27 @@ function suiteLabel(suite) {
   if (!p) return suite || "—";
   return `${LIBERO_BASE[p.base]} · ${PERTURBATIONS.find(([k]) => k === p.variant)[1]}`;
 }
-const taskName = (task) => String(task || "").split("/").pop();
+function methodLabel(value) {
+  return String(value || "").split(" · ").map((part) => ({
+    "Direct Policy": "直接策略", "Agentic Policy": "智能体策略", direct: "直接控制", hybrid: "混合控制",
+    native: "原生执行器", codex: "Codex",
+  })[part] || part).join(" · ");
+}
+
+function effortLabel(value) {
+  return ({ none: "关闭", minimal: "最低", low: "低", medium: "中", high: "高", xhigh: "很高",
+    max: "最高" })[value] || value;
+}
+
+function taskLabel(text) {
+  const match = /^pick up the (.+?) and place it in the basket[.]?$/i.exec((text || "").replaceAll("_", " "));
+  const item = match && ({ "cream cheese": "奶油奶酪", "alphabet soup": "字母汤罐头", "tomato sauce": "番茄酱",
+    "orange juice": "橙汁", ketchup: "番茄沙司", milk: "牛奶", butter: "黄油", "salad dressing": "沙拉酱",
+    "bbq sauce": "烧烤酱", "chocolate pudding": "巧克力布丁" })[match[1].toLowerCase()];
+  return item ? `拿起${item}，放进篮子里` : text;
+}
+
+const taskName = (task) => taskLabel(String(task || "").split("/").pop());
 const runTitle = (run) => `#${run.short_id || "—"}`;
 const pill = (status, labels = RUN_STATUS) => h("span", { class: `pill ${status}` }, labels[status] || status);
 const isLive = (run) => run && (run.status === "running" || run.status === "starting");
@@ -291,14 +311,14 @@ async function stepTask(body) {
   const renderList = () => {
     const q = w.query.trim().toLowerCase();
     const shown = tasks.filter((t) => (w.suite === "all" || t.suite === w.suite) &&
-      (!q || t.task.toLowerCase().includes(q) || (t.instruction || "").toLowerCase().includes(q)));
+      (!q || taskName(t.task).toLowerCase().includes(q) || t.task.toLowerCase().includes(q) || (t.instruction || "").toLowerCase().includes(q)));
     put(list, ...(shown.length ? shown.map((t) => h("div", {
       class: `list-item${w.task && w.task.task === t.task ? " selected" : ""}`,
       onclick: () => { w.task = t; w.step = 3; route(); },
     },
       h("div", { class: "t", title: t.task }, taskName(t.task)),
       h("span", {}, t.difficulty ? h("span", { class: "tag" }, t.difficulty) : null, " ", h("span", { class: "tag" }, suiteLabel(t.suite))),
-      h("div", { class: "s", title: t.instruction }, [t.instruction || "（无说明）", `本体 ${t.embodiment}`, t.category,
+      h("div", { class: "s", title: t.instruction }, [taskLabel(t.instruction) || "（无说明）", `本体 ${t.embodiment}`, t.category,
         t.max_steps ? `步数上限 ${t.max_steps}` : null].filter(Boolean).join(" · ")),
     )) : [h("div", { class: "empty" }, "没有匹配的任务")]));
   };
@@ -314,7 +334,7 @@ async function stepTask(body) {
 
 function stepMethod(body) {
   const w = S.wizard;
-  const groups = [["direct", "仅 Agent"], ["hybrid", "Agent + Policy"]];
+  const groups = [["direct", "智能体控制"], ["hybrid", "智能体与策略协作"]];
   for (const [profile, label] of groups) {
     const methods = S.config.methods.filter((m) => m.action_profile === profile);
     body.append(h("section", { class: "method-group" },
@@ -322,7 +342,7 @@ function stepMethod(body) {
       methods.length ? h("div", { class: "choice-grid" }, methods.map((m) => h("button", {
         class: `choice${w.method === m.id ? " selected" : ""}`, "aria-pressed": String(w.method === m.id),
         onclick: () => { w.method = m.id; route(); },
-      }, h("span", { class: "title" }, m.label), h("span", { class: "desc" }, m.description))))
+      }, h("span", { class: "title" }, methodLabel(m.label)), h("span", { class: "desc" }, m.description))))
         : h("p", { class: "muted small" }, "当前评测集暂无可用方法。")));
   }
   if (selectedMethod()?.interaction === "direct_policy") body.append(directOptions());
@@ -341,7 +361,7 @@ function directOptions() {
       onchange: (e) => { d.blocks = e.target.checked ? [...new Set([...d.blocks, name])] : d.blocks.filter((b) => b !== name); } }),
     h("span", {}, h("b", {}, text), h("span", { class: "muted small" }, ` ${hint}`)));
   return h("section", { class: "method-group" },
-    h("h2", { class: "section-title" }, "Direct Policy 设置"),
+    h("h2", { class: "section-title" }, "直接策略设置"),
     h("div", { class: "card direct-options" },
       seg("动作表示", "representation", [["abs_eef", "绝对末端位姿 (8D)"], ["delta_eef", "逐步末端增量 (7D)"]]),
       seg("每次输出的行数", "horizon", [["3:15", "3–15"], ["1:5", "1–5"], ["16:32", "16–32"], ["15:15", "固定 15"]]),
@@ -379,12 +399,12 @@ async function stepModel(body) {
       items.map((p) => h("div", { class: `list-item${w.model === p.name ? " selected" : ""}`,
         onclick: () => { w.model = p.name; if (p.reasoning_effort && S.config.reasoning_efforts.includes(p.reasoning_effort)) w.effort = p.reasoning_effort; route(); } },
         h("div", { class: "t mono" }, p.name),
-        h("span", { class: "muted small" }, `${p.model} · 最多输出 ${fmtInt(p.max_tokens)} · ${fmtTokens(p.context_window_tokens)} 上下文${p.reasoning_effort ? ` · 预设推理 ${p.reasoning_effort}` : ""}`)))])),
+        h("span", { class: "muted small" }, `${p.model} · 最多输出 ${fmtInt(p.max_tokens)} · ${fmtTokens(p.context_window_tokens)} 上下文${p.reasoning_effort ? ` · 预设推理 ${effortLabel(p.reasoning_effort)}` : ""}`)))])),
     h("div", { class: "model-effort" },
       h("div", { class: "section-title", id: "effort-label" }, "推理强度"),
       h("div", { class: "segmented", role: "group", "aria-labelledby": "effort-label" },
         S.config.reasoning_efforts.map((e) => h("button", { class: w.effort === e ? "active" : "",
-          "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; route(); } }, e)))));
+          "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; route(); } }, effortLabel(e))))));
 }
 
 function commandPreview() {
@@ -413,10 +433,10 @@ function stepConfirm(body) {
   const method = selectedMethod();
   const rows = [
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`], ["任务", taskName(w.task.task)],
-    ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
-    ["方法", method.label], ["推理强度", w.effort],
+    ["说明", taskLabel(w.task.instruction) || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
+    ["方法", methodLabel(method.label)], ["推理强度", effortLabel(w.effort)],
     ["模型预设", w.model],
-    ...(method.interaction === "direct_policy" ? [["Direct 设置", Object.entries(directPayload()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
+    ...(method.interaction === "direct_policy" ? [["直接策略设置", Object.entries(directPayload()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
   ];
   body.append(
     h("div", { class: "card" }, h("table", { class: "table" }, h("tbody", {}, rows.map(([k, v]) =>
@@ -462,14 +482,14 @@ function pageRunning(main) {
         pill(run.status)),
       h("div", { class: "body" },
         h("a", { class: "t", href: `#${run.key}`, title: run.task }, h("span", { class: "mono" }, runTitle(run)), " ", taskName(run.task)),
-        h("div", { class: "muted small" }, `${suiteLabel(run.benchmark)} · ${run.method} · ${run.model}`),
+        h("div", { class: "muted small" }, `${suiteLabel(run.benchmark)} · ${methodLabel(run.method)} · ${run.model}`),
         h("div", { class: "row small" }, h("span", { class: "muted" }, "环境步数"), h("span", { class: "spacer" }),
           h("span", {}, `${steps ?? "—"} / ${budget ?? "—"}`)),
         h("div", { class: "progress" }, h("i", { style: `width:${pct}%` })),
         h("div", { class: "kv" },
           h("div", {}, h("span", {}, "已运行"), fmtDuration(run.elapsed_s)),
           h("div", {}, h("span", {}, "模型请求"), fmtInt(run.usage.requests)),
-          h("div", {}, h("span", {}, "tokens"), fmtTokens(run.usage.total_tokens)))),
+          h("div", {}, h("span", {}, "词元"), fmtTokens(run.usage.total_tokens)))),
       h("div", { class: "foot" },
         h("a", { class: "btn small", href: `#${run.key}` }, "查看详情"),
         h("span", { class: "spacer" }),
@@ -520,7 +540,7 @@ function pageHistory(main) {
     put(tableHolder, runs.length ? h("div", { class: "card table-wrap" }, h("table", { class: "table" },
       h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "运行 ID"), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "套件"), h("th", {}, "方法"),
         h("th", {}, "模型"), h("th", { class: "num" }, "第几次"), h("th", { class: "num" }, "步数"), h("th", { class: "num" }, "用时"),
-        h("th", { class: "num" }, "tokens"), h("th", {}, "开始时间"))),
+        h("th", { class: "num" }, "词元"), h("th", {}, "开始时间"))),
       h("tbody", {}, runs.map((r) => h("tr", { class: "clickable", onclick: () => (location.hash = `#${r.key}`) },
         h("td", { onclick: (e) => e.stopPropagation() }, h("input", { type: "checkbox", checked: f.selected.has(r.key), onchange: (e) => {
           if (e.target.checked) f.selected.add(r.key); else f.selected.delete(r.key);
@@ -530,7 +550,7 @@ function pageHistory(main) {
         h("td", {}, pill(r.status)),
         h("td", { class: "task-cell", title: r.task }, taskName(r.task) || "—"),
         h("td", {}, suiteLabel(r.benchmark), h("div", { class: "faint small" }, r.integration || "")),
-        h("td", {}, r.method),
+        h("td", {}, methodLabel(r.method)),
         h("td", {}, r.model || "—", h("div", { class: "faint small" }, r.provider || "")),
         h("td", { class: "num" }, r.attempt ?? "—"),
         h("td", { class: "num" }, r.environment_steps ?? "—"),
@@ -568,11 +588,11 @@ function pageHistory(main) {
 function compareTable(runs) {
   const rows = [
     ["状态", (r) => pill(r.status)], ["任务", (r) => taskName(r.task)], ["套件", (r) => suiteLabel(r.benchmark)],
-    ["方法", (r) => r.method], ["模型", (r) => r.model], ["推理强度", (r) => r.reasoning_effort || "—"],
+    ["方法", (r) => methodLabel(r.method)], ["模型", (r) => r.model], ["推理强度", (r) => effortLabel(r.reasoning_effort) || "—"],
     ["运行 ID", (r) => runTitle(r)], ["第几次", (r) => r.attempt ?? "—"], ["环境步数", (r) => r.environment_steps ?? "—"], ["用时", (r) => fmtDuration(r.elapsed_s)],
-    ["模型请求", (r) => fmtInt(r.usage.requests)], ["输入 tokens", (r) => fmtInt(r.usage.input_tokens)],
-    ["缓存命中", (r) => fmtInt(r.usage.cached_input_tokens)], ["输出 tokens", (r) => fmtInt(r.usage.output_tokens)],
-    ["总 tokens", (r) => fmtInt(r.usage.total_tokens)], ["开始时间", (r) => fmtTime(r.started_at)],
+    ["模型请求", (r) => fmtInt(r.usage.requests)], ["输入词元", (r) => fmtInt(r.usage.input_tokens)],
+    ["缓存命中", (r) => fmtInt(r.usage.cached_input_tokens)], ["输出词元", (r) => fmtInt(r.usage.output_tokens)],
+    ["总词元", (r) => fmtInt(r.usage.total_tokens)], ["开始时间", (r) => fmtTime(r.started_at)],
   ];
   return h("div", { class: "card compare table-wrap" }, h("table", { class: "table" },
     h("thead", {}, h("tr", {}, h("th", {}, "对比"), runs.map((r) => h("th", {}, h("a", { href: `#${r.key}` }, `${runTitle(r)} ${r.model}`))))),
@@ -782,7 +802,7 @@ async function settingsOverview(body) {
       const hgt = (H * value) / max;
       const r = document.createElementNS(ns, "rect");
       Object.entries({ x: i * bw + 2, y: y - hgt, width: bw - 4, height: hgt, class: cls }).forEach(([k, v]) => r.setAttribute(k, v));
-      const t = document.createElementNS(ns, "title"); t.textContent = `${date} · ${fmtTokens(d.total_tokens)} tokens · ${d.requests} 次请求`;
+      const t = document.createElementNS(ns, "title"); t.textContent = `${date} · ${fmtTokens(d.total_tokens)} 词元 · ${d.requests} 次请求`;
       r.append(t); svg.append(r); y -= hgt;
     }
   }
@@ -794,7 +814,7 @@ async function settingsOverview(body) {
   const totals = S.totals || {};
   put(holder,
     h("div", { class: "card usage-card" },
-      h("div", { class: "usage-head" }, h("div", {}, h("div", { class: "muted small" }, "近 30 天 tokens"), h("div", { class: "usage-big" }, fmtTokens(u.total_tokens_30d || 0))),
+      h("div", { class: "usage-head" }, h("div", {}, h("div", { class: "muted small" }, "近 30 天词元"), h("div", { class: "usage-big" }, fmtTokens(u.total_tokens_30d || 0))),
         h("div", { class: "usage-facts" },
           h("span", {}, h("b", {}, fmtInt(u.requests_30d || 0)), " 次请求"),
           h("span", {}, h("b", {}, fmtInt(u.failed_requests_30d || 0)), " 次失败"),
@@ -831,7 +851,7 @@ async function settingsModels(body) {
     ? h("div", { class: "preset-list" }, m.presets.map((p) => h("div", { class: "card preset" },
         h("span", { class: "avatar" }, (p.name || "?").slice(0, 1).toUpperCase()),
         h("div", { class: "preset-main" }, h("b", { class: "mono" }, p.name),
-          h("div", { class: "muted small" }, `${label(p.resolved_provider || p.provider)} · ${p.model} · ${fmtTokens(p.context_window_tokens)} 上下文 · 推理 ${p.reasoning_effort || "默认"} · 最多输出 ${fmtInt(p.max_tokens)}`)),
+          h("div", { class: "muted small" }, `${label(p.resolved_provider || p.provider)} · ${p.model} · ${fmtTokens(p.context_window_tokens)} 上下文 · 推理 ${effortLabel(p.reasoning_effort) || "默认"} · 最多输出 ${fmtInt(p.max_tokens)}`)),
         h("button", { class: "btn small", onclick: () => presetDialog(p) }, "配置"))))
     : h("div", { class: "card empty" }, h("b", {}, "还没有模型预设"), "先在“管理提供商”中添加 API，再新建预设。"));
 }
@@ -873,9 +893,9 @@ async function presetDialog(preset) {
       providers.map((p) => h("option", { value: p.name, selected: p.name === v.provider }, p.label || p.name)))),
     row("模型", h("div", {}, input("model", { list: "presetModels", placeholder: "模型 ID" }), models)),
     row("推理强度", h("select", { class: "input", onchange: (e) => { v.reasoning_effort = e.target.value; } },
-      efforts.map((e) => h("option", { value: e, selected: e === (v.reasoning_effort || "") }, e || "默认")))),
+      efforts.map((e) => h("option", { value: e, selected: e === (v.reasoning_effort || "") }, effortLabel(e) || "默认")))),
     h("details", { class: "sys" }, h("summary", {}, "高级选项"),
-      row("最大输出 tokens", input("max_tokens", { type: "number", min: 1 })),
+      row("最大输出词元", input("max_tokens", { type: "number", min: 1 })),
       row("温度", input("temperature", { type: "number", step: "0.05", min: 0, max: 2 })),
       row("上下文窗口", input("context_window_tokens", { type: "number", min: 1 }))),
     error,
@@ -920,7 +940,7 @@ function providerDialog(p) {
     try {
       if (v.headers) payload.extra_headers = JSON.parse(v.headers);
       if (v.query) payload.extra_query = JSON.parse(v.query);
-    } catch { error.textContent = "Headers / Query 需要是 JSON 对象"; error.hidden = false; return; }
+    } catch { error.textContent = "请求头和查询参数需要填写 JSON 对象"; error.hidden = false; return; }
     try {
       if (p) { if (!custom) delete payload.name; await api(`/api/models/providers/${encodeURIComponent(p.name)}`, { method: "PUT", json: payload }); }
       else await api("/api/models/providers", { method: "POST", json: payload });
@@ -944,8 +964,8 @@ function providerDialog(p) {
       row("推理字段格式", h("select", { class: "input", onchange: (e) => { v.thinking_style = e.target.value; } },
         REASONING_FORMATS.map(([k, label]) => h("option", { value: k, selected: k === v.thinking_style }, label))), "部分接口用不同字段开启推理"),
       row("使用代理", h("input", { type: "checkbox", checked: v.use_proxy, onchange: (e) => { v.use_proxy = e.target.checked; } })),
-      row("额外 Headers", input("headers", { placeholder: '{"X-Key": "value"}' })),
-      row("额外 Query", input("query", { placeholder: '{"api-version": "2024-10-01"}' }))),
+      row("额外请求头", input("headers", { placeholder: '{"X-Key": "value"}' })),
+      row("额外查询参数", input("query", { placeholder: '{"api-version": "2024-10-01"}' }))),
     error,
     h("div", { class: "modal-foot" }, p && p.is_custom ? h("button", { class: "btn danger", onclick: remove }, "删除") : null, h("span", { class: "spacer" }),
       h("button", { class: "btn primary", onclick: save }, "保存")));

@@ -8,7 +8,7 @@
 "use strict";
 
 const RV = {
-  run: null, trace: null, timer: null, playTimer: null,
+  run: null, translations: null, trace: null, timer: null, playTimer: null,
   t: null, follow: true, playing: false, speed: 1, selected: null, open: new Set(),
 };
 
@@ -24,8 +24,18 @@ const originTag = (kind) => h("span", { class: `origin ${ORIGIN[kind][1]}` }, OR
 const fileUrl = (path, width) => `/api/trace/${encodeURIComponent(RV.run.id)}/files/${path}${width ? `?width=${width}` : ""}`;
 const rel = (t) => (t == null || RV.trace?.t0 == null ? null : t - RV.trace.t0);
 const clock = (t) => (t == null ? "—" : `+${fmtClock(rel(t))}`);
-const secs = (s) => (s == null ? "—" : s < 1 ? `${Math.round(s * 1000)} ms` : s < 60 ? `${s.toFixed(1)} s` : fmtDuration(s));
+const secs = (s) => (s == null ? "—" : s < 1 ? `${Math.round(s * 1000)} 毫秒` : s < 60 ? `${s.toFixed(1)} 秒` : fmtDuration(s));
 const pretty = (value) => (typeof value === "string" ? value : JSON.stringify(value, null, 2));
+
+function reviewText(source) {
+  const translated = RV.translations?.[source];
+  return typeof translated === "string" ? translated : source || "";
+}
+
+function cameraLabel(name, index) {
+  return ({ agentview: "全景相机", wrist: "腕部相机", robot0_eye_in_hand: "腕部相机", frontview: "正面相机",
+    sideview: "侧面相机" })[name] || `相机 ${index + 1}（${name}）`;
+}
 
 function pageRun(main, key) {
   const run = findRun(key);
@@ -37,9 +47,9 @@ function pageRun(main, key) {
   if (run.id && location.hash !== `#${run.key}`) history.replaceState(null, "", `#${run.key}`);
   if (RV.run?.key !== run.key) {
     closeReplay();
-    Object.assign(RV, { run, trace: null, t: null, follow: true, selected: null, open: new Set() });
+    Object.assign(RV, { run, translations: null, trace: null, t: null, follow: true, selected: null, open: new Set() });
     put(main, h("div", { class: "page review", "data-run": run.key },
-      h("div", { id: "rvHead" }), h("div", { id: "rvEnding" }), h("div", { id: "rvBody" }), h("div", { id: "rvLog" })));
+      h("div", { id: "rvHead" }), h("div", { id: "rvBody" }), h("div", { id: "rvLog" })));
     current.arg = run.key;
   }
   RV.run = run;
@@ -76,10 +86,15 @@ async function loadTrace() {
   }
   if (RV.run !== run) return;
   const first = !RV.trace;
+  if (first && trace.kind === "direct") {
+    // Optional display translations are keyed by the exact recorded text.
+    const translations = await api(fileUrl("direct/zh-CN.json")).catch(() => ({}));
+    if (RV.run !== run) return;
+    RV.translations = translations;
+  }
   RV.trace = trace;
   if (trace.kind === "direct") {
     renderHead();
-    renderEnding();
     renderDirect(first);
     clearInterval(RV.timer);
     RV.timer = trace.live || isLive(run) ? setInterval(() => !document.hidden && loadTrace(), 3000) : null;
@@ -88,7 +103,6 @@ async function loadTrace() {
   RV.moments = buildMoments(trace);
   if (first || RV.follow) RV.t = endTime();
   renderHead();
-  renderEnding();
   renderBody(first);
   clearInterval(RV.timer);
   RV.timer = trace.live || isLive(run) ? setInterval(() => !document.hidden && loadTrace(), 3000) : null;
@@ -129,39 +143,55 @@ function renderHead() {
     : tr.calls.filter((c) => c.executor === "robot").length + tr.calls.reduce((n, c) => n + c.nested.length, 0);
   const lastSteps = !tr ? null : direct ? tr.totals.steps : [...tr.frames].reverse().find((f) => f.steps != null)?.steps;
   const steps = run.environment_steps ?? lastSteps;
-  const dims = [
-    ["类型", run.simulated === false ? "真机" : "仿真"], ["评测集", run.integration],
-    ["套件", run.benchmark && suiteLabel(run.benchmark)], ["本体", run.embodiment], ["方法", run.method],
-    ["模型", run.model && `${run.provider ? `${run.provider} · ` : ""}${run.model}${run.reasoning_effort ? ` · ${run.reasoning_effort}` : ""}`],
-    ["第几次", run.attempt ? `同模型同任务第 ${run.attempt} 次` : null], ["开始", fmtTime(run.started_at)],
+  const policy = direct ? tr.policy : {};
+  const model = policy.model || {};
+  const metadata = [
+    ["类型", run.simulated === false ? "真机" : "仿真"], ["评测集", run.integration === "custom" ? "自定义" : run.integration],
+    ["套件", run.benchmark && suiteLabel(run.benchmark)], ["本体", run.embodiment],
+    ["API 提供商", model.provider || run.provider], ["推理强度", effortLabel(model.reasoning_effort || run.reasoning_effort)],
+    ["动作表示", ({ abs_eef: "末端绝对位姿", delta_eef: "末端位姿增量" })[policy.representation] || policy.representation_label], ["动作块长度", policy.horizon?.join("–")],
+    ["历史窗口", policy.history_length && `${policy.history_length} 步 · 间隔 ${policy.history_stride} 步`],
+    ["控制频率", policy.control_hz && `${policy.control_hz} Hz`], ["开始", fmtTime(run.started_at)],
+    ["同任务同模型", run.attempt && `第 ${run.attempt} 次`],
+    ["输入词元", fmtTokens(u.input_tokens)], ["输出词元", fmtTokens(u.output_tokens)],
+    ["缓存词元", u.cached_input_tokens && fmtInt(u.cached_input_tokens)],
+    ["推理词元", u.reasoning_tokens && fmtInt(u.reasoning_tokens)],
+    ["机器人动作", !direct && robotCalls != null ? String(robotCalls) : null],
   ];
-  const metric = (k, v, cls = "", sub = null) => h("div", { class: "metric" }, h("div", { class: "k" }, k),
-    h("div", { class: `v ${cls}`, title: String(v) }, v), sub ? h("div", { class: "sub" }, sub) : null);
-  put($("rvHead"),
-    h("div", { class: "detail-head" },
+  const context = [methodLabel(run.method), model.model || run.model].filter(Boolean).join(" · ");
+  const facts = [
+    ["用时", fmtDuration(run.elapsed_s)], ["环境步数", `${steps ?? "—"}${tr?.max_steps ? ` / ${tr.max_steps}` : ""}`],
+    [direct ? "推理次数" : "模型轮次", fmtInt(tr ? (direct ? tr.totals.calls : tr.rounds.length) : u.requests)],
+  ];
+  put($("rvHead"), h("section", { class: "run-summary" },
+    h("div", { class: "run-top" },
       h("button", { class: "back", title: "返回", onclick: () => (history.length > 1 ? history.back() : (location.hash = "#history")) }, "←"),
-      h("div", { style: "flex:1;min-width:0" },
-        h("h1", {}, "运行 ", h("span", { class: "mono" }, runTitle(run)), h("span", { class: "head-task" }, taskName(run.task) || "—")),
-        h("p", { title: run.task }, tr?.instruction || "")),
-      h("div", { class: "row" }, pill(run.status),
-        isLive(run) && run.launch_id ? h("button", { class: "btn small danger", onclick: (e) => stopRun(run, e.currentTarget) }, "停止") : null)),
-    h("div", { class: "dims" }, dims.filter(([, v]) => v).map(([k, v]) => h("span", { class: "dim" }, h("b", {}, k), v))),
-    h("div", { class: "card metric-strip" },
-      metric("结果", RUN_STATUS[run.status] || run.status, run.status),
-      metric("用时", fmtDuration(run.elapsed_s)),
-      metric("环境步数", `${steps ?? "—"}${tr?.max_steps ? ` / ${tr.max_steps}` : ""}`),
-      metric(direct ? "推理次数" : "模型轮次", fmtInt(tr ? (direct ? tr.totals.calls : tr.rounds.length) : u.requests)),
-      metric(direct ? "执行动作行" : "机器人动作", fmtInt(robotCalls)),
-      metric("输入 tokens", fmtTokens(u.input_tokens), "", u.cached_input_tokens ? `缓存 ${fmtTokens(u.cached_input_tokens)}` : null),
-      metric("输出 tokens", fmtTokens(u.output_tokens), "", u.reasoning_tokens ? `推理 ${fmtTokens(u.reasoning_tokens)}` : null)));
+      h("span", { class: "mono muted" }, runTitle(run)), pill(run.status),
+      isLive(run) && run.launch_id ? h("button", { class: "btn small danger", onclick: (e) => stopRun(run, e.currentTarget) }, "停止") : null),
+    h("h1", {}, taskLabel(reviewText(tr?.instruction)) || taskName(run.task) || runTitle(run)),
+    h("div", { class: "run-facts" }, h("b", {}, context), facts.map(([k, v]) => h("span", {}, k, " ", h("strong", {}, v)))),
+    h("div", { class: "run-disclosures" }, h("details", { id: "rvConfig", open: $("rvConfig")?.open }, h("summary", {}, "运行配置与用量"),
+      h("dl", { class: "run-meta" }, metadata.filter(([, v]) => v != null && v !== false && v !== "").map(([k, v]) =>
+        h("div", {}, h("dt", {}, k), h("dd", {}, v))))),
+    endingDetails(run, tr))));
 }
 
-function renderEnding() {
-  const e = RV.trace.ending;
-  if (!e) { put($("rvEnding")); return; }
-  put($("rvEnding"), h("div", { class: `ending ${e.task_success === true ? "ok" : "bad"}` },
-    h("div", { class: "ending-title" }, e.task_success === true ? "任务成功" : "任务未完成", h("span", {}, "为什么这样结束")),
-    h("ol", {}, e.chain.map((line) => h("li", {}, line)))));
+function endingDetails(run, tr) {
+  const e = tr?.ending;
+  if (!e) return null;
+  const failed = run.status === "failure" || run.status === "error";
+  let reasons = e.chain;
+  if (tr.kind === "direct") {
+    const atLimit = e.step_limit && e.steps >= e.step_limit;
+    const stop = atLimit ? `仿真已用完 ${e.steps} / ${e.step_limit} 步。`
+      : ({ call_limit: "达到推理次数上限。", episode_ended: "环境结束回合。", cancelled: "运行已取消。" })[e.stop_reason];
+    const verdict = e.task_success == null ? null : `环境验证结果：${e.task_success ? "任务已完成" : "任务未完成"}。`;
+    reasons = [run.error, stop || (!run.error && e.stop_reason), verdict].filter(Boolean);
+
+  }
+  return h("details", { id: "rvReason", open: $("rvReason")?.open },
+    h("summary", {}, failed ? "失败原因" : "结束详情"),
+    h("ul", {}, reasons.map((line) => h("li", {}, line))));
 }
 
 // -- body: player + flow -----------------------------------------------------
@@ -305,7 +335,7 @@ function syncTime(scroll) {
     if (cams.dataset.layout !== names.join("|")) {
       cams.dataset.layout = names.join("|");
       cams.style.setProperty("--cams", Math.min(names.length, 3));
-      put(cams, names.map((name) => h("figure", { "data-cam": name }, h("img", { alt: name }), h("figcaption", {}, name))));
+      put(cams, names.map((name, i) => h("figure", { "data-cam": name }, h("img", { alt: cameraLabel(name, i) }), h("figcaption", {}, cameraLabel(name, i)))));
     }
     for (const name of names) {
       const img = cams.querySelector(`[data-cam="${CSS.escape(name)}"] img`);
@@ -335,7 +365,7 @@ function drawInspector(t, frame, now) {
   put($("rvNow"),
     h("div", { class: "now-row" }, h("span", { class: "muted small" }, "此刻"), h("b", {}, what)),
     h("div", { class: "now-row small muted" }, `画面：${frame ? `${clock(frame.t)}，第 ${frame.steps ?? "—"} 步` : "—"}`,
-      round ? ` · 上下文：第 ${round.index + 1} 轮输入 ${fmtTokens(round.usage.input)} tokens` : ""));
+      round ? ` · 上下文：第 ${round.index + 1} 轮输入 ${fmtTokens(round.usage.input)} 词元` : ""));
 }
 
 function highlight(scroll) {
@@ -527,8 +557,8 @@ function roundStep(r, calls) {
         kv("状态", r.error ? `出错：${r.error}` : r.complete ? "完成" : "进行中"))),
     section("消耗",
       h("div", { class: "kv-grid" },
-        kv("输入 tokens", `${fmtInt(u.input)}（缓存命中 ${fmtInt(u.cached)}，${u.input ? Math.round((100 * u.cached) / u.input) : 0}%）`),
-        kv("输出 tokens", `${fmtInt(u.output)}（其中推理 ${fmtInt(u.reasoning)}）`))),
+        kv("输入词元", `${fmtInt(u.input)}（缓存命中 ${fmtInt(u.cached)}，${u.input ? Math.round((100 * u.cached) / u.input) : 0}%）`),
+        kv("输出词元", `${fmtInt(u.output)}（其中推理 ${fmtInt(u.reasoning)}）`))),
     section("输出", r.output.length ? r.output.map(itemView) : h("div", { class: "muted small" }, "无输出")),
     section("去向", outCalls.length
       ? h("ul", { class: "small" }, outCalls.map((c) => h("li", {}, h("a", { onclick: (e) => { e.stopPropagation(); select(`call:${c.call_id}`, true); } }, c.name),
@@ -603,7 +633,7 @@ async function openRound(index, tab = "input") {
   }
   const fresh = new Set(RV.trace.rounds[index].new_input.map((i) => i.key));
   const views = {
-    input: ["Agent 视角的输入", () => [
+    input: ["智能体收到的输入", () => [
       h("p", { class: "small muted" }, `Codex 发给网关的 Responses 请求：系统指令 + ${d.input.length} 项对话。标黄的是本轮新增内容。`),
       h("details", { class: "sys" }, h("summary", {}, `系统指令（instructions，${fmtInt(d.instructions.length)} 字）`), h("pre", { class: "txt" }, d.instructions)),
       d.input.map((item) => { const v = itemView({ ...item, truncated: false }); if (fresh.has(item.key)) v.classList.add("fresh"); return v; })]],

@@ -17,7 +17,9 @@
   model emits action chunks (`emit_eef_actions`, absolute or delta EEF) that the
   benchmark controller executes one row per control step, with per-benchmark
   prompt packs, environment-derived timing/gripper/camera geometry blocks,
-  complete validation, output repair and a measured-pose safe hold. Records in
+  complete validation and bounded retries on the same observation. Exhausted
+  retries end the run with an error and consume zero control steps. Historical
+  runs retain any measured-pose holds they actually executed. Records in
   `direct/` (policy, prompt, per-step frames, per-inference calls and requests).
   This replaces "Direct" meaning tool calls to `move`. The episode's step
   budget and remaining steps are never shown to the model.
@@ -42,8 +44,11 @@
   segmented by inference (optionally including real inference waits), play /
   replay call / previous-next call / speed, CALL·STEP·ACTION telemetry, the
   action chunk with measured tracking error, model note, repair / clamp / hold
-  alerts, a trajectory chart, an inference list, per-inference request/reply and
-  a rollout switcher. Each launch picks a free environment port.
+  alerts and per-inference requests and replies. The single-column Chinese
+  review shows the task and playback first, with expandable configuration,
+  ending details, trajectories and inference history. Recorded prose can have
+  display translations in an optional run-local `direct/zh-CN.json` object
+  keyed by the original text. Each launch picks a free environment port.
 
 - Studio's operations move to `evoab/workbench/` and are exposed as
   `evoab runs | providers | benchmarks | usage | settings | studio` commands

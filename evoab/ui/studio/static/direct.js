@@ -7,7 +7,7 @@
 "use strict";
 
 const DP = { tr: null, phases: [], total: 0, pos: 0, playing: false, raf: null, last: 0, speed: 1,
-  wait: false, replayEnd: null, chunkOpen: true, follow: true, frameByStep: new Map(), cache: new Map() };
+  wait: false, replayEnd: null, chunkOpen: false, follow: true, frameByStep: new Map(), cache: new Map() };
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const simClock = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
@@ -22,6 +22,7 @@ function directPhases(tr, wait) {
     if (wait) { phases.push({ kind: "wait", call: i, start: at, dur: thinking, step: c.start_step }); at += thinking; }
     const steps = c.executed.map((e) => e.step);
     if (steps.length) { phases.push({ kind: "act", call: i, start: at, dur: steps.length / hz, steps }); at += steps.length / hz; }
+    else if (c.error) phases.push({ kind: "error", call: i, start: at, dur: 0, step: c.start_step });
   });
   return { phases, total: at };
 }
@@ -30,6 +31,7 @@ function stateAt(pos) {
   const { phases } = DP;
   if (!phases.length) return { call: -1, row: -1, step: 0, kind: "idle" };
   let p = phases.find((x) => pos >= x.start && pos < x.start + x.dur) || phases[phases.length - 1];
+  if (p.kind === "error") return { call: p.call, row: -1, step: p.step, kind: "error" };
   if (p.kind === "wait") return { call: p.call, row: -1, step: p.step, kind: "wait", into: pos - p.start, dur: p.dur };
   const row = Math.min(p.steps.length - 1, Math.max(0, Math.floor((pos - p.start) / (p.dur / p.steps.length))));
   return { call: p.call, row, step: p.steps[row], kind: "act" };
@@ -53,40 +55,38 @@ function renderDirect(first) {
   DP.tr = tr;
   DP.frameByStep = new Map(tr.frames.map((f) => [f.step, f]));
   Object.assign(DP, directPhases(tr, DP.wait));
-  if (first || (DP.follow && !DP.playing)) DP.pos = Math.max(0, DP.total - 1e-6);
+  if (first || (DP.follow && !DP.playing)) DP.pos = DP.total;
   let root = $("rvBody").querySelector(".dp");
   if (!root) {
     root = h("div", { class: "dp" },
-      h("div", { class: "card dp-player" },
-        h("div", { class: "dp-selection", id: "dpSel" }),
-        h("div", { class: "dp-instruction" }, h("span", { class: "eyebrow" }, "Task instruction"),
-          h("p", { id: "dpInstruction" }), h("span", { class: "dp-result", id: "dpResult" })),
+      h("div", { class: "dp-player" },
         h("div", { class: "dp-cams", id: "dpCams" }),
         h("div", { class: "dp-track" }, h("div", { class: "dp-segments", id: "dpSegments" }),
-          h("input", { type: "range", class: "dp-seek", id: "dpSeek", min: 0, max: 1000, value: 0,
+          h("input", { type: "range", class: "dp-seek", id: "dpSeek", "aria-label": "回放进度", min: 0, max: 1000, value: 0,
             oninput: (e) => { pause(); DP.follow = false; DP.pos = (Number(e.target.value) / 1000) * DP.total; drawDirect(); } })),
+        h("div", { class: "dp-legend", id: "dpLegend" }),
         h("div", { class: "dp-playback" },
           h("div", { class: "dp-transport" },
-            h("button", { class: "btn small dp-play", id: "dpPlay", onclick: () => (DP.playing ? pause() : play()) }, "▶ Play"),
-            h("button", { class: "btn small", onclick: replayCall }, "Replay call"),
+            h("button", { class: "btn small dp-play", id: "dpPlay", onclick: () => (DP.playing ? pause() : play()) }, "▶ 播放"),
+            h("button", { class: "btn small", onclick: replayCall }, "重播本次推理"),
             h("button", { class: "btn small", id: "dpPrev", title: "上一次推理", onclick: () => jumpCall(-1) }, "‹"),
             h("button", { class: "btn small", id: "dpNext", title: "下一次推理", onclick: () => jumpCall(1) }, "›"),
             h("span", { class: "mono dp-time", id: "dpTime" }),
-            h("select", { class: "dp-speed", onchange: (e) => { DP.speed = Number(e.target.value); } },
+            h("select", { class: "dp-speed", "aria-label": "播放速度", onchange: (e) => { DP.speed = Number(e.target.value); } },
               [0.25, 0.5, 1, 2, 4, 8].map((s) => h("option", { value: s, selected: s === DP.speed }, `${s}×`))),
             h("label", { class: "dp-toggle", title: "把每次推理的真实等待时间插入时间轴" },
-              h("input", { type: "checkbox", checked: DP.wait, onchange: (e) => toggleWait(e.target.checked) }), "Include inference time")),
+              h("input", { type: "checkbox", checked: DP.wait, onchange: (e) => toggleWait(e.target.checked) }), "计入推理等待")),
           h("div", { class: "dp-telemetry", id: "dpTelemetry" })),
         h("p", { class: "dp-alert", id: "dpAlert", hidden: true }),
-        h("section", { class: "dp-output", id: "dpOutput" }),
-        h("div", { class: "dp-note" }, h("span", { class: "eyebrow" }, "Model note"), h("p", { id: "dpNote" }))),
-      h("div", { class: "dp-side" },
-        h("div", { class: "card dp-chart-card" }, h("div", { class: "dp-card-head" }, h("span", { class: "eyebrow" }, "Trajectory"),
-          h("span", { class: "muted small" }, "实线 = 测得的抓取点，点 = 模型给出的目标；点击跳转")), h("div", { id: "dpChart" })),
-        h("div", { class: "card dp-calls-card" }, h("div", { class: "dp-card-head" }, h("span", { class: "eyebrow" }, "Inferences"),
-          h("span", { class: "muted small", id: "dpTotals" })), h("div", { class: "dp-calls", id: "dpCalls" })),
-        h("div", { class: "card dp-prompt-card" }, h("div", { class: "dp-card-head" }, h("span", { class: "eyebrow" }, "Prompt"),
-          h("span", { class: "muted small" }, "每次推理相同的系统提示词，按块组装")), h("div", { id: "dpPrompt" }))));
+        h("div", { class: "dp-note" }, h("span", { class: "eyebrow" }, "模型动作说明"), h("p", { id: "dpNote" })),
+        h("section", { class: "dp-output", id: "dpOutput" })),
+      h("div", { class: "dp-analysis" },
+        h("details", { class: "dp-chart-card", ontoggle: (e) => { if (e.currentTarget.open) { drawChart(); drawChartCursor(stateAt(DP.pos).step); } } }, h("summary", {}, "夹爪运动轨迹"),
+          h("span", { class: "muted small" }, "横轴是控制步。X、Y、Z 是夹爪位置（米），末行是闭合度（0 张开，1 闭合）。点是控制器执行的目标，实线是实测值。点击可跳到对应画面。"), h("div", { id: "dpChart" })),
+        h("details", { class: "dp-calls-card" }, h("summary", {}, "推理记录"),
+          h("span", { class: "muted small", id: "dpTotals" }), h("div", { class: "dp-calls", id: "dpCalls" })),
+        h("details", { class: "dp-prompt-card" }, h("summary", {}, "系统提示词"),
+          h("span", { class: "muted small" }, "各次请求共用以下提示词。"), h("div", { id: "dpPrompt" }))));
     put($("rvBody"), root);
     document.addEventListener("keydown", directKeys);
   }
@@ -95,7 +95,7 @@ function renderDirect(first) {
 }
 
 function directKeys(e) {
-  if (!DP.tr || !document.querySelector(".dp") || ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
+  if (!DP.tr || !document.querySelector(".dp") || e.target.closest("input,select,textarea,button,summary,a,[contenteditable=true]")) return;
   if (e.key === " ") { e.preventDefault(); DP.playing ? pause() : play(); }
   else if (e.key === "ArrowLeft") jumpCall(-1);
   else if (e.key === "ArrowRight") jumpCall(1);
@@ -106,61 +106,58 @@ function directKeys(e) {
 function drawStatic() {
   const { tr } = DP;
   const p = tr.policy;
-  const field = (k, v) => h("div", { class: "dp-field" }, h("span", { class: "eyebrow" }, k), h("b", {}, v || "—"));
-  const model = p.model || {};
-  put($("dpSel"), field("Policy type", "Direct Policy"), field("Representation", p.representation_label),
-    field("Model", `${model.model || "—"}${model.reasoning_effort ? ` · ${model.reasoning_effort}` : ""}`),
-    field("Horizon", p.horizon ? `${p.horizon[0]}–${p.horizon[1]} rows` : null),
-    field("History", p.history_length ? `${p.history_length} steps · stride ${p.history_stride}` : null),
-    field("Control", p.control_hz ? `${p.control_hz} Hz` : null), runSwitcher());
-  $("dpInstruction").textContent = tr.instruction || "";
-  const ok = tr.ending?.task_success;
-  const result = $("dpResult");
-  result.textContent = tr.live ? "Running" : ok === true ? "Success" : ok === false ? "Failed" : "—";
-  result.className = `dp-result ${tr.live ? "live" : ok === true ? "success" : ok === false ? "failed" : ""}`;
   // Cameras: one labelled image per camera, side by side.
   const cams = p.cameras || Object.keys(tr.frames[0]?.images || {});
   if ($("dpCams").childElementCount !== cams.length) {
     put($("dpCams"), cams.map((name, i) => h("figure", { class: "dp-cam" },
-      h("figcaption", {}, h("b", { class: "mono" }, pad2(i + 1)), ` / ${name.replace(/_/g, " ").toUpperCase()}`),
-      h("div", { class: "dp-frame" }, h("img", { "data-cam": name, alt: name }),
+      h("figcaption", {}, cameraLabel(name, i)),
+      h("div", { class: "dp-frame" }, h("img", { "data-cam": name, alt: cameraLabel(name, i) }),
         h("div", { class: "dp-overlay", hidden: true })))));
   }
   // Track: one segment per phase; inference waits hatched when shown.
-  put($("dpSegments"), DP.phases.map((ph) => h("span", { "data-call": ph.call, "data-kind": ph.kind,
-    class: [tr.calls[ph.call].safe_hold ? "hold" : "", (tr.calls[ph.call].output_attempts || 1) > 1 ? "repaired" : ""].join(" "),
-    style: `flex-grow:${Math.max(ph.dur, 1e-3)}`, title: `推理 ${ph.call + 1}${ph.kind === "wait" ? " · 等待模型" : ` · ${ph.steps.length} 步`}` })));
+  const phaseType = (ph) => ph.kind === "act" && tr.calls[ph.call].safe_hold ? "hold" : ph.kind;
+  const labels = { wait: "等待模型", act: "执行动作", hold: "保持位姿一步", error: "推理失败 · 未执行" };
+  const phases = DP.phases.filter((ph) => ph.dur > 0 || ph.kind === "error");
+  put($("dpSegments"), phases.map((ph) => {
+    const type = phaseType(ph);
+    const retried = ph.kind !== "wait" && tr.calls[ph.call].output_attempts > 1;
+    return h("span", { class: retried ? `${type} retried` : type, style: `left:min(${100 * ph.start / (DP.total || 1)}%, calc(100% - 2px));width:${100 * ph.dur / (DP.total || 1)}%`,
+      title: `第 ${ph.call + 1} 次推理 · ${labels[type]} · 尝试 ${tr.calls[ph.call].output_attempts || 1} 次` });
+  }));
+  const types = new Set(phases.map(phaseType));
+  put($("dpLegend"), Object.entries(labels).filter(([type]) => types.has(type)).map(([type, label]) =>
+    h("span", {}, h("i", { class: type }), label)),
+    tr.calls.some((c) => c.output_attempts > 1) ? h("span", {}, h("i", { class: "retried" }), "推理重试") : null);
   const t = tr.totals;
-  $("dpTotals").textContent = `${t.calls} 次 · ${t.steps} 步 · API ${secs(t.api_s)} · ${fmtTokens(t.total_tokens)} tokens`
-    + (t.repairs ? ` · 修复 ${t.repairs}` : "") + (t.safe_holds ? ` · 保持 ${t.safe_holds}` : "");
+  $("dpTotals").textContent = `${t.calls} 次 · ${t.steps} 步 · API ${secs(t.api_s)} · ${fmtTokens(t.total_tokens)} 词元`
+    + (t.repairs ? ` · 重试 ${t.repairs}` : "") + (t.safe_holds ? ` · 保持 ${t.safe_holds}` : "");
   put($("dpCalls"), tr.calls.map((c, i) => h("button", { class: "dp-call", "data-call": i, onclick: () => { pause(); DP.follow = false; DP.pos = posOfCall(i) + (DP.wait ? 0 : 1e-6); drawDirect(); } },
     h("span", { class: "mono dp-call-n" }, pad2(c.index)),
     h("span", { class: "dp-call-main" },
       h("span", { class: "dp-call-line" }, h("b", { class: "mono" }, `${c.start_step}→${c.end_step}`), ` · ${c.horizon} 步 · ${secs(c.api_latency_s)} · ${fmtTokens(c.usage.total_tokens)}`,
         c.safe_hold ? h("span", { class: "tag bad" }, "保持") : null,
-        (c.output_attempts || 1) > 1 ? h("span", { class: "tag warn" }, `修复×${c.output_attempts - 1}`) : null,
+        (c.output_attempts || 1) > 1 ? h("span", { class: "tag warn" }, `重试×${c.output_attempts - 1}`) : null,
         c.safety_clamped ? h("span", { class: "tag" }, "限幅") : null),
-      h("span", { class: "dp-call-note" }, c.note || c.error || "")),
+      h("span", { class: "dp-call-note" }, reviewText(c.note) || errorLabel(c.error))),
     h("span", { class: "dp-call-open", title: "查看这次推理的完整请求与回复", onclick: (e) => { e.stopPropagation(); openInference(i); } }, "详情"))));
   put($("dpPrompt"), Object.entries(tr.prompt_blocks || {}).map(([name, text]) =>
-    h("details", { class: "sys" }, h("summary", {}, `${PROMPT_BLOCKS[name] || name} · ${fmtInt(text.length)} 字`), h("pre", { class: "txt" }, text))),
+    h("details", { class: "sys" }, h("summary", {}, `${PROMPT_BLOCKS[name] || name} · ${fmtInt(text.length)} 字`), h("pre", { class: "txt" }, reviewText(text)))),
     h("button", { class: "btn small ghost", onclick: () => openFile("direct/prompt.md") }, "完整提示词"),
     h("button", { class: "btn small ghost", onclick: () => openFile("direct/policy.json") }, "策略配置"));
-  drawChart();
+  if ($("dpChart").closest("details").open) drawChart();
 }
 
-// Other Direct runs, newest first: step through rollouts like a gallery.
-function runSwitcher() {
-  const runs = (S.runs || []).filter((r) => r.id && r.method_id === "direct_policy");
-  if (runs.length < 2) return null;
-  const index = runs.findIndex((r) => r.key === RV.run.key);
-  const go = (i) => { location.hash = `#${runs[(i + runs.length) % runs.length].key}`; };
-  return h("div", { class: "dp-field dp-switch" }, h("span", { class: "eyebrow" }, `Rollout ${index + 1} / ${runs.length}`),
-    h("div", { class: "row" },
-      h("button", { class: "btn small", title: "上一个 Direct 运行", onclick: () => go(index - 1) }, "←"),
-      h("select", { onchange: (e) => go(Number(e.target.value)) }, runs.map((r, i) => h("option", { value: i, selected: i === index },
-        `#${r.short_id} · ${taskName(r.task) || r.task} · ${r.model || ""} · ${RUN_STATUS[r.status] || r.status}`))),
-      h("button", { class: "btn small", title: "下一个 Direct 运行", onclick: () => go(index + 1) }, "→")));
+function errorLabel(message) {
+  if (!message) return "";
+  if (/timed?\s*out|timeout/i.test(message)) return "接口请求超时";
+  if (/connection error/i.test(message)) return "接口连接失败";
+  if (/provider error/i.test(message)) return "接口调用失败，详见尝试记录";
+  return "动作输出异常，详见尝试记录";
+}
+
+function finishLabel(value) {
+  return ({ error: "请求出错", tool_calls: "返回工具调用", stop: "正常结束", length: "达到输出上限",
+    content_filter: "内容被过滤" })[value] || value || "未记录结束状态";
 }
 
 const PROMPT_BLOCKS = { robot: "本体与坐标系", timing: "执行时序与步长限制", gripper: "夹爪几何", camera: "相机几何", action: "输出格式" };
@@ -182,37 +179,36 @@ function drawDirect() {
   document.querySelector(".dp-player").classList.toggle("waiting", s.kind === "wait");
   for (const [i, overlay] of [...document.querySelectorAll(".dp-overlay")].entries()) {
     overlay.hidden = s.kind !== "wait" || i > 0;
-    if (s.kind === "wait") put(overlay, h("span", { class: "eyebrow" }, `Inference ${pad2(s.call + 1)} · model thinking`),
-      h("b", { class: "mono" }, `${s.into.toFixed(1)} s / ${s.dur.toFixed(1)} s`));
+    if (s.kind === "wait") put(overlay, h("span", { class: "eyebrow" }, `第 ${s.call + 1} 次推理 · 等待模型`),
+      h("b", { class: "mono" }, `${s.into.toFixed(1)} 秒 / ${s.dur.toFixed(1)} 秒`));
   }
   // Track
   $("dpSeek").value = DP.total ? Math.round((DP.pos / DP.total) * 1000) : 0;
-  [...$("dpSegments").children].forEach((el) => {
-    const c = Number(el.dataset.call);
-    el.classList.toggle("active", c === s.call);
-    el.classList.toggle("past", c < s.call);
-  });
+  $("dpSegments").style.setProperty("--position", `${DP.total ? 100 * DP.pos / DP.total : 0}%`);
+  $("dpSeek").setAttribute("aria-valuetext", call ? `第 ${s.call + 1} 次推理 · ${s.kind === "wait" ? "等待模型" : s.kind === "error" ? "推理失败" : call.safe_hold ? "原地保持" : "执行动作"} · 第 ${s.step} 步` : "等待记录");
   const hz = tr.policy.control_hz || 20;
   const lastStep = tr.frames.length ? tr.frames[tr.frames.length - 1].step : 0;
-  $("dpTime").textContent = DP.wait ? `${simClock(DP.pos)} / ${simClock(DP.total)}` : `${simClock(s.step / hz)} / ${simClock(lastStep / hz)}`;
-  $("dpTime").title = DP.wait ? "含推理等待的真实时间" : "仿真时间（不含推理等待）";
+  $("dpTime").textContent = DP.wait ? `含等待 ${simClock(DP.pos)} / ${simClock(DP.total)}` : `仿真 ${simClock(s.step / hz)} / ${simClock(lastStep / hz)}`;
+  $("dpTime").title = DP.wait ? "推理等待和仿真动作的累计播放时间" : "仿真时间（不含推理等待）";
   $("dpPrev").disabled = s.call <= 0;
   $("dpNext").disabled = s.call >= tr.calls.length - 1;
   const metric = (k, v) => h("div", { class: "dp-metric" }, h("span", { class: "eyebrow" }, k), h("strong", { class: "mono" }, v));
   put($("dpTelemetry"),
-    metric("Call", call ? `${pad2(s.call + 1)} / ${tr.calls.length}` : "—"),
-    metric("Control step", `${s.step}${tr.max_steps ? ` / ${tr.max_steps}` : ""}`),
-    metric("Action", call && s.row >= 0 ? `${pad2(s.row + 1)} / ${call.horizon}` : s.kind === "wait" ? "thinking" : "—"),
-    metric("Wall clock", call ? `+${fmtClock((call.requested_at || tr.t0) - tr.t0)}` : "—"));
+    metric("推理", call ? `${pad2(s.call + 1)} / ${tr.calls.length}` : "—"),
+    metric("控制步", `${s.step}${tr.max_steps ? ` / ${tr.max_steps}` : ""}`),
+    metric("块内动作", call && s.row >= 0 ? `${pad2(s.row + 1)} / ${call.horizon}` : s.kind === "wait" ? "等待模型" : "—"),
+    metric("运行开始至发起请求", call?.requested_at != null && tr.t0 != null ? fmtDuration(call.requested_at - tr.t0) : "—"));
   // Alerts
   const alerts = [];
-  if (call?.safety_clamped) alerts.push("Safety clamp applied");
-  if ((call?.output_attempts || 1) > 1) alerts.push(`Output repaired · ${call.output_attempts} attempts`);
-  if (call?.safe_hold) alerts.push(`Safe hold · ${call.error || "no valid chunk"}`);
-  if (call?.execution_error) alerts.push(`Execution error · ${call.execution_error}`);
+  if (call?.safety_clamped) alerts.push("控制器已限制动作幅度");
+  if ((call?.output_attempts || 1) > 1) alerts.push(`输出尝试 ${call.output_attempts} 次`);
+  if (call?.safe_hold) alerts.push("旧版控制器在尝试用尽后执行了一步保持位姿的动作");
+  if (call?.error) alerts.push(errorLabel(call.error));
+  if (call?.execution_error) alerts.push("动作执行出错，详见完整请求与回复");
   $("dpAlert").hidden = !alerts.length;
   $("dpAlert").textContent = alerts.join(" · ");
-  $("dpNote").textContent = call?.note || (call?.error ? `（无合法输出）${call.error}` : "");
+  $("dpNote").parentElement.hidden = !call?.note;
+  $("dpNote").textContent = reviewText(call?.note);
   drawOutput(call, s);
   drawChartCursor(s.step);
   document.querySelectorAll(".dp-call").forEach((el) => el.classList.toggle("active", Number(el.dataset.call) === s.call));
@@ -221,13 +217,19 @@ function drawDirect() {
 function drawOutput(call, s) {
   const out = $("dpOutput");
   if (!call) { put(out); return; }
+  if (!call.executed.length && call.error) {
+    out.dataset.call = "";
+    put(out, h("span", { class: "small" }, `第 ${call.start_step} 步 · 推理失败，未执行动作`),
+      h("button", { class: "btn small ghost", onclick: () => openInference(call.index - 1) }, "查看尝试记录"));
+    return;
+  }
   const p = DP.tr.policy;
   const eef = (p.columns || [])[0] === "x" || p.representation === "delta_eef";
   const key = `${call.index}`;
   if (out.dataset.call !== key) {
     out.dataset.call = key;
     const executed = new Map(call.executed.map((e) => [e.row, e]));
-    const head = ["Action", "Step", "x", "y", "z", "qw", "qx", "qy", "qz", "Gripper", "Measured xyz", "Error"];
+    const head = ["动作", "控制步", "X", "Y", "Z", "qw", "qx", "qy", "qz", "夹爪闭合度", "实测位置", "位置误差"];
     const rows = call.targets.map((t, i) => {
       const e = executed.get(i);
       const m = e?.measured?.ee_pos;
@@ -240,12 +242,11 @@ function drawOutput(call, s) {
     });
     put(out,
       h("div", { class: "dp-output-head" },
-        h("button", { class: "dp-toggle-chunk", "aria-expanded": String(DP.chunkOpen), onclick: () => { DP.chunkOpen = !DP.chunkOpen; out.dataset.call = ""; drawDirect(); } }, "ACTION CHUNK"),
-        h("code", {}, call.tool || p.tool),
-        h("span", {}, `${call.horizon} steps · controls ${call.start_step + 1}–${call.end_step}`),
-        h("span", {}, `Call latency ${num(call.api_latency_s, 2)} s`),
-        h("span", {}, `${fmtTokens(call.usage.input_tokens)} in · ${fmtTokens(call.usage.output_tokens)} out`),
-        h("span", { class: "muted" }, eef ? "xyz: m · quaternion wxyz · gripper 0 open–1 closed" : ""),
+        h("button", { class: "dp-toggle-chunk", "aria-expanded": String(DP.chunkOpen), onclick: () => { DP.chunkOpen = !DP.chunkOpen; out.dataset.call = ""; drawDirect(); } }, "动作明细"),
+        h("span", {}, `${call.horizon} 个目标 · 控制步 ${call.start_step + 1}–${call.end_step}`),
+        h("span", {}, `请求耗时 ${num(call.api_latency_s, 2)} 秒`),
+        h("span", {}, `输入 ${fmtTokens(call.usage.input_tokens)} · 输出 ${fmtTokens(call.usage.output_tokens)} 词元`),
+        DP.chunkOpen && eef ? h("span", { class: "muted" }, "位置单位为米，姿态为四元数 wxyz，夹爪 0 张开、1 闭合") : null,
         h("span", { class: "spacer" }),
         h("button", { class: "btn small ghost", onclick: () => openInference(call.index - 1) }, "完整请求与回复")),
       DP.chunkOpen ? h("div", { class: "dp-table" }, h("table", {}, h("thead", {}, h("tr", {}, head.map((x) => h("th", {}, x)))), h("tbody", {}, rows))) : null,
@@ -256,7 +257,7 @@ function drawOutput(call, s) {
 
 // -- trajectory chart --------------------------------------------------------
 
-const CHART = { w: 360, padL: 30, padR: 6, padT: 6, padB: 16 };
+const CHART = { padL: 40, padR: 6, padT: 6, padB: 16 };
 
 function drawChart() {
   const { tr } = DP;
@@ -264,7 +265,8 @@ function drawChart() {
   if (frames.length < 2) { put($("dpChart"), h("div", { class: "muted small" }, "等待更多控制步…")); return; }
   // Scale to the steps actually taken; the budget is shown in the header.
   const maxStep = Math.max(10, frames[frames.length - 1].step);
-  const { w, padL, padR, padT, padB } = CHART;
+  const { padL, padR, padT, padB } = CHART;
+  const w = Math.max(300, $("dpChart").clientWidth);
   const laneH = 64;
   const lanes = [["x", 0], ["y", 1], ["z", 2]];
   const height = padT + lanes.length * laneH + 34 + padB;
@@ -290,12 +292,12 @@ function drawChart() {
     for (const x of targets) add("circle", { cx: X(x.step).toFixed(1), cy: Y(x.t[k]).toFixed(1), r: 1.6, class: `tgt c${k}${x.hold ? " hold" : ""}` });
   });
   const gTop = padT + lanes.length * laneH + 6;
-  add("text", { x: 4, y: gTop + 16, class: "lbl" }, "grip");
+  add("text", { x: 4, y: gTop + 16, class: "lbl" }, "闭合度");
   add("polyline", { points: frames.map((f) => `${X(f.step).toFixed(1)},${(gTop + 26 - 22 * f.proprio.gripper_closure).toFixed(1)}`).join(" "), class: "meas grip" });
   for (const x of targets) add("circle", { cx: X(x.step).toFixed(1), cy: (gTop + 26 - 22 * x.t[7]).toFixed(1), r: 1.4, class: "tgt grip" });
   for (const c of tr.calls) add("line", { x1: X(c.start_step), x2: X(c.start_step), y1: padT, y2: height - padB, class: "callmark" });
   add("text", { x: padL, y: height - 4, class: "lbl faint" }, "0");
-  add("text", { x: w - padR, y: height - 4, class: "lbl faint", "text-anchor": "end" }, `${maxStep} steps`);
+  add("text", { x: w - padR, y: height - 4, class: "lbl faint", "text-anchor": "end" }, `${maxStep} 步`);
   add("line", { x1: 0, x2: 0, y1: padT, y2: height - padB, class: "cursor", id: "dpCursor" });
   svg.addEventListener("click", (e) => {
     const box = svg.getBoundingClientRect();
@@ -310,7 +312,7 @@ function drawChartCursor(step) {
   const cursor = document.getElementById("dpCursor");
   if (!cursor) return;
   const maxStep = Number(cursor.ownerSVGElement.dataset.maxStep) || 1;
-  const x = CHART.padL + ((CHART.w - CHART.padL - CHART.padR) * step) / maxStep;
+  const x = CHART.padL + ((cursor.ownerSVGElement.viewBox.baseVal.width - CHART.padL - CHART.padR) * step) / maxStep;
   cursor.setAttribute("x1", x); cursor.setAttribute("x2", x);
 }
 
@@ -319,7 +321,7 @@ function drawChartCursor(step) {
 function play() {
   if (DP.pos >= DP.total - 1e-6) DP.pos = 0;
   DP.playing = true; DP.follow = false; DP.last = performance.now();
-  $("dpPlay").textContent = "Ⅱ Pause";
+  $("dpPlay").textContent = "Ⅱ 暂停";
   const tick = (now) => {
     if (!DP.playing) return;
     DP.pos = Math.min(DP.total, DP.pos + ((now - DP.last) / 1000) * DP.speed);
@@ -336,7 +338,7 @@ function pause() {
   DP.playing = false; DP.replayEnd = null;
   cancelAnimationFrame(DP.raf);
   const b = $("dpPlay");
-  if (b) b.textContent = "▶ Play";
+  if (b) b.textContent = "▶ 播放";
 }
 
 function replayCall() {
@@ -344,6 +346,7 @@ function replayCall() {
   if (s.call < 0) return;
   const parts = DP.phases.filter((p) => p.call === s.call);
   pause();
+  if (!parts.length || !parts.some((p) => p.dur > 0)) return;
   DP.pos = parts[0].start;
   const end = parts[parts.length - 1];
   play();
@@ -359,10 +362,10 @@ function jumpCall(direction) {
 }
 
 function toggleWait(on) {
-  const step = stateAt(DP.pos).step;
+  const state = stateAt(DP.pos);
   DP.wait = on;
   Object.assign(DP, directPhases(DP.tr, on));
-  DP.pos = posOfStep(step);
+  DP.pos = state.kind === "error" ? DP.total : posOfStep(state.step);
   drawStatic();
   drawDirect();
 }
@@ -401,20 +404,20 @@ async function openInference(i) {
     timing: ["时间与消耗", () => [
       h("div", { class: "dp-facts" },
         ...kv("请求时刻", clock(call.requested_at)), ...kv("组装请求", secs(call.request_build_s)),
-        ...kv("模型耗时（含修复）", secs(call.api_latency_s)), ...kv("执行动作块", secs(call.execution_s)),
+        ...kv("请求耗时（含重试）", secs(call.api_latency_s)), ...kv("执行动作块", secs(call.execution_s)),
         ...kv("观测的控制步", (call.observed_steps || []).join(", ")), ...kv("输出尝试", String(call.output_attempts)),
-        ...kv("输入 tokens", fmtInt(call.usage.input_tokens)), ...kv("输出 tokens", fmtInt(call.usage.output_tokens)),
+        ...kv("输入词元", fmtInt(call.usage.input_tokens)), ...kv("输出词元", fmtInt(call.usage.output_tokens)),
         ...kv("缓存命中", fmtInt(call.usage.cached_input_tokens)), ...kv("触发方式", "固定代码：上一动作块执行完或回合开始后立即发起")),
       (d.attempts || []).map((a) => h("div", { class: `item ${a.error ? "bad" : ""}` },
         h("div", { class: "item-head" }, h("b", {}, `第 ${a.attempt} 次尝试`), h("span", { class: "faint small" },
-          `${secs(a.latency_s)} · ${a.finish_reason} · ${fmtTokens(a.usage?.total_tokens)} tokens`)),
-        a.error ? h("p", { class: "small bad-text" }, `被拒绝：${a.error}`) : null,
+          `${secs(a.latency_s)} · ${finishLabel(a.finish_reason)} · ${fmtTokens(a.usage?.total_tokens)} 词元`)),
+        a.error ? h("p", { class: "small bad-text" }, a.finish_reason === "error" ? `API 调用出错 · ${a.error}` : `动作校验未通过 · ${a.error}`) : null,
         a.reasoning ? h("details", { class: "sys" }, h("summary", {}, `模型推理（${fmtInt(a.reasoning.length)} 字）`), h("pre", { class: "txt" }, a.reasoning)) : null,
-        a.content ? h("pre", { class: "txt" }, a.content) : null,
+        a.content && a.finish_reason !== "error" ? h("pre", { class: "txt" }, a.content) : null,
         (a.tool_calls || []).length ? h("pre", { class: "txt" }, pretty(a.tool_calls)) : null))]],
     input: ["模型看到的输入", () => [
       h("p", { class: "small muted" }, "每次推理是独立请求：系统提示词 + 目标 + 最近几帧观测（图像与本体状态），不包含之前的回复。"),
-      d.messages.map((m) => h("div", { class: "item" }, h("div", { class: "item-head" }, h("b", {}, m.role)),
+      d.messages.map((m) => h("div", { class: "item" }, h("div", { class: "item-head" }, h("b", {}, ({ system: "系统", developer: "开发者", user: "用户", assistant: "助手", tool: "工具" })[m.role] || m.role)),
         typeof m.content === "string" ? h("pre", { class: "txt" }, m.content) : h("div", { class: "dp-req-parts" }, m.content.map(part))))]],
     output: ["输出与执行", () => [
       h("p", { class: "small muted" }, "模型原始参数 → 解码与限幅后的目标 → 每行执行后的测量状态。"),
