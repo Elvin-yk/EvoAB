@@ -10,6 +10,35 @@ from typing import Any
 
 from evoab.tools.toolkit import ImageAttachment
 
+#: Evaluation-side episode facts the model must never receive.
+EVALUATION_ONLY = ("max_episode_steps", "remaining_steps")
+
+
+def environment_for_model(environment, *, indent: int | None = None) -> str:
+    """The environment description as JSON, without the episode step budget."""
+    import json
+    data = environment.model_dump(mode="json")
+    data.pop("max_episode_steps", None)
+    for key in EVALUATION_ONLY:
+        data.get("metadata", {}).pop(key, None)
+    return json.dumps(data, ensure_ascii=False, indent=indent)
+
+
+def without_evaluation_facts(state: dict[str, Any]) -> dict[str, Any]:
+    """A copy of an environment state without evaluation-side metadata."""
+    import copy
+    result = copy.deepcopy(state)
+    for key in EVALUATION_ONLY:
+        result.get("metadata", {}).pop(key, None)
+    return result
+
+
+def state_json_for_model(state) -> str:
+    """An environment state as JSON for prompts, without evaluation-side metadata."""
+    import json
+    return json.dumps(without_evaluation_facts(state.model_dump(mode="json")), ensure_ascii=False)
+
+
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
 

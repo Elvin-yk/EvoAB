@@ -194,7 +194,6 @@ def assemble_session(args) -> SessionAssembly:
             initial_images = tuple(snapshot_images(episode.env, snapshot, mirror=episode.artifact_mirror))
             initial_metadata = {
                 "state": episode.state.model_dump(mode="json"),
-                "remaining_steps": episode.remaining_steps,
                 **snapshot_metadata(snapshot, [image.name for image in initial_images],
                                     mirror=episode.artifact_mirror),
                 "image_cameras": [image.name for image in initial_images],

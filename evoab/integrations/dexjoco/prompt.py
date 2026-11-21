@@ -1,5 +1,5 @@
 """Measured robot context for DexJoCo; tools own their operation schemas."""
-from evoab.context.prompt import Prompt, register_prompt_builder
+from evoab.context.prompt import environment_for_model, state_json_for_model, Prompt, register_prompt_builder
 
 
 @register_prompt_builder("dexjoco")
@@ -16,6 +16,6 @@ def build(context):
         "Do not inspect simulator state, task predicates, privileged object poses or service implementation."
     ))
     if episode:
-        prompt = prompt.append(system="Environment description:\n" + episode.description.environment.model_dump_json(),
-                               user="Initial measured state:\n" + episode.state.model_dump_json())
+        prompt = prompt.append(system="Environment description:\n" + environment_for_model(episode.description.environment),
+                               user="Initial measured state:\n" + state_json_for_model(episode.state))
     return prompt

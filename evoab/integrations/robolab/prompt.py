@@ -1,5 +1,5 @@
 """DROID-specific context; shared providers own all tool instructions."""
-from evoab.context.prompt import Prompt, register_prompt_builder
+from evoab.context.prompt import environment_for_model, state_json_for_model, Prompt, register_prompt_builder
 
 
 @register_prompt_builder("robolab")
@@ -19,6 +19,6 @@ def build(context):
         "Do not inspect simulator internals, task predicate code, or privileged object recordings."
     ))
     if episode:
-        prompt = prompt.append(system="Environment description:\n" + episode.description.environment.model_dump_json(),
-                               user=None if context.tool_profile == "clean" else "Initial measured state:\n" + episode.state.model_dump_json())
+        prompt = prompt.append(system="Environment description:\n" + environment_for_model(episode.description.environment),
+                               user=None if context.tool_profile == "clean" else "Initial measured state:\n" + state_json_for_model(episode.state))
     return prompt

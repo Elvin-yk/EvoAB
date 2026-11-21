@@ -1,5 +1,5 @@
 """Measured whole-body context; tools own their schemas."""
-from evoab.context.prompt import Prompt, register_prompt_builder
+from evoab.context.prompt import environment_for_model, state_json_for_model, Prompt, register_prompt_builder
 
 
 @register_prompt_builder("isaaclab_arena")
@@ -14,6 +14,6 @@ def build(context):
         "Do not inspect simulator implementation, privileged object poses or task predicates."
     ))
     if episode:
-        prompt = prompt.append(system="Environment description:\n" + episode.description.environment.model_dump_json(),
-                               user="Initial measured state:\n" + episode.state.model_dump_json())
+        prompt = prompt.append(system="Environment description:\n" + environment_for_model(episode.description.environment),
+                               user="Initial measured state:\n" + state_json_for_model(episode.state))
     return prompt

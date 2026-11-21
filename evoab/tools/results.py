@@ -67,7 +67,6 @@ class ResultFields(ReceiptView):
 
     call_ok: bool | None = Field(None, description="Call validity only; True does not establish motion, grasp or task success.")
     error: str | None = Field(None, description="Reported call error; partial physical execution may precede an error.")
-    remaining_steps: int | None = Field(None, description="Remaining environment step budget at this receipt, when reported; None is not zero.")
     snapshot_id: str | None = Field(None, description="Identity of the returned observation, when present; use capture_scene for localization calibration.")
     artifact_error: str | None = Field(None, description="Observation/artifact failure after execution; do not replay the action to recover images.")
     state: ResultState | None = Field(None, description="Returned state progress. Full measured arm/device state is in result.data['state'].")

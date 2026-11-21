@@ -75,8 +75,6 @@ def follow_verified_route(robot, segments, max_steps):
         print(result)
         if result.state is not None and result.state.ended is True:
             return False
-        if result.remaining_steps is not None and result.remaining_steps <= 0:
-            return False
         feedback = result.feedback
         if result.call_ok is not True or feedback is None or feedback.targets_reached is not True:
             return False

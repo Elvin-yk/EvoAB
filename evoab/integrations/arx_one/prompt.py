@@ -1,5 +1,5 @@
 """Physical-robot facts and recovery rules for this integration; tool guidance is assembled separately."""
-from evoab.context.prompt import Prompt, PromptContext, register_prompt_builder
+from evoab.context.prompt import environment_for_model, state_json_for_model, Prompt, PromptContext, register_prompt_builder
 
 # Rules for the model; the robot's shape is stated separately by robot_line().
 SYSTEM = """Coordinates:
@@ -56,6 +56,6 @@ def build(context: PromptContext) -> Prompt:
                     sources=("integrations/arx_one/prompt.py",))
     if episode:
         prompt = prompt.append(
-            system="Environment description:\n" + episode.description.environment.model_dump_json(),
-            user="Initial measured state:\n" + episode.state.model_dump_json())
+            system="Environment description:\n" + environment_for_model(episode.description.environment),
+            user="Initial measured state:\n" + state_json_for_model(episode.state))
     return prompt

@@ -1,5 +1,5 @@
 """Robot context derives roles and sensors from the selected installation."""
-from evoab.context.prompt import Prompt, PromptContext, register_prompt_builder
+from evoab.context.prompt import environment_for_model, state_json_for_model, Prompt, PromptContext, register_prompt_builder
 
 
 @register_prompt_builder("piper_x")
@@ -21,6 +21,6 @@ def build(context: PromptContext) -> Prompt:
         "Finish records your completion claim; an external evaluator determines task success."
     ), sources=("integrations/piper_x/prompt.py",))
     if episode:
-        prompt = prompt.append(system="Environment description:\n" + episode.description.environment.model_dump_json(),
-                               user="Initial measured state:\n" + episode.state.model_dump_json())
+        prompt = prompt.append(system="Environment description:\n" + environment_for_model(episode.description.environment),
+                               user="Initial measured state:\n" + state_json_for_model(episode.state))
     return prompt

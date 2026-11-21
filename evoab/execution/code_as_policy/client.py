@@ -42,10 +42,6 @@ class CodeResult:
         return self._fields.error
 
     @property
-    def remaining_steps(self) -> int | None:
-        return self._fields.remaining_steps
-
-    @property
     def snapshot_id(self) -> str | None:
         return self._fields.snapshot_id
 

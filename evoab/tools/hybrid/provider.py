@@ -96,7 +96,6 @@ class HybridTools(ToolProvider):
         uncertain = summary["execution_uncertain"]
         return ToolOutput(success=summary["error"] is None, error=summary["error"], extra={
             "state": state_for_model(self.episode.state.model_dump(mode="json")),
-            "remaining_steps": self.episode.remaining_steps,
             "execution": {**{key: summary[key] for key in ("executed_actions", "chunks_executed", "acknowledged_commands",
                 "execution_started", "duration_s", "stop_reason", "execution_uncertain")},
                 "no_execution": not summary["execution_started"] and not uncertain},

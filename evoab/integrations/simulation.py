@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def build_simulation_spec(name, *, tool_profiles):
-    from evoab.context.prompt import Prompt, register_prompt_builder
+    from evoab.context.prompt import environment_for_model, state_json_for_model, Prompt, register_prompt_builder
     from evoab.integrations.gripper import build_gripper_spec, create_session, validate_gripper_cli
 
     def validate(args):
@@ -25,8 +25,8 @@ def build_simulation_spec(name, *, tool_profiles):
             "Observe the effects of actions; submitting finish does not determine task success."
         ))
         if episode:
-            result = result.append(system="Environment description:\n" + episode.description.environment.model_dump_json(),
-                                   user=None if context.tool_profile == "clean" else "Initial measured state:\n" + episode.state.model_dump_json())
+            result = result.append(system="Environment description:\n" + environment_for_model(episode.description.environment),
+                                   user=None if context.tool_profile == "clean" else "Initial measured state:\n" + state_json_for_model(episode.state))
         return result
 
     return build_gripper_spec(name=name, create_session=create_session,

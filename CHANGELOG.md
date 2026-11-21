@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The episode step budget is evaluation-side for every method: the environment
+  description in system prompts drops `max_episode_steps`, model-facing state
+  drops `remaining_steps` / `max_episode_steps` metadata, robot tool results and
+  the code-as-policy `CodeResult` no longer report `remaining_steps`, and tool
+  guidance, runtime prompts and the general skill no longer refer to it
+  (`evoab/context/prompt.py`: `environment_for_model`, `state_json_for_model`).
+  Per-call limits such as `move`'s `max_steps` are unchanged.
+
 - Direct policies (`--interaction-mode direct_policy`, `evoab/direct/`): the
   model emits action chunks (`emit_eef_actions`, absolute or delta EEF) that the
   benchmark controller executes one row per control step, with per-benchmark

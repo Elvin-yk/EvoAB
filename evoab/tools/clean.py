@@ -12,7 +12,7 @@ RESULT_NOTES = (PromptContribution(system=(
     "Read each arm's control_frame and grasp_site_description in the environment description. "
     "steps_executed counts accepted control commands; executed_native_steps counts environment steps. "
     "state.arms[name].pose is measured world [x,y,z,roll,pitch,yaw], metres and fixed-axis XYZ radians. "
-    "state.native_steps, state.ended and remaining_steps describe episode progress. "
+    "state.native_steps and state.ended describe episode progress. "
     "gripper is measured normalized opening; gripper_command is the retained drive intent. "
     "Metric gripper_opening_m and gripper_target_opening_m are measured gap and retained target. "
     "A distinct applied command is reported when native slew limiting changes it. "
@@ -118,10 +118,7 @@ def result_view(payload, *, initial=False):
     result = deepcopy(payload)
     if "state" in payload:
         result["state"] = state_view(payload["state"], initial=initial)
-        if "remaining_steps" not in result:
-            remaining = payload["state"].get("metadata", {}).get("remaining_steps")
-            if remaining is not None:
-                result["remaining_steps"] = remaining
+        result.pop("remaining_steps", None)
     if "feedback" in payload:
         result["feedback"] = feedback_view(payload["feedback"])
     if "camera_calibration" in payload:

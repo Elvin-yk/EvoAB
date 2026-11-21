@@ -15,7 +15,7 @@ Calls wait for completed feedback, even with background executor jobs.
 Print each robot call's complete result with print(result). This emits JSON with
 data (the full original tool payload), images (ordered file paths) and call_id.
 Do not substitute a field-selected summary for the receipt. Typed properties
-such as result.feedback and result.remaining_steps help code check conditions;
+such as result.feedback and result.state help code check conditions;
 print(result) preserves all raw fields regardless of those projections.
 result.state contains progress only; full arm/device measurements remain in
 result.data["state"] when returned. Missing typed fields are None, not success

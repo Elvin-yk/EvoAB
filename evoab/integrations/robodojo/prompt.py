@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 
 from evoab.context.prompt import (
-    Prompt, PromptContext, get_prompts_dir, register_prompt_builder, render_prompt_files,
+    Prompt, PromptContext, environment_for_model, get_prompts_dir, register_prompt_builder, render_prompt_files,
+    without_evaluation_facts,
 )
 
 REQUIREMENTS_PATH = (
@@ -46,9 +47,9 @@ def build(context: PromptContext) -> Prompt:
     if episode is None:
         return prompt.append(user="No prepared episode is connected. Measured state and calibration are unavailable.")
     prompt = prompt.append(
-        system="Environment description:\n" + info.environment.model_dump_json(indent=2),
-        user=None if context.tool_profile == "clean" else (f"Initial measured environment state: {episode.state.model_dump_json()}\n"
-              f"Native remaining control steps: {episode.remaining_steps}"),
+        system="Environment description:\n" + environment_for_model(info.environment, indent=2),
+        user=None if context.tool_profile == "clean" else
+             f"Initial measured environment state: {json.dumps(without_evaluation_facts(episode.state.model_dump(mode='json')))}",
     )
     if info.environment.cameras and not any(camera.has_calibration for camera in info.environment.cameras):
         prompt = prompt.append(system=(

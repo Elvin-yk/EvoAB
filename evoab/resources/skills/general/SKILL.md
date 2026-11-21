@@ -194,9 +194,9 @@ route or arm based on that evidence. Avoid
 repeating an unchanged contact relationship without new evidence. If order is
 unconstrained, keep a difficult object pending and work on another reachable one.
 For a prescribed sequence, resolve the current item rather than skipping it.
-Use remaining_steps and costs observed in this episode to retain room for the
-remaining acquisition, transport, placement checks and safe withdrawal. Do not
-spend the remaining budget refining an already verified pickup.
+Use the action costs observed in this episode to keep effort for the remaining
+acquisition, transport, placement checks and safe withdrawal. Do not spend
+extra actions refining an already verified pickup.
 
 ## Inspect the physical result
 

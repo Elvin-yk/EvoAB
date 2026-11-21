@@ -35,7 +35,7 @@ estimates, including in continuation summaries after context compaction.
 Tool completion and pose arrival do not establish object attachment or task
 success. Read targets_reached, per-arm opening feedback and stop_reason; a stall
 does not identify contact or its cause. max_steps limits this move call, not the
-whole episode. Use state.native_steps, state.ended and remaining_steps to judge
+whole episode. Use state.native_steps and state.ended to judge
 episode progress. Continue toward a target only when feedback and observed
 clearance justify it; after ineffective actions, reassess the grasp, approach,
 route or arm instead of repeating unchanged commands. artifact_error does not

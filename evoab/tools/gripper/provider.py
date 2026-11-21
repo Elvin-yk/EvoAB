@@ -125,7 +125,7 @@ class GripperTools(ToolProvider):
             "Read each arm's control_frame and grasp_site_description in the environment description. "
             "call_ok reports call validity, not motion or object success. "
             "Direct feedback reports the whole call: steps_executed counts accepted control commands; executed_native_steps counts environment steps. "
-            "Read state.native_steps, state.ended and remaining_steps for episode progress. "
+            "Read state.native_steps and state.ended for episode progress. "
             "Environment state uses arms[arm].control_pose, joints, gripper (normalized measured opening) and gripper_command (complete normalized drive intent, retained across accepted actions). "
             "When metric calibration is available, arm metadata.gripper_opening_m is the actual signed pad gap in metres; gripper_target_opening_m describes the retained intent, and gripper_applied_target_opening_m describes the native slew-limited target. "
             "To preserve grip, omit the gripper argument; copying measured opening changes the command. "
@@ -217,7 +217,7 @@ class GripperTools(ToolProvider):
             images = []
             image_error = f"{type(error).__name__}: {error}"
         return ToolOutput(extra={"state": state_for_model(self.episode.state.model_dump(mode="json")),
-            "remaining_steps": self.episode.remaining_steps, "feedback": round_physical(reply.feedback),
+            "feedback": round_physical(reply.feedback),
             **({"artifact_error": error} if (error := reply.artifact_error or image_error) else {}),
             "snapshot_id": None if snapshot is None else snapshot["snapshot_id"],
             **image_metadata, "image_cameras": [image.name for image in images]}, images=images,
