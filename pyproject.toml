@@ -41,7 +41,7 @@ Homepage = "https://github.com/Elvin-yk/EvoAB"
 [project.optional-dependencies]
 antigravity = ["google-antigravity==0.1.23"]
 # Built-in agent runtime: model providers, presets and usage accounting (--agent native).
-agent = ["nanobot-ai==0.4.1"]
+agent = ["nanobot-ai==0.4.1", "scipy>=1.10"]
 benchmarks = ["scipy>=1.10", "PyYAML>=6,<7"]
 xpolicylab = ["websockets>=14,<18", "msgpack>=1,<2", "msgpack-numpy==0.4.8"]
 # Compatibility extras: the base package already includes these features.
@@ -86,6 +86,7 @@ namespaces = false
 "evoab.integrations.piper_x" = ["templates/*.json", "SOURCE.md", "README.md"]
 "evoab.integrations.libero_plus" = ["deployment.toml", "container.toml", "Dockerfile"]
 "evoab.integrations.libero_pro" = ["deployment.toml", "container.toml", "previews/sources.json", "previews/NOTICE", "previews/LICENSE"]
+"evoab.integrations.metaworld" = ["deployment.toml"]
 "evoab.integrations.dexjoco" = ["deployment.toml", "SOURCE.md"]
 "evoab.integrations.behavior" = ["deployment.toml", "SOURCE.md"]
 "evoab.integrations.isaaclab_arena" = ["deployment.toml", "SOURCE.md"]
