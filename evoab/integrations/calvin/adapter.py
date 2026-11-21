@@ -52,7 +52,7 @@ class CalvinAdapter:
                       "evaluation_protocol": "single_task", "observation_source": "native_calvin"})
         from evoab.integrations.robot_resources import add_robot_resources, urdf_kinematics
         robot = env.robot
-        model = urdf_kinematics(robot.filename)
+        model = urdf_kinematics(env.scene.data_path / robot.filename)
         model["control"] = {"base_position": list(robot.base_position),
             "base_quaternion_wxyz": [robot.base_orientation[3], *robot.base_orientation[:3]],
             "tcp_link_id": robot.tcp_link_id, "arm_joint_ids": list(robot.arm_joint_ids),
