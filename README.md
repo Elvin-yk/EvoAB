@@ -60,6 +60,40 @@ Replay saved runs with `evoab monitor --run-dir ./runs`. See
 [docs/getting-started.md](docs/getting-started.md) and
 [docs/running.md](docs/running.md) for more.
 
+## Direct policies and nanobot
+
+`--agent nanobot` takes models from [nanobot](https://github.com/HKUDS/nanobot)
+(`pip install 'evoab[nanobot]'`): providers, model presets, request APIs,
+retries and usage accounting are nanobot's, read from the same config file its
+WebUI edits, and every call appears in nanobot's usage view. `--model` names a
+nanobot preset; `evoab models` lists them.
+
+`--interaction-mode direct_policy` makes the model the controller: each
+inference is one independent request (prompt pack + task + a short window of
+observations) that must return exactly one action-chunk tool call, such as
+`emit_eef_actions` with 3–15 absolute grasp-point poses `[x, y, z, qw, qx, qy,
+qz, gripper]`. The chunk is validated and step-limited completely, then the
+benchmark's own controller executes one row per control step; malformed output
+is re-requested on the unchanged observation, and if every attempt fails the
+robot holds for one step. No tools are called. Per-benchmark prompt packs
+(`evoab/resources/prompts/direct/`) describe the embodiment and frames; timing,
+gripper geometry and camera geometry are generated from what the environment
+reports, and `--direct-prompt-blocks` / `--direct-prompt-file` choose or replace
+them. Records go to `direct/` in the run directory, and Studio replays them step
+by step with every inference's request, reply, latency and cost.
+
+```bash
+evoab run --integration libero_pro --deploy local --runtime-profile libero_object \
+  --task pick_up_the_cream_cheese_and_place_it_in_the_basket --no-sam3 \
+  --agent nanobot --model gpt-6-astra --interaction-mode direct_policy \
+  --direct-representation abs_eef --direct-horizon 3:15 --direct-history 15:7
+```
+
+Without `direct_policy`, `--agent nanobot` runs nanobot's agent runner with only
+EvoAB's robot tools registered (no nanobot workspace, memory, skills or web
+tools); nanobot's transcript consolidation handles long contexts, with its
+storage inside the run directory.
+
 ## Studio
 
 EvoAB Studio is a local web page for launching prepared LIBERO-PRO tasks,
@@ -76,8 +110,9 @@ returns; the HTTP API is described at `/openapi.json`.
 
 ```bash
 evoab benchmarks tasks libero_pro --suite libero_object
+evoab models                        # nanobot providers and presets
 evoab runs launch --task libero_object/pick_up_the_alphabet_soup_and_place_it_in_the_basket \
-  --provider boden-pro --model claude-sonnet-5
+  --method direct_policy --model gpt-6-astra --representation abs_eef
 evoab runs list
 evoab runs trace 721e018e          # rounds, tool calls, results and why the run ended
 evoab runs trace 721e018e --round 4   # full input and output of one model request

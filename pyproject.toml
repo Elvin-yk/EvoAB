@@ -40,6 +40,8 @@ Homepage = "https://github.com/Elvin-yk/EvoAB"
 
 [project.optional-dependencies]
 antigravity = ["google-antigravity==0.1.23"]
+# Provider connections, model presets and usage accounting for --agent nanobot.
+nanobot = ["nanobot-ai==0.4.1"]
 benchmarks = ["scipy>=1.10", "PyYAML>=6,<7"]
 xpolicylab = ["websockets>=14,<18", "msgpack>=1,<2", "msgpack-numpy==0.4.8"]
 # Compatibility extras: the base package already includes these features.

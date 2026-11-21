@@ -21,6 +21,7 @@ from evoab.integrations.composition import canonical_tool_profile
 
 WORKBENCH_COMMANDS = {
     "runs": "List, launch, trace and stop runs (same as Studio)",
+    "models": "nanobot providers and model presets",
     "providers": "Manage model API providers and probe models",
     "benchmarks": "List benchmarks and tasks; prepare runtimes",
     "usage": "Token usage by API and model",
@@ -128,8 +129,9 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     )
     execution = common.add_argument_group("Execution and observation")
     execution.add_argument(
-        "--interaction-mode", choices=("tool_calling", "code_as_policy"), default="tool_calling",
-        help="Control through direct tool calls or ordinary scripts run by the agent",
+        "--interaction-mode", choices=("tool_calling", "code_as_policy", "direct_policy"), default="tool_calling",
+        help="Control through tool calls, ordinary scripts run by the agent, or action chunks emitted "
+             "directly by the model (direct_policy, requires --agent nanobot)",
     )
     execution.add_argument(
         "--tool-return-mode", choices=("immediate", "background"), default="background",

@@ -332,10 +332,76 @@ function stepMethod(body) {
       }, h("span", { class: "title" }, m.label), h("span", { class: "desc" }, m.description))))
         : h("p", { class: "muted small" }, "当前评测集暂无可用方法。")));
   }
+  if (selectedMethod()?.agent === "nanobot") body.append(directOptions());
+}
+
+const DIRECT_DEFAULTS = { representation: "abs_eef", horizon: "3:15", history: "15:7", blocks: ["gripper", "camera"] };
+function directOptions() {
+  const w = S.wizard;
+  w.direct = w.direct || { ...DIRECT_DEFAULTS, blocks: [...DIRECT_DEFAULTS.blocks] };
+  const d = w.direct;
+  const seg = (label, key, options) => h("div", { class: "field" }, h("div", { class: "section-title" }, label),
+    h("div", { class: "segmented" }, options.map(([value, text]) => h("button", { class: d[key] === value ? "active" : "",
+      "aria-pressed": String(d[key] === value), onclick: () => { d[key] = value; route(); } }, text))));
+  const block = (name, text, hint) => h("label", { class: "check" },
+    h("input", { type: "checkbox", checked: d.blocks.includes(name),
+      onchange: (e) => { d.blocks = e.target.checked ? [...new Set([...d.blocks, name])] : d.blocks.filter((b) => b !== name); } }),
+    h("span", {}, h("b", {}, text), h("span", { class: "muted small" }, ` ${hint}`)));
+  return h("section", { class: "method-group" },
+    h("h2", { class: "section-title" }, "Direct Policy 设置"),
+    h("div", { class: "card direct-options" },
+      seg("动作表示", "representation", [["abs_eef", "绝对末端位姿 (8D)"], ["delta_eef", "逐步末端增量 (7D)"]]),
+      seg("每次输出的行数", "horizon", [["3:15", "3–15"], ["1:5", "1–5"], ["16:32", "16–32"], ["15:15", "固定 15"]]),
+      seg("观测历史", "history", [["15:7", "t−14, t−7, t"], ["1:1", "仅当前"], ["30:15", "t−29, t−14, t"]]),
+      h("div", { class: "field" }, h("div", { class: "section-title" }, "提示词块"),
+        h("p", { class: "muted small" }, "本体与坐标系、执行时序、输出格式始终包含；几何信息由环境实测生成，可选。"),
+        block("gripper", "夹爪几何", "抓取点与夹爪各轴在世界坐标中的方向、开口宽度"),
+        block("camera", "相机几何", "每个相机的位置、朝向与归一化内参（来自环境标定）"))));
+}
+function directPayload() {
+  const d = S.wizard.direct || DIRECT_DEFAULTS;
+  return { representation: d.representation, horizon: d.horizon, history: d.history,
+           prompt_blocks: ["robot", "timing", ...d.blocks].join(",") };
+}
+
+async function stepNanobotModel(body) {
+  const w = S.wizard;
+  const holder = h("div", {}, h("div", { class: "muted" }, "读取 nanobot 模型预设…"));
+  body.append(holder);
+  let info;
+  try { info = S.models = await api("/api/models"); } catch (error) {
+    put(holder, h("div", { class: "notice error" }, `读取失败：${error.message}`)); return;
+  }
+  if (!info.available) { put(holder, h("div", { class: "notice error" }, info.error)); return; }
+  w.provider = "nanobot";
+  const providers = Object.fromEntries(info.providers.map((p) => [p.name, p]));
+  const manage = h("a", { class: "btn small", href: info.webui, target: "_blank", rel: "noopener" }, "在 nanobot 中管理 ↗");
+  if (!info.presets.length) {
+    put(holder, h("div", { class: "card empty" }, h("b", {}, "nanobot 里还没有模型预设"), "在 nanobot 的设置里添加提供商和模型预设后回到这里。", manage));
+    return;
+  }
+  if (!info.presets.some((p) => p.name === w.model)) w.model = null;
+  const groups = {};
+  for (const p of info.presets) (groups[p.provider] ||= []).push(p);
+  put(holder,
+    h("div", { class: "toolbar" }, h("span", { class: "muted small" }, `提供商与模型预设来自 nanobot（${info.config}），与 nanobot 的设置页是同一份配置。`),
+      h("span", { class: "spacer" }), manage),
+    h("div", { class: "list" }, Object.entries(groups).map(([name, items]) => [
+      h("div", { class: "list-group" }, `${providers[name]?.label || name}${providers[name]?.api_base ? ` · ${providers[name].api_base}` : ""}`),
+      items.map((p) => h("div", { class: `list-item${w.model === p.name ? " selected" : ""}`,
+        onclick: () => { w.model = p.name; if (p.reasoning_effort && S.config.reasoning_efforts.includes(p.reasoning_effort)) w.effort = p.reasoning_effort; route(); } },
+        h("div", { class: "t mono" }, p.name),
+        h("span", { class: "muted small" }, `${p.model} · max ${fmtInt(p.max_tokens)} tokens · 温度 ${p.temperature}${p.reasoning_effort ? ` · 预设推理 ${p.reasoning_effort}` : ""}`)))])),
+    h("div", { class: "model-effort" },
+      h("div", { class: "section-title", id: "effort-label" }, "推理强度"),
+      h("div", { class: "segmented", role: "group", "aria-labelledby": "effort-label" },
+        S.config.reasoning_efforts.map((e) => h("button", { class: w.effort === e ? "active" : "",
+          "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; route(); } }, e)))));
 }
 
 async function stepModel(body) {
   const w = S.wizard;
+  if (selectedMethod()?.agent === "nanobot") return stepNanobotModel(body);
   const configured = S.providers.filter((p) => p.key_configured);
   if (!configured.length) {
     body.append(h("div", { class: "card empty" }, h("b", {}, "还没有可用的 API"), "先在设置中添加提供商并填写密钥。 ",
@@ -403,9 +469,19 @@ function commandPreview() {
   const provider = selectedProvider();
   const method = selectedMethod();
   const [profile, task] = w.bench.integration === "libero_pro" ? w.task.task.split("/") : [w.bench.profile, w.task.task];
+  if (method.agent === "nanobot") {
+    const d = directPayload();
+    return [
+      "evoab run", `--integration ${w.bench.integration}`, "--deploy local", `--runtime-profile ${profile}`,
+      `--task ${task}`, `--tool-profile ${method.tool_profile}`, "--no-sam3", "--agent nanobot",
+      `--model ${w.model}`, `--reasoning-effort ${w.effort}`, "--interaction-mode direct_policy",
+      `--direct-representation ${d.representation}`, `--direct-horizon ${d.horizon}`, `--direct-history ${d.history}`,
+      `--direct-prompt-blocks ${d.prompt_blocks}`, "--monitor",
+    ].join(" \\\n  ");
+  }
   return [
     "evoab run", `--integration ${w.bench.integration}`, "--deploy local", `--runtime-profile ${profile}`,
-    `--task ${task}`, `--tool-profile ${method.id}`,
+    `--task ${task}`, `--tool-profile ${method.tool_profile}`,
     "--no-sam3", `--agent ${method.agent}`,
     `--model ${w.model}`, `--reasoning-effort ${w.effort}`, `--provider-url ${provider.base_url}`,
     `--provider-profile ${provider.profile}`, "--codex-web-search disabled", "--monitor",
@@ -423,15 +499,18 @@ function stepConfirm(body) {
   const rows = [
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`], ["任务", taskName(w.task.task)],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
-    ["方法", method.label], ["推理强度", w.effort], ["API", `${provider.label}（${provider.profile}）`],
-    ["模型", w.model],
+    ["方法", method.label], ["推理强度", w.effort],
+    ...(method.agent === "nanobot"
+      ? [["模型预设", `${w.model}（nanobot）`], ["Direct 设置", Object.entries(directPayload()).map(([k, v]) => `${k}=${v}`).join("  ")]]
+      : [["API", `${provider.label}（${provider.profile}）`], ["模型", w.model]]),
   ];
   body.append(
     h("div", { class: "card" }, h("table", { class: "table" }, h("tbody", {}, rows.map(([k, v]) =>
       h("tr", {}, h("td", { class: "muted", style: "width:120px" }, k), h("td", { style: "white-space:normal" }, v)))))),
     h("div", { class: "section-title", style: "margin-top:20px" }, "等价命令"),
     h("div", { class: "command" }, commandPreview()),
-    h("p", { class: "muted small" }, "API 密钥由服务器注入环境变量 EVOAB_API_KEY，不会出现在页面或命令中。"),
+    h("p", { class: "muted small" }, method.agent === "nanobot" ? "模型请求经 nanobot 发出，密钥保存在服务器上的 nanobot 配置中，不会出现在页面或命令中。"
+      : "API 密钥由服务器注入环境变量 EVOAB_API_KEY，不会出现在页面或命令中。"),
     h("button", { class: "btn primary", style: "margin-top:8px", onclick: launchRun }, "启动运行"));
 }
 
@@ -443,7 +522,8 @@ async function launchRun(event) {
     const { launch_id } = await api("/api/runs", {
       method: "POST",
       json: { integration: w.bench.integration, profile: w.bench.profile, task: w.task.task, provider_id: w.provider,
-              model: w.model, reasoning_effort: w.effort, method: w.method },
+              model: w.model, reasoning_effort: w.effort, method: w.method,
+              ...(selectedMethod()?.agent === "nanobot" ? { direct: directPayload() } : {}) },
     });
     toast("已启动，环境准备约需 30 秒");
     await loadRuns();

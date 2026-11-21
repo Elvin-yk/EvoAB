@@ -754,7 +754,7 @@ def _provider_message(message: dict[str, Any]) -> dict[str, Any]:
 
 
 #: Files a reader may open from a run directory (relative paths, no traversal).
-READABLE = re.compile(r"^(images|monitor_media)/[\w.\-/]+\.(png|jpe?g|webp)$|^[\w.\-]+\.(md|json)$")
+READABLE = re.compile(r"^(images|monitor_media)/[\w.\-/]+\.(png|jpe?g|webp)$|^(direct/)?[\w.\-]+\.(md|json)$")
 
 
 def run_file(run_dir: Path, relative: str) -> Path:

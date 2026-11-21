@@ -29,6 +29,7 @@ families are examples of this architecture, not a closed list of allowed tools.
 | `provider/` | Connect model APIs: gateway, wire conversion, model-request retry and response delivery |
 | `context/` | Assemble prompts/history and apply context policies |
 | `tools/` | Define model-visible tool schemas, handlers, orchestration, feedback and resource requirements |
+| `direct/` | Direct policies: prompt packs, action-chunk representations, and the observe → infer → execute loop on episode contracts |
 | `execution/` | Schedule tool work, enforce resource exclusion and manage background jobs |
 | `integrations/` | Compose tool families and adapt native environments, controllers, observations and model/resource bindings |
 | `services/` | Own typed service contracts, clients, hosts and environment/model service lifecycles |

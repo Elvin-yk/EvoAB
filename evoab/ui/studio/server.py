@@ -110,6 +110,10 @@ def create_app(runs_root: Path) -> FastAPI:
     def provider_probe(provider_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         return bench.probe(provider_id, str(payload.get("model") or ""))
 
+    @app.get("/api/models")
+    def model_overview() -> dict[str, Any]:
+        return bench.models_overview()
+
     # -- runs -----------------------------------------------------------------
 
     @app.get("/api/runs")

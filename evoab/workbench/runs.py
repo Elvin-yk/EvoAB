@@ -58,6 +58,22 @@ def collect_usage(run_dir: Path) -> dict[str, int]:
         "reasoning_tokens": 0,
         "total_tokens": 0,
     }
+    # Direct policies record every attempt's usage with the inference.
+    calls = run_dir / "direct" / "calls.jsonl"
+    if calls.is_file():
+        for line in calls.read_text(encoding="utf-8").splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            for attempt in record.get("attempts", []):
+                usage = attempt.get("usage") or {}
+                totals["requests"] += 1
+                totals["input_tokens"] += int(usage.get("input_tokens") or 0)
+                totals["output_tokens"] += int(usage.get("output_tokens") or 0)
+                totals["cached_input_tokens"] += int(usage.get("cached_input_tokens") or 0)
+                totals["total_tokens"] += int(usage.get("total_tokens") or 0)
+        return totals
     for body in sorted(run_dir.glob("*_responses/exchange_*/response.body.gz")):
         totals["requests"] += 1
         try:
@@ -164,6 +180,7 @@ def summarize_run(
         "provider": launch.get("provider_label") or config.get("provider_url"),
         "model": (result or {}).get("model") or launch.get("model"),
         "agent": (result or {}).get("agent_backend") or launch.get("agent"),
+        "method_id": "direct_policy" if (run_dir / "direct" / "policy.json").is_file() else launch.get("method"),
         "tool_profile": (result or {}).get("tool_profile") or launch.get("tool_profile"),
         "action_profile": (result or {}).get("action_profile") or launch.get("action_profile"),
         "reasoning_effort": (result or {}).get("reasoning_effort") or launch.get("reasoning_effort"),
@@ -197,6 +214,7 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
         "provider": launch.get("provider_label"),
         "model": launch.get("model"),
         "agent": launch.get("agent"),
+        "method_id": launch.get("method"),
         "tool_profile": launch.get("tool_profile"),
         "action_profile": launch.get("action_profile"),
         "reasoning_effort": launch.get("reasoning_effort"),
@@ -214,6 +232,10 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
 
 
 def _method(run: dict[str, Any]) -> str:
+    from evoab.workbench.launcher import METHODS
+    method = next((m for m in METHODS if m["id"] == run.get("method_id")), None)
+    if method is not None:
+        return f"{method['label']} · {method['agent']}"
     return f"{run.get('agent') or 'codex'} · {run.get('tool_profile') or run.get('action_profile') or 'direct'}"
 
 

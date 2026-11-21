@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- Direct policies (`--interaction-mode direct_policy`, `evoab/direct/`): the
+  model emits action chunks (`emit_eef_actions`, absolute or delta EEF) that the
+  benchmark controller executes one row per control step, with per-benchmark
+  prompt packs, environment-derived timing/gripper/camera geometry blocks,
+  complete validation, output repair and a measured-pose safe hold. Records in
+  `direct/` (policy, prompt, per-step frames, per-inference calls and requests).
+  This replaces "Direct" meaning tool calls to `move`.
+
+- `--agent nanobot` (`pip install 'evoab[nanobot]'`, `nanobot-ai==0.4.1`): models
+  come from nanobot presets and providers in nanobot's own config; usage lands in
+  nanobot's usage store. Tool calling runs nanobot's `AgentRunner` with only the
+  robot tools and nanobot's transcript consolidation (run-local storage).
+  `evoab models` and `/api/models` list presets.
+
+- Studio: Direct Policy method with representation, horizon, history and
+  prompt-block choices; model step lists nanobot presets with a link to nanobot's
+  WebUI. Direct runs open in a step-by-step player: synchronized cameras, a
+  control-step track segmented by inference (optionally including real inference
+  waits), play / replay call / previous-next call / speed, CALL·STEP·ACTION
+  telemetry, the action chunk with measured tracking error, model note, repair /
+  clamp / hold alerts, a trajectory chart, an inference list and per-inference
+  request/reply drawer. Each launch picks a free environment port, so LIBERO-PRO
+  runs can overlap.
+
 - Studio's operations move to `evoab/workbench/` and are exposed as
   `evoab runs | providers | benchmarks | usage | settings | studio` commands
   with `--json`; Studio's HTTP routes call the same methods. `evoab studio`

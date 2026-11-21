@@ -14,8 +14,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from evoab.workbench import benchmarks, jobs, providers, trace
-from evoab.workbench.launcher import METHODS, REASONING_EFFORTS, LaunchRequest, launch, validate
+from evoab.workbench import benchmarks, direct_trace, jobs, providers, trace
+from evoab.workbench.launcher import DIRECT_OPTIONS, METHODS, REASONING_EFFORTS, LaunchRequest, launch, validate
 from evoab.workbench.runs import STUDIO_DIR, load_launches, scan_runs, usage_totals
 
 SETTING_KEYS = ("default_provider", "default_model", "default_effort", "default_method", "runtime_wheel")
@@ -80,6 +80,7 @@ class Workbench:
             "config_dir": str(providers.config_dir()),
             "reasoning_efforts": REASONING_EFFORTS,
             "methods": METHODS,
+            "direct_options": {k: list(v[1]) if v[1] else None for k, v in DIRECT_OPTIONS.items()},
             "wire_profiles": providers.agent_profiles(),
             "settings": self.settings(),
         }
@@ -156,6 +157,19 @@ class Workbench:
             raise Invalid("model is required")
         return providers.probe_model(self.provider(provider_id), model)
 
+    # -- models (nanobot) -----------------------------------------------------
+
+    def models_overview(self) -> dict[str, Any]:
+        """nanobot's providers and model presets, read from the config its WebUI edits."""
+        from evoab.provider import nanobot
+        try:
+            config = nanobot.load_config()
+        except RuntimeError as error:
+            return {"available": False, "error": str(error), "providers": [], "presets": []}
+        return {"available": True, "config": str(nanobot.config_path()),
+                "providers": nanobot.providers(config), "presets": nanobot.presets(config),
+                "webui": os.environ.get("EVOAB_NANOBOT_WEBUI", "http://127.0.0.1:8765")}
+
     # -- runs -----------------------------------------------------------------
 
     def runs(self, live=None) -> list[dict[str, Any]]:
@@ -223,11 +237,16 @@ class Workbench:
         return path
 
     def trace(self, run_id: str) -> dict[str, Any]:
-        return trace.build_trace(self.run_dir(run_id))
+        run_dir = self.run_dir(run_id)
+        return direct_trace.build(run_dir) if direct_trace.is_direct(run_dir) else trace.build_trace(run_dir)
 
     def round(self, run_id: str, index: int) -> dict[str, Any]:
+        """One model round (agent runs) or one inference (Direct runs), 0-based."""
+        run_dir = self.run_dir(run_id)
         try:
-            return trace.round_detail(self.run_dir(run_id), index)
+            if direct_trace.is_direct(run_dir):
+                return direct_trace.call_detail(run_dir, index + 1)
+            return trace.round_detail(run_dir, index)
         except IndexError as error:
             raise NotFound("unknown round") from error
 

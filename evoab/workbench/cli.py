@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-COMMANDS = ("runs", "providers", "benchmarks", "usage", "settings", "studio")
+COMMANDS = ("runs", "models", "providers", "benchmarks", "usage", "settings", "studio")
 
 
 def _print_json(value: Any) -> None:
@@ -86,6 +86,12 @@ def _runs_trace(bench, args) -> None:
     if args.json:
         _print_json(trace)
         return
+    if trace.get("kind") == "direct":
+        from evoab.workbench.direct_trace import summary_lines
+        print("\n".join(summary_lines(trace)))
+        for line in (trace.get("ending") or {}).get("chain", []):
+            print("  " + line)
+        return
     t0 = trace["t0"] or 0
     clock = lambda t: f"+{int((t or t0) - t0) // 60:02d}:{int((t or t0) - t0) % 60:02d}"  # noqa: E731
     for stage in trace["stages"]:
@@ -115,6 +121,22 @@ def _runs_trace(bench, args) -> None:
             print(f"  - {line}")
 
 
+def _models(bench, args) -> None:
+    data = bench.models_overview()
+    if args.json:
+        _print_json(data)
+        return
+    if not data["available"]:
+        sys.exit(data["error"])
+    print(f"nanobot config: {data['config']}")
+    print("providers:")
+    for p in data["providers"]:
+        print(f"  {p['name']:<14} {p['label']:<20} {p['api_base'] or '(built-in)'}  key={'yes' if p['has_key'] else 'no'}")
+    print("presets (use as --model):")
+    for p in data["presets"]:
+        print(f"  {p['name']:<28} {p['provider']:<12} {p['model']}  effort={p['reasoning_effort'] or '-'}  max_tokens={p['max_tokens']}")
+
+
 def _runs_launch(bench, args) -> None:
     settings = bench.settings()
     payload = {
@@ -124,8 +146,12 @@ def _runs_launch(bench, args) -> None:
         "provider_id": args.provider or settings.get("default_provider"),
         "model": args.model or settings.get("default_model"),
         "reasoning_effort": args.effort or settings.get("default_effort") or "low",
-        "method": args.method or settings.get("default_method") or "direct",
+        "method": args.method or settings.get("default_method") or "direct_policy",
     }
+    direct = {key: getattr(args, key) for key in ("representation", "horizon", "history", "prompt_blocks")
+              if getattr(args, key) is not None}
+    if direct:
+        payload["direct"] = direct
     result = bench.launch(payload)
     if args.json:
         _print_json(result)
@@ -273,8 +299,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--provider", help="Provider ID (default: settings.default_provider)")
     p.add_argument("--model", help="Model ID (default: settings.default_model)")
     p.add_argument("--effort", help="Reasoning effort (default: settings.default_effort or low)")
-    p.add_argument("--method", help="Method ID (default: settings.default_method or direct)")
+    p.add_argument("--method", help="Method ID: direct_policy (nanobot preset as --model) or direct (Codex agent); "
+                                    "default: settings.default_method or direct_policy")
+    p.add_argument("--representation", help="Direct policy: abs_eef or delta_eef")
+    p.add_argument("--horizon", help="Direct policy: rows per chunk, MIN:MAX")
+    p.add_argument("--history", help="Direct policy: observation window and stride, LENGTH:STRIDE")
+    p.add_argument("--prompt-blocks", dest="prompt_blocks", help="Direct policy: e.g. robot,timing,gripper,camera")
     p.set_defaults(handler=_runs_launch)
+
+    models = sub.add_parser("models", parents=[common], help="nanobot providers and model presets (edited in nanobot's WebUI)")
+    models.set_defaults(handler=_models)
 
     prov = sub.add_parser("providers", help="Manage model API providers").add_subparsers(dest="action", required=True)
     p = prov.add_parser("list", parents=[common])

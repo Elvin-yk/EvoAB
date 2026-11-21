@@ -382,14 +382,17 @@ class Session:
         try:
             logger.info("Task: %s", args.instruction)
             with assembly.telemetry.tracer.span("agent.run", agent_backend=args.agent_backend, model=args.model):
-                self._agent_result = _run_agent(self._agent,
-                    model_config=resolve_agent_model_config(args), context_config=resolve_context_config(args),
-                    interaction_mode=args.interaction_mode,
-                    save_raw_request=args.telemetry == "debug", save_exchanges=args.save_exchanges,
-                    artifacts=assembly.artifacts, tracer=assembly.telemetry.tracer,
-                    prompt=assembly.build_prompt(args.instruction), task=args.instruction,
-                    toolkit=assembly.toolkit, executor=assembly.executor, max_turns=args.max_turns,
-                    event_bus=self.events, session_dir=assembly.session_dir)
+                if args.interaction_mode == "direct_policy":
+                    self._agent_result = _run_direct(self._agent, args, assembly, self.events)
+                else:
+                    self._agent_result = _run_agent(self._agent,
+                        model_config=resolve_agent_model_config(args), context_config=resolve_context_config(args),
+                        interaction_mode=args.interaction_mode,
+                        save_raw_request=args.telemetry == "debug", save_exchanges=args.save_exchanges,
+                        artifacts=assembly.artifacts, tracer=assembly.telemetry.tracer,
+                        prompt=assembly.build_prompt(args.instruction), task=args.instruction,
+                        toolkit=assembly.toolkit, executor=assembly.executor, max_turns=args.max_turns,
+                        event_bus=self.events, session_dir=assembly.session_dir)
             _log_agent_result(self._agent_result)
         except KeyboardInterrupt as error:
             self.cancel()
@@ -766,6 +769,23 @@ def _result_exit_code(*, outcome, task_success, agent_result, error_msg) -> int:
     else:
         ok = task_success and not error_msg
     return 0 if ok else 1
+
+
+def _run_direct(agent, args, assembly, event_bus):
+    """Run a Direct policy against the episode; no model-visible tools are involved."""
+    try:
+        result = agent.run_direct(episode=assembly.integration_session.episode, integration=args.integration,
+                                  instruction=args.instruction, session_dir=assembly.session_dir)
+    except KeyboardInterrupt:
+        agent.cancel("interrupted")
+        raise
+    finally:
+        agent.close()
+    solved = getattr(assembly.toolkit, "task_succeeded", None)
+    event_bus.emit(AgentRunFinished(success=result.success, task_success=solved() if callable(solved) else None,
+                                    turns=result.turns_used, steps=result.steps_used, tool_calls=result.tool_calls,
+                                    message=result.error or result.message, elapsed_s=result.elapsed_s))
+    return result
 
 
 def _run_agent(

@@ -43,6 +43,7 @@ _BUILTIN_AGENTS: dict[str, str] = {
     "opencode": "evoab.agents.opencode.agent:OpenCodeAgent",
     "antigravity": "evoab.agents.antigravity.agent:AntigravityAgent",
     "gemini_cli": "evoab.agents.gemini_cli.agent:GeminiCliAgent",
+    "nanobot": "evoab.agents.nanobot.agent:NanobotAgent",
 }
 
 

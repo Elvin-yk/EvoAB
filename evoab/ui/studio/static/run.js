@@ -56,6 +56,8 @@ function pageRun(main, key) {
 }
 
 function closeReplay() {
+  if (typeof pause === "function" && DP.tr) { pause(); DP.tr = null; DP.cache.clear(); }
+  document.removeEventListener("keydown", directKeys);
   clearInterval(RV.timer);
   clearInterval(RV.playTimer);
   RV.timer = RV.playTimer = null;
@@ -75,6 +77,14 @@ async function loadTrace() {
   if (RV.run !== run) return;
   const first = !RV.trace;
   RV.trace = trace;
+  if (trace.kind === "direct") {
+    renderHead();
+    renderEnding();
+    renderDirect(first);
+    clearInterval(RV.timer);
+    RV.timer = trace.live || isLive(run) ? setInterval(() => !document.hidden && loadTrace(), 3000) : null;
+    return;
+  }
   RV.moments = buildMoments(trace);
   if (first || RV.follow) RV.t = endTime();
   renderHead();
@@ -114,8 +124,10 @@ function renderHead() {
   const run = RV.run;
   const tr = RV.trace;
   const u = run.usage || {};
-  const robotCalls = tr ? tr.calls.filter((c) => c.executor === "robot").length + tr.calls.reduce((n, c) => n + c.nested.length, 0) : null;
-  const lastSteps = tr ? [...tr.frames].reverse().find((f) => f.steps != null)?.steps : null;
+  const direct = tr?.kind === "direct";
+  const robotCalls = !tr ? null : direct ? tr.totals.steps
+    : tr.calls.filter((c) => c.executor === "robot").length + tr.calls.reduce((n, c) => n + c.nested.length, 0);
+  const lastSteps = !tr ? null : direct ? tr.totals.steps : [...tr.frames].reverse().find((f) => f.steps != null)?.steps;
   const steps = run.environment_steps ?? lastSteps;
   const dims = [
     ["类型", run.simulated === false ? "真机" : "仿真"], ["评测集", run.integration],
@@ -138,8 +150,8 @@ function renderHead() {
       metric("结果", RUN_STATUS[run.status] || run.status, run.status),
       metric("用时", fmtDuration(run.elapsed_s)),
       metric("环境步数", `${steps ?? "—"}${tr?.max_steps ? ` / ${tr.max_steps}` : ""}`),
-      metric("模型轮次", fmtInt(tr ? tr.rounds.length : u.requests)),
-      metric("机器人动作", fmtInt(robotCalls)),
+      metric(direct ? "推理次数" : "模型轮次", fmtInt(tr ? (direct ? tr.totals.calls : tr.rounds.length) : u.requests)),
+      metric(direct ? "执行动作行" : "机器人动作", fmtInt(robotCalls)),
       metric("输入 tokens", fmtTokens(u.input_tokens), "", u.cached_input_tokens ? `缓存 ${fmtTokens(u.cached_input_tokens)}` : null),
       metric("输出 tokens", fmtTokens(u.output_tokens), "", u.reasoning_tokens ? `推理 ${fmtTokens(u.reasoning_tokens)}` : null)));
 }

@@ -129,10 +129,15 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
         load_observation_profile(args.observation_profile)
     if agent_enabled:
         agent_backend = get_agent_backend(args.agent_backend)
-        from evoab.provider.registry import validate_provider_profile
-        args.provider_profile = args.provider_profile or f"passthrough.{agent_backend.model_protocol}"
-        validate_provider_profile(args.provider_profile, client_protocol=agent_backend.model_protocol)
-        agent_backend.validate_config(args, explicit)
+        if getattr(args, "interaction_mode", "tool_calling") == "direct_policy" and not hasattr(agent_backend, "run_direct"):
+            raise ValueError("--interaction-mode direct_policy requires --agent nanobot")
+        if getattr(agent_backend, "owns_provider", False):
+            agent_backend.validate_config(args, explicit)
+        else:
+            from evoab.provider.registry import validate_provider_profile
+            args.provider_profile = args.provider_profile or f"passthrough.{agent_backend.model_protocol}"
+            validate_provider_profile(args.provider_profile, client_protocol=agent_backend.model_protocol)
+            agent_backend.validate_config(args, explicit)
         if args.context_policy != "identity" and not args.provider_url:
             raise ValueError(
                 "context policy requires --provider-url or EVOAB_PROVIDER_URL"
@@ -289,7 +294,7 @@ class SessionConfig(BaseModel):
     no_sam3: bool = False
     output_dir: Path | None = None
     episode_timeout_s: int = Field(default=10800, ge=0)
-    interaction_mode: Literal["tool_calling", "code_as_policy"] = "tool_calling"
+    interaction_mode: Literal["tool_calling", "code_as_policy", "direct_policy"] = "tool_calling"
     tool_return_mode: Literal["immediate", "background"] = "background"
     resource_scheduling: Literal["per-resource", "global-serial"] = "per-resource"
     # None selects the integration's execution mode (IntegrationSpec.execution_mode).
