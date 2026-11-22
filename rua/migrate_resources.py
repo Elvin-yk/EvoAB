@@ -512,6 +512,9 @@ class Migration:
                 continue
             if not self.contains_legacy_path(path):
                 continue
+            if name in {"cache", "cache-reuse"} and self.historical_robodojo_record(relative):
+                print(f"  Preserving historical RoboDojo record: {path}")
+                continue
             if path.name in {"runtime.json", "validation.json", "prepare-request.json", "direct_url.json"} or (
                 path.suffix == ".json" and relative.parent.name == "steps"
             ):
@@ -528,6 +531,18 @@ class Migration:
         if issues:
             raise ValueError(f"Unrecognized legacy path references in {self.old[name]}: "
                              + ", ".join(map(str, issues[:12])))
+
+    @staticmethod
+    def historical_robodojo_record(relative: Path) -> bool:
+        parts = relative.parts
+        if len(parts) < 3 or parts[0] != "robodojo" or not re.fullmatch(r".+-[0-9a-f]{16}", parts[1]):
+            return False
+        record = parts[2:]
+        if record in {("setup_failure.json",), ("installed.txt",)}:
+            return True
+        # pip names each self-check record by the SHA-224 of the interpreter prefix.
+        return (len(record) == 4 and record[:3] == ("cache", "pip", "selfcheck")
+                and re.fullmatch(r"[0-9a-f]{56}", record[-1]) is not None)
 
     @staticmethod
     def venv_metadata(path, root):

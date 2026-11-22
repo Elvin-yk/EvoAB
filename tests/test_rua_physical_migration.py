@@ -1,6 +1,7 @@
 """Small CPU-only resource fixtures for the host migration state machine."""
 
 import argparse
+from hashlib import sha224
 import importlib
 import json
 import os
@@ -328,6 +329,52 @@ def test_audit_refuses_unknown_binary_reference(layout):
     with pytest.raises(ValueError, match="unknown.so"):
         migration.inspect_paths("cache")
     assert old.exists() and migration.new["cache"].is_symlink()
+
+
+def test_historical_robodojo_records_are_preserved_in_audit_and_copy(layout, capsys):
+    migration, _ = layout
+    migration.args.native = True
+    cache = migration.old["cache-reuse"]
+    runtime = migration.active_manifest(cache).parent
+    prefix = str(runtime / "venv")
+    records = {
+        runtime / "setup_failure.json": json.dumps({"error": f"See {runtime}/setup.log", "type": "RuntimeError"}),
+        runtime / "cache/pip/selfcheck" / sha224(prefix.encode()).hexdigest():
+            json.dumps({"key": prefix, "last_check": "2026-01-01T00:00:00Z", "pypi_version": "26.0"}),
+        runtime / "installed.txt": f"-e {runtime}/source\nnumpy==1.26.0\n",
+    }
+    for path, content in records.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    manifest = runtime / "runtime.json"
+    manifest.write_text(json.dumps({"python": f"{prefix}/bin/python"}))
+
+    migration.inspect_paths("cache-reuse")
+    report = capsys.readouterr().out
+    for path in records:
+        assert f"Preserving historical RoboDojo record: {path}" in report
+
+    stage = migration.control / "staged-cache"
+    shutil.copytree(cache, stage, symlinks=True)
+    migration.inspect_paths("cache-reuse", stage)
+    for original, content in records.items():
+        assert original.read_bytes() == content.encode()
+        assert (stage / original.relative_to(cache)).read_bytes() == content.encode()
+    updated = m.read_json(stage / manifest.relative_to(cache))
+    assert updated["python"] == str(migration.mapped(runtime) / "venv/bin/python")
+
+
+@pytest.mark.parametrize("relative", ["source/installed.txt", "source/setup_failure.json",
+                                      "cache/pip/selfcheck/settings.json", "cache/pip/http-v2/" + "a" * 56])
+def test_reports_outside_historical_cache_locations_still_block(layout, relative):
+    migration, _ = layout
+    migration.args.native = True
+    root = migration.active_manifest(migration.old["cache-reuse"]).parent
+    file = root / relative
+    file.parent.mkdir(parents=True)
+    file.write_text(f"{root}/venv\n")
+    with pytest.raises(ValueError, match="Unrecognized legacy path references"):
+        migration.inspect_paths("cache-reuse")
 
 
 def test_mapping_respects_path_boundaries_and_file_urls(layout):

@@ -123,8 +123,11 @@ isolated Worker must also be able to start and import its dependencies.
 Missing resources on these paths block migration or verification.
 
 Known deployment records and generated RoboDojo robot
-configuration paths are rebased. Unknown live references are reported with
-filenames for manual review while the originals remain available. Native
+configuration paths are rebased. In versioned native RoboDojo cache entries,
+`setup_failure.json`, the `installed.txt` package inventory and hashed
+`cache/pip/selfcheck/` records retain their original contents. They record
+the old preparation or pip version check. Unknown live references are
+reported with filenames for manual review while the originals remain available. Native
 simulator environments that are embedded in a cache, and contain path-bound
 executables or extension metadata, need dedicated relocation or a stable
 external runtime. Moving such an environment by renaming its venv is unsafe;
