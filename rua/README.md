@@ -104,9 +104,25 @@ window. Leave unrelated GPU jobs running.
 The tool requires temporary capacity for both copies. It uses resumable
 rsync staging with checksum comparison, including for cross-filesystem copies.
 It refuses mount points inside resource trees and pre-existing destination
-directories unless they belong to its journal. Links inside copied resources
-are rebased against their new physical paths and checked for dangling or
-legacy targets. Known deployment records and generated RoboDojo robot
+directories unless they belong to its journal. Links into the five managed
+resources are rebased to the new paths. A broken internal link or a
+remaining link to an old resource blocks verification.
+
+An external link outside the selected runtime dependencies can be copied
+while its target is missing. Audit, copy and verification report
+`Warning: preserving dangling external symlink` with the link and its target.
+Absolute targets are retained. Relative links are adjusted when needed to
+keep reaching the same external location after the copy. A historical
+training dataset behind an unmounted filesystem stays unavailable until
+its original target returns. Rollback restores the original link text along
+with the original resource trees.
+
+The selected runtime manifest, native root, prepared Assets and asset
+links, runtime interpreter and Docker mounts are still checked. The
+isolated Worker must also be able to start and import its dependencies.
+Missing resources on these paths block migration or verification.
+
+Known deployment records and generated RoboDojo robot
 configuration paths are rebased. Unknown live references are reported with
 filenames for manual review while the originals remain available. Native
 simulator environments that are embedded in a cache, and contain path-bound

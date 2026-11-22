@@ -136,26 +136,60 @@ def install_old(migration):
                "sample-dep==1.2", "-e", migration.old["source"])
 
 
-@pytest.mark.parametrize("external", [True, False], ids=["external-manifest", "copied-manifest"])
-def test_complete_cpu_migration_and_rollback(layout, monkeypatch, external):
+@pytest.mark.parametrize(("external", "native"), [(True, True), (False, False)],
+                         ids=["external-native-manifest", "copied-container-manifest"])
+def test_complete_cpu_migration_and_rollback(layout, monkeypatch, capsys, external, native):
     migration, manifest = layout
+    original = m.read_json(manifest)
     if not external:
         migration.args.cache_dir = migration.old["cache-reuse"]
-        original = m.read_json(manifest)
-        manifest = migration.active_manifest(migration.args.cache_dir)
-        manifest.parent.mkdir(parents=True)
-        original["root"] = str(manifest.parent)
-        manifest.write_text(json.dumps(original))
+    if native:
+        manifest.unlink()
+    migration.args.native = native
+    manifest = migration.active_manifest(migration.args.cache_dir)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    original["root"] = str(manifest.parent)
+    if native:
+        original["python"] = sys._base_executable
+        del original["data"]["container"]
+    manifest.write_text(json.dumps(original))
     new_manifest = migration.mapped(manifest)
     initial_manifest = manifest.read_bytes()
+    external_data = migration.repo.parent / "shared" / "data"
+    external_data.parent.mkdir()
+    external_data.write_text("external data")
+    missing_data = migration.repo.parent / "unmounted" / "training-data"
+    candidate_alias = migration.repo.parent / "candidate-alias"
+    candidate_alias.symlink_to(migration.old["candidate"])
+    (migration.old["cache"] / "via-external-alias").symlink_to(candidate_alias / "data")
+    for name in ("cache", "cache-reuse"):
+        root = migration.old[name]
+        dataset = root / "native/XPolicyLab/policy/RISE/data"
+        dataset.mkdir(parents=True)
+        (dataset / "historical-dataset").symlink_to(missing_data)
+        (root / "external").symlink_to(external_data)
+        (root / "external-relative").symlink_to("../unmounted/training-data")
+
     install_old(migration)
     migration.audit()
     assert not migration.state_file.exists()
+    assert "Warning: preserving dangling external symlink:" in capsys.readouterr().err
 
     migration.migrate()
+    assert "Warning: preserving dangling external symlink:" in capsys.readouterr().err
     assert migration.new["candidate"].joinpath("data").read_bytes() == b"exact data"
     assert migration.new["cache"].joinpath("internal").resolve() == migration.new["candidate"] / "data"
     assert migration.new["cache"].joinpath("relative").readlink() == Path("../candidate/data")
+    assert (migration.new["cache"] / "via-external-alias").readlink() == migration.new["candidate"] / "data"
+    for name in ("cache", "cache-reuse"):
+        root = migration.new[name]
+        link = root / "native/XPolicyLab/policy/RISE/data/historical-dataset"
+        assert link.readlink() == missing_data and not link.exists()
+        assert (root / "external").readlink() == external_data
+        assert (root / "external").read_text() == "external data"
+        relative = (root / "external-relative").readlink()
+        assert not relative.is_absolute()
+        assert m.absolute(root / relative) == missing_data
     assert initial_manifest != new_manifest.read_bytes()
     if not external:
         assert initial_manifest == manifest.read_bytes()
@@ -180,6 +214,26 @@ def test_complete_cpu_migration_and_rollback(layout, monkeypatch, external):
     migration.isolate()
     assert not any(m.exists(path) for path in migration.old.values())
     migration.verify()
+    warnings = capsys.readouterr().err
+    assert "Warning: preserving dangling external symlink:" in warnings
+    assert str(missing_data) in warnings
+
+    internal_link = migration.new["cache"] / "broken-internal"
+    internal_link.symlink_to(migration.new["candidate"] / "missing")
+    with pytest.raises(ValueError, match="Dangling internal resource symlink"):
+        migration.verify()
+    internal_link.unlink()
+    required_asset = migration.new["cache-reuse"] / "build/Assets/Object/geometry.usd"
+    required_asset.symlink_to(missing_data)
+    with pytest.raises(ValueError, match="Required RoboDojo asset symlink is dangling"):
+        migration.verify()
+    required_asset.unlink()
+    python = migration.new["venv"] / "bin/python"
+    python.rename(python.with_name("python-saved"))
+    python.symlink_to(missing_data)
+    with pytest.raises(ValueError, match="Required RUA interpreter is missing"):
+        migration.verify()
+    python.with_name("python-saved").replace(python)
 
     evidence = migration.repo / "run"
     evidence.mkdir()
@@ -203,6 +257,68 @@ def test_complete_cpu_migration_and_rollback(layout, monkeypatch, external):
     assert manifest.read_bytes() == initial_manifest
     assert all(path.is_symlink() and path.resolve() == migration.old[name] for name, path in migration.new.items())
     assert (migration.work / "rollback" / "venv").is_dir()
+    for name in ("cache", "cache-reuse"):
+        relative = "native/XPolicyLab/policy/RISE/data/historical-dataset"
+        assert (migration.old[name] / relative).readlink() == missing_data
+        assert (migration.work / "rollback" / name / relative).readlink() == missing_data
+        assert (migration.old[name] / "external-relative").readlink() == Path("../unmounted/training-data")
+
+
+@pytest.mark.parametrize("through_alias", [False, True])
+def test_dangling_internal_link_blocks_audit_and_copy(layout, through_alias):
+    migration, _ = layout
+    target = migration.old["candidate"] / "missing"
+    if through_alias:
+        alias = migration.repo.parent / "candidate-alias"
+        alias.symlink_to(migration.old["candidate"])
+        target = alias / "missing"
+    link = migration.old["cache"] / "broken"
+    link.symlink_to(target)
+    with pytest.raises(ValueError, match=r"Dangling internal resource symlink: .*broken"):
+        migration.inspect_paths("cache")
+
+    stage = migration.control / "staged-cache"
+    shutil.copytree(migration.old["cache"], stage, symlinks=True)
+    with pytest.raises(ValueError, match=r"Dangling internal resource symlink: .*broken"):
+        migration.inspect_paths("cache", stage)
+    assert link.readlink() == target
+    assert (stage / "broken").readlink() == target
+
+
+@pytest.mark.parametrize("key", ["native_root", "assets_dir", "asset_source_dir", "manifest", "overlay", "asset",
+                                 "native_python", "mount"])
+def test_selected_runtime_rejects_missing_external_dependency(layout, key):
+    migration, manifest = layout
+    missing = migration.repo.parent / "unmounted" / key
+    if key == "manifest":
+        manifest.unlink()
+        manifest.symlink_to(missing)
+        expected = "Prepared runtime record is missing or is a symlink"
+    else:
+        record = m.read_json(manifest)
+        if key == "overlay":
+            overlay = Path(record["data"]["native_root"]) / "Assets"
+            overlay.unlink()
+            overlay.symlink_to(missing)
+            expected = "RoboDojo native source does not resolve to the prepared Assets"
+        elif key == "asset":
+            asset = Path(record["data"]["assets_dir"]) / "Object/geometry.usd"
+            asset.symlink_to(missing)
+            expected = "Required RoboDojo asset symlink is dangling"
+        elif key == "native_python":
+            record["python"] = str(missing)
+            expected = "Required RoboDojo native interpreter is missing"
+        elif key == "mount":
+            record["python"] += f"|{missing}"
+            expected = "Required RoboDojo Docker host mount is missing"
+        else:
+            link = migration.old["cache"] / f"missing-{key}"
+            link.symlink_to(missing)
+            record["data"][key] = str(link)
+            expected = f"Required RoboDojo {key} is missing"
+        manifest.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match=expected):
+        migration.cache_plan()
 
 
 def test_audit_refuses_unknown_binary_reference(layout):

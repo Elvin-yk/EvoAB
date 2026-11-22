@@ -209,6 +209,9 @@ class Migration:
                 return self.new[name] / path.relative_to(old)
         return path
 
+    def managed(self, path):
+        return any(within(path, root) for root in (*self.old.values(), *self.new.values()))
+
     def active_manifest(self, cache_dir):
         from types import SimpleNamespace
         from evoab.integrations.robodojo.deployment import recipe
@@ -281,6 +284,8 @@ class Migration:
                 raise ValueError(f"Use the physical path of the manifest: {manifest}")
             record = read_json(manifest)
             print(f"Runtime manifest {manifest} -> {self.mapped(manifest)}")
+            if manifest == selected:
+                self.runtime_directories(record["data"])
             for key in ("native_root", "assets_dir", "asset_source_dir"):
                 if value := record.get("data", {}).get(key):
                     print(f"  {key}: {value} -> {self.mapped(Path(value))}")
@@ -292,8 +297,12 @@ class Migration:
                 _, inner = parse(runtime_python)
                 print(f"  Docker interpreter: {inner}")
                 for mount in mounts:
+                    if manifest == selected and not Path(mount).exists():
+                        raise ValueError(f"Required RoboDojo Docker host mount is missing: {mount}")
                     print(f"  Docker host mount: {mount} -> {self.mapped(Path(mount))}")
             else:
+                if manifest == selected and not Path(runtime_python).is_file():
+                    raise ValueError(f"Required RoboDojo native interpreter is missing: {runtime_python}")
                 print(f"  Native interpreter: {runtime_python} -> {self.mapped(Path(runtime_python))}")
         return active, new_cache, selected, sorted(manifests)
 
@@ -418,19 +427,37 @@ class Migration:
         if busy:
             raise ValueError("Stop only your RUA/RoboDojo jobs and Studio before migrating: " + ", ".join(busy))
 
-    def rebase_link(self, path, original, destination):
+    def link_targets(self, path, link):
+        """Resolve a link in its live layout, tolerating only missing external targets."""
+        referent = path.parent / link
+        target = absolute(referent)
+        try:
+            return target, referent.resolve(strict=True)
+        except FileNotFoundError as error:
+            # A link outside the tree can itself lead back to a missing managed resource.
+            unresolved = referent.resolve(strict=False)
+            if self.managed(target) or self.managed(unresolved):
+                raise ValueError(f"Dangling internal resource symlink: {path} -> {link}") from error
+            print(f"Warning: preserving dangling external symlink: {path} -> {link}", file=sys.stderr)
+            return target, None
+
+    def rebase_link(self, path, original, destination, *, audit=False):
         link = path.readlink()
-        old_target = absolute(original.parent / link)
-        # Preserve chains through other copied links, but collapse a legacy external alias.
-        mapped = self.mapped(old_target)
-        if mapped == old_target and not any(within(mapped, root) for root in self.new.values()):
-            resolved = old_target.resolve(strict=True)
+        target, resolved = self.link_targets(original, link)
+        # Preserve internal chains and external targets. Redirect external aliases into
+        # the managed trees so a migrated link cannot still route through an old tree.
+        mapped = self.mapped(target)
+        if not self.managed(target) and resolved is not None and self.managed(resolved):
             mapped = self.mapped(resolved)
+        if absolute(destination.parent / link) == mapped:
+            return
         if link.is_absolute():
             replacement = mapped
         else:
             replacement = Path(os.path.relpath(mapped, destination.parent))
-        if replacement != link:
+        if audit:
+            print(f"  Cache/source symlink will be rebased: {original} -> {replacement}")
+        else:
             path.unlink()
             path.symlink_to(replacement)
 
@@ -475,12 +502,7 @@ class Migration:
         for path, info in files(root):
             relative = path.relative_to(root)
             if stat.S_ISLNK(info.st_mode):
-                if stage:
-                    self.rebase_link(path, self.old[name] / relative, self.new[name] / relative)
-                else:
-                    resolved = path.resolve(strict=True)
-                    if self.mapped(resolved) != resolved:
-                        print(f"  Cache/source symlink will be rebased: {path}")
+                self.rebase_link(path, self.old[name] / relative, self.new[name] / relative, audit=stage is None)
                 continue
             if not stat.S_ISREG(info.st_mode):
                 continue
@@ -605,6 +627,8 @@ class Migration:
 
     def verify_python(self):
         python = self.new["venv"] / "bin/python"
+        if not python.is_file():
+            raise ValueError(f"Required RUA interpreter is missing: {python}")
         info = inventory(python)
         if Path(info["prefix"]).resolve() != self.new["venv"] or info["python"] != self.state["python"]:
             raise ValueError("New RUA interpreter does not match the original Python version and expected prefix")
@@ -618,6 +642,8 @@ class Migration:
                 ):
                     raise ValueError("RUA editable metadata does not point to the new source")
         worker = self.repo / "evoab/agents/rua/worker.py"
+        if not worker.is_file():
+            raise ValueError(f"Required RUA Worker is missing: {worker}")
         report = json.loads(command([python, "-I", "-B", "-u", worker, "--check-runtime"], private=True))
         if not within(Path(report["rua"]), self.new["source"]):
             raise ValueError("Worker imported RUA from outside the migrated source")
@@ -653,6 +679,29 @@ class Migration:
                 atomic_write(path, self.rebase_manifest(data), record["mode"])
                 self.save("Updated external manifest", path=name)
 
+    @staticmethod
+    def runtime_directories(data):
+        for key in ("native_root", "assets_dir", "asset_source_dir"):
+            if key == "asset_source_dir" and key not in data:
+                continue
+            if not Path(data[key]).is_dir():
+                raise ValueError(f"Required RoboDojo {key} is missing: {data[key]}")
+        native, assets = (Path(data[key]) for key in ("native_root", "assets_dir"))
+        overlay = native / "Assets"
+        if not overlay.is_dir() or overlay.resolve(strict=True) != assets.resolve(strict=True):
+            raise ValueError(f"RoboDojo native source does not resolve to the prepared Assets: {overlay}")
+        for directory in ("Robots", "Object", "Material", "Eval_Layout"):
+            group = assets / directory
+            if not group.is_dir():
+                raise ValueError(f"Missing RoboDojo assets: {group}")
+            for path, info in files(group):
+                if stat.S_ISLNK(info.st_mode):
+                    try:
+                        path.resolve(strict=True)
+                    except FileNotFoundError as error:
+                        raise ValueError(f"Required RoboDojo asset symlink is dangling: {path} -> {path.readlink()}") from error
+        return native, assets
+
     def verify_runtime(self):
         from types import SimpleNamespace
         from evoab.integrations.robodojo import deployment
@@ -672,17 +721,12 @@ class Migration:
         runtime = runtime_for(args, recipe, deployment)
         if runtime.root / "runtime.json" != selected:
             raise ValueError(f"Supervisor loads {selected} but the record root is {runtime.root}")
-        native, assets = (Path(runtime.data[key]) for key in ("native_root", "assets_dir"))
+        native, assets = self.runtime_directories(runtime.data)
         catalogs = benchmarks.prepared_runtimes(Path(self.state["cache"]))
         robodojo = [item for item in catalogs if item.integration == "robodojo" and item.profile == "default"]
         preferred = next((item for item in robodojo if item.container), robodojo[0] if robodojo else None)
         if preferred is None or preferred.root != runtime.root:
             raise ValueError(f"Studio does not recognize the prepared RoboDojo runtime {runtime.root}")
-        if not native.is_dir() or (native / "Assets").resolve(strict=True) != assets.resolve(strict=True):
-            raise ValueError("RoboDojo native source does not resolve to the prepared Assets")
-        for directory in ("Robots", "Object", "Material", "Eval_Layout"):
-            if not (assets / directory).is_dir():
-                raise ValueError(f"Missing RoboDojo assets: {assets / directory}")
         verify_robot_configs(assets)
         for config in (assets / "Robots").rglob("*.yml"):
             if self.contains_legacy_path(config):
@@ -720,9 +764,8 @@ class Migration:
                 raise ValueError(f"Expected a physical resource directory: {root}")
             for path, info in files(root):
                 if stat.S_ISLNK(info.st_mode):
-                    resolved = path.resolve(strict=True)
-                    target = absolute(path.parent / path.readlink())
-                    if any(within(resolved, old) or within(target, old) for old in self.old.values()):
+                    target, resolved = self.link_targets(path, path.readlink())
+                    if self.mapped(target) != target or (resolved is not None and self.mapped(resolved) != resolved):
                         raise ValueError(f"Resource symlink still uses a legacy path: {path}")
         self.verify_python()
         task = self.verify_runtime()
