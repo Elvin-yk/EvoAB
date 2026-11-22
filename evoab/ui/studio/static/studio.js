@@ -206,11 +206,14 @@ const STEPS = ["类型", "评测集", "任务", "方法", "模型", "确认"];
 
 function wizardReady(upTo) {
   const w = S.wizard;
-  const checks = [!!w.kind, !!w.bench, !!w.task, !!w.method, !!w.model];
+  const checks = [!!w.kind, !!w.bench, !!w.task, !!selectedMethod(), !!w.model];
   return checks.slice(0, upTo + 1).every(Boolean);
 }
+function availableMethods() {
+  return S.config.methods.filter((m) => !m.integrations || m.integrations.includes(S.wizard.bench?.integration));
+}
 function selectedMethod() {
-  return S.config.methods.find((m) => m.id === S.wizard.method);
+  return availableMethods().find((m) => m.id === S.wizard.method);
 }
 
 function pageNew(main) {
@@ -339,7 +342,7 @@ function stepMethod(body) {
   const w = S.wizard;
   const groups = [["direct", "智能体控制"], ["hybrid", "智能体与策略协作"]];
   for (const [profile, label] of groups) {
-    const methods = S.config.methods.filter((m) => m.action_profile === profile);
+    const methods = availableMethods().filter((m) => m.action_profile === profile);
     body.append(h("section", { class: "method-group" },
       h("h2", { class: "section-title" }, label),
       methods.length ? h("div", { class: "choice-grid" }, methods.map((m) => h("button", {
@@ -436,12 +439,14 @@ function commandPreview() {
     "evoab run", `--integration ${w.bench.integration}`, "--deploy local", ...(profile ? [`--runtime-profile ${profile}`] : []),
     `--task ${task}`, `--tool-profile ${method.tool_profile}`, "--no-sam3", `--agent ${method.agent}`,
     `--model ${w.model}`, `--reasoning-effort ${w.effort}`, `--interaction-mode ${method.interaction}`,
+    ...(method.cli_flags || []),
   ];
   if (method.interaction === "direct_policy") {
     const d = directPayload();
     parts.push(`--direct-representation ${d.representation}`, `--direct-horizon ${d.horizon}`, `--direct-history ${d.history}`,
       `--direct-prompt-blocks ${d.prompt_blocks}`);
   }
+  if (w.bench.container) parts.push("--container");
   return [...parts, "--monitor"].join(" \\\n  ");
 }
 
@@ -621,7 +626,9 @@ function projectLinks(bench) {
 }
 
 function selectBenchmark(bench, p) {
-  Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile, title: bench.title }, task: null, suite: "all", query: "" });
+  Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile,
+    title: bench.title, container: !!p.image }, task: null, suite: "all", query: "" });
+  if (!selectedMethod()) S.wizard.method = availableMethods()[0]?.id;
 }
 
 function startWith(bench, p, task = null) {

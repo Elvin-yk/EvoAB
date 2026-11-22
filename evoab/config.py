@@ -318,6 +318,11 @@ class SessionConfig(BaseModel):
         # Tool-only sessions retain model transport defaults for shared tool composition,
         # but do not load, validate or instantiate an agent backend.
         agent = self.agent
+        if agent:
+            from evoab.agents.registry import get_agent_backend
+
+            if hasattr(get_agent_backend(agent.agent_backend), "evaluator_plan"):
+                raise ValueError(f"{agent.agent_backend} requires the evoab run CLI")
         values.update(agent.model_dump(exclude={"api_key"}) if agent else {
             name: field.get_default() for name, field in AgentConfig.model_fields.items()
             if name not in {"model", "api_key"}

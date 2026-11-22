@@ -337,7 +337,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--task", required=True, help="Task ID as listed by `evoab benchmarks tasks`, e.g. libero_object/pick_up_...")
     p.add_argument("--model", help="Model preset (default: the last one launched)")
     p.add_argument("--effort", help="Reasoning effort (default: settings.default_effort or low)")
-    p.add_argument("--method", help="direct_policy or agentic (default: the last one launched, else direct_policy)")
+    p.add_argument("--method", help="direct_policy, agentic, or rua (default: the last one launched, else direct_policy)")
     p.add_argument("--representation", help="Direct policy: abs_eef or delta_eef")
     p.add_argument("--horizon", help="Direct policy: rows per chunk, MIN:MAX")
     p.add_argument("--history", help="Direct policy: observation window and stride, LENGTH:STRIDE")

@@ -44,6 +44,7 @@ _BUILTIN_AGENTS: dict[str, str] = {
     "antigravity": "evoab.agents.antigravity.agent:AntigravityAgent",
     "gemini_cli": "evoab.agents.gemini_cli.agent:GeminiCliAgent",
     "native": "evoab.agents.native.agent:NativeAgent",
+    "rua": "evoab.agents.rua:RuaAgent",
 }
 
 

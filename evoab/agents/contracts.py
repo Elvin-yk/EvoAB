@@ -29,6 +29,14 @@ class AgentCapabilities:
     tool_event_source: Literal["agent", "execution"] = "execution"
 
 
+@dataclass(frozen=True)
+class EvaluatorPlan:
+    """Host process for an agent that owns its own prepared-episode client."""
+
+    command: tuple[str, ...]
+    input_data: bytes
+
+
 @dataclass
 class AgentResult:
     """Final result from one agent run() call."""

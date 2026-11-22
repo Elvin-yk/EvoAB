@@ -324,11 +324,13 @@ def main(argv=None, *, _supervised=False) -> None:
             else "Configuration valid"
         )
         return
-    if args.command == "run" and getattr(args, "deploy", None) == "local":
-        from evoab.services.deployment.manager import run_local
+    if args.command == "run" and (
+        args.deploy == "local" or hasattr(get_agent_backend(args.agent_backend), "evaluator_plan")
+    ):
+        from evoab.services.deployment.manager import run_evaluation
         from evoab.services.deployment.process import enable_child_reaping
         enable_child_reaping()
-        raise SystemExit(run_local(args))
+        raise SystemExit(run_evaluation(args))
     if args.command == "run" and args.episode_timeout_s and not _supervised:
         import shutil
 

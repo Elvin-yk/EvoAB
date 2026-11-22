@@ -22,6 +22,10 @@ METHODS = (
     {"id": "agentic", "agent": "native", "action_profile": "direct", "label": "Agentic Policy",
      "interaction": "tool_calling", "tool_profile": "direct",
      "description": "智能体在同一会话中观察场景、调用机器人工具（移动、抓取、感知等），并根据执行反馈决定下一步。"},
+    {"id": "rua", "agent": "rua", "action_profile": "direct", "label": "RUA",
+     "interaction": "tool_calling", "tool_profile": "direct", "integrations": ("robodojo",),
+     "cli_flags": ("--rua-model-preset",),
+     "description": "Uni Robot Agent 连接 EvoAB 启动的 RoboDojo 环境，通过观测和机器人工具执行任务。"},
 )
 # Direct-policy options Studio may set; each maps to one ``evoab run`` flag.
 DIRECT_OPTIONS = {
@@ -67,6 +71,7 @@ def build_command(request: LaunchRequest, output_root: Path) -> list[str]:
         "--model", request.model,
         "--reasoning-effort", request.reasoning_effort,
         "--interaction-mode", method["interaction"],
+        *method.get("cli_flags", ()),
     ]
     runtime = benchmarks.runtime_for_launch(request.integration, request.profile)
     if runtime is not None and runtime.container:
@@ -89,11 +94,19 @@ def validate(request: LaunchRequest) -> dict:
     method = next((m for m in METHODS if m["id"] == request.method), None)
     if method is None:
         raise ValueError(f"unknown method {request.method!r}")
+    if request.integration not in method.get("integrations", (request.integration,)):
+        raise ValueError(f"{method['label']} is not available for {request.integration}")
     if request.reasoning_effort not in REASONING_EFFORTS:
         raise ValueError(f"reasoning effort must be one of {REASONING_EFFORTS}")
-    from evoab.provider import catalog
-    if request.model not in {p["name"] for p in catalog.presets()}:
-        raise ValueError(f"unknown model preset {request.model!r}")
+    if request.method == "rua":
+        from evoab.agents.rua import preset_connection
+
+        preset_connection(request.model)
+    else:
+        from evoab.provider import catalog
+
+        if request.model not in {p["name"] for p in catalog.presets()}:
+            raise ValueError(f"unknown model preset {request.model!r}")
     if request.direct and method["interaction"] != "direct_policy":
         raise ValueError("Direct options apply only to the Direct Policy method")
     for key, value in (request.direct or {}).items():

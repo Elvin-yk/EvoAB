@@ -12,6 +12,13 @@ tool dispatch, event interpretation and native artifact export. `session.py`
 invokes a registered agent without switching on its name. Robot tools and
 resource scheduling remain in `tools/` and `execution/`.
 
+An external evaluator can supply an `EvaluatorPlan` from its registered agent
+descriptor when it owns the planner, tools and prepared-episode client as one
+process. The CLI supervisor owns deployment, timeouts and process cleanup.
+The evaluator receives the prepared episode URL, identity and run directory via
+stdin and publishes the official result through the environment's finalization
+contract. This entry point is for `evoab run`. See [RUA on RoboDojo](rua.md).
+
 ## Codex calculation interpreter
 
 `--agent-python /path/to/compute-venv/bin/python` (Python API:

@@ -152,6 +152,7 @@ def summarize_run(
     if result is None and not launch and not (run_dir / "supervisor.json").exists():
         return None
     outcome = _read_json(run_dir / "native_outcome.json") or {}
+    supervisor = _read_json(run_dir / "supervisor.json") or {}
     config = (result or {}).get("config") or {}
     instruction = (result or {}).get("instruction") or launch.get("instruction")
     if not instruction:
@@ -159,6 +160,8 @@ def summarize_run(
     finished = result is not None
     if finished:
         status = "success" if result.get("task_success") else ("error" if result.get("error") else "failure")
+    elif supervisor.get("state") == "evaluator_failed":
+        status = "error"
     elif launch.get("alive") or (not launch and now - _last_change(run_dir) < RUNNING_WINDOW_S):
         status = "running"
     else:
@@ -182,9 +185,11 @@ def summarize_run(
         "simulated": launch.get("simulated", True),
         "provider_id": launch.get("provider_id"),
         "provider": launch.get("provider_label") or config.get("provider_url"),
-        "model": (result or {}).get("model") or launch.get("model"),
+        "model": (result or {}).get("model_preset") or (result or {}).get("model") or launch.get("model"),
         "agent": (result or {}).get("agent_backend") or launch.get("agent"),
-        "method_id": "direct_policy" if (run_dir / "direct" / "policy.json").is_file() else launch.get("method"),
+        "method_id": "direct_policy" if (run_dir / "direct" / "policy.json").is_file() else (
+            (result or {}).get("method") or launch.get("method")
+        ),
         "tool_profile": (result or {}).get("tool_profile") or launch.get("tool_profile"),
         "action_profile": (result or {}).get("action_profile") or launch.get("action_profile"),
         "reasoning_effort": (result or {}).get("reasoning_effort") or launch.get("reasoning_effort"),
@@ -195,7 +200,9 @@ def summarize_run(
         "environment_steps": outcome.get("native_steps"),
         "task_success": (result or {}).get("task_success"),
         "agent_message": (result or {}).get("agent_message"),
-        "error": (result or {}).get("error") or launch.get("error"),
+        "error": (result or {}).get("error") or (
+            supervisor.get("error") if supervisor.get("state") == "evaluator_failed" else None
+        ) or launch.get("error"),
         "usage": _usage(run_dir, finished),
     }
 
