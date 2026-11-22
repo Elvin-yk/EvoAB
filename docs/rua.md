@@ -7,6 +7,9 @@ The former `evoab runs launch --method rua` remains an alias. The adapter uses t
 and its default Codex planner with the `direct` tool profile. The method is
 available for single-episode RoboDojo runs. Existing methods need no migration.
 
+See the [RUA resource directory](../rua/README.md) for source links, the
+evaluation-host helper, and the audited call and path dependencies.
+
 ## Episode ownership
 
 RUA's own `--deploy local` creates an environment, and its minimal RoboDojo

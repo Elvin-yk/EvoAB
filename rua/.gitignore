@@ -1,0 +1,6 @@
+# Local paths can be directories or symbolic links.
+/source
+/venv
+/cache
+/cache-reuse
+/candidate
