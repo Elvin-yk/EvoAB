@@ -14,24 +14,28 @@ import zipfile
 PUBLIC_DIRECTORIES = ('evoab', 'docs', 'scripts', 'examples', 'assets', '.github')
 EXCLUDED_INTEGRATIONS = {'robodojo_internal', 'efe', 'franka_robotiq',
                          'franka_sharpa', '_franka', 'dexterous_hand', 'dexterous_hand.py'}
-ROOT_FILES = ('README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'AGENTS.md',
-              'CLAUDE.md', 'LICENSE', 'MANIFEST.in', 'pyproject.toml', 'pyrightconfig.json')
+SOURCE_FILES = ('README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'AGENTS.md',
+                'CLAUDE.md', 'LICENSE', 'MANIFEST.in', 'pyproject.toml', 'pyrightconfig.json',
+                'rua/.gitignore', 'rua/README.md', 'rua/link_resources.py', 'rua/migrate_resources.py')
 SOURCE_SUFFIXES = {'.py', '.md', '.toml', '.json', '.sh', '.txt', '.png', '.pdf',
                    '.html', '.css', '.js', '.ts', '.urdf', '.npz', '.npy', '.typed', '.yml',
                    # Native driver sources an integration builds on the robot host (C++, ROS 2).
                    '.yaml', '.cpp', '.hpp', '.h', '.msg', '.srv', '.xml'}
 # Files without a suffix that travel with vendored native sources.
-SOURCE_NAMES = {'UPSTREAM_LICENSE', 'LICENSE', 'NOTICE', 'SHA256SUMS'}
+SOURCE_NAMES = {'UPSTREAM_LICENSE', 'LICENSE', 'NOTICE', 'SHA256SUMS', 'Dockerfile'}
+STUDIO_MODEL_ASSETS = Path('evoab/ui/studio/static/model-assets')
 
 
 def public_files(root: Path) -> dict[str, bytes]:
-    files = {name: (root / name).read_bytes() for name in ROOT_FILES}
+    files = {name: (root / name).read_bytes() for name in SOURCE_FILES}
     for directory in PUBLIC_DIRECTORIES:
         for path in sorted((root / directory).rglob('*')):
             if not path.is_file() or '__pycache__' in path.parts:
                 continue
-            if path.suffix in SOURCE_SUFFIXES or path.name in SOURCE_NAMES:
-                files[path.relative_to(root).as_posix()] = path.read_bytes()
+            relative = path.relative_to(root)
+            studio_bundle = relative.parent == STUDIO_MODEL_ASSETS and path.suffix == '.gz'
+            if path.suffix in SOURCE_SUFFIXES or path.name in SOURCE_NAMES or studio_bundle:
+                files[relative.as_posix()] = path.read_bytes()
     return files
 
 
@@ -74,8 +78,8 @@ def compare(label: str, expected: dict[str, bytes], actual: dict[str, bytes]) ->
     for name in actual:
         if EXCLUDED_INTEGRATIONS.intersection(PurePosixPath(name).parts):
             errors.append(f'{label}: excluded integration content {name}')
-        if name.split('/')[0] in PUBLIC_DIRECTORIES and name not in expected:
-            errors.append(f'{label}: unexpected public file {name}')
+        if name.split('/')[0] in (*PUBLIC_DIRECTORIES, 'rua', '.reference') and name not in expected:
+            errors.append(f'{label}: unexpected file {name}')
     return errors
 
 

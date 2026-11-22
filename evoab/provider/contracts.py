@@ -6,6 +6,10 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, TYPE_CHECKING, runtime_checkable
 
 
+class PresetCompatibilityError(ValueError):
+    """A provider compatibility diagnostic safe to display to a user."""
+
+
 @dataclass(frozen=True)
 class RequestContext:
     metadata: dict[str, str] = field(default_factory=dict)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 import importlib
 from typing import Any
-from .contracts import Agent
+from .contracts import Agent, AgentLaunch
 
 _AGENT_REGISTRY: dict[str, Any] = {}
 
@@ -44,6 +44,7 @@ _BUILTIN_AGENTS: dict[str, str] = {
     "antigravity": "evoab.agents.antigravity.agent:AntigravityAgent",
     "gemini_cli": "evoab.agents.gemini_cli.agent:GeminiCliAgent",
     "native": "evoab.agents.native.agent:NativeAgent",
+    "rua": "evoab.agents.rua:RuaAgent",
 }
 
 
@@ -55,3 +56,13 @@ def create_agent(backend: str, **kwargs) -> Agent:
 def list_agent_backends() -> tuple[str, ...]:
     """Return built-in and explicitly registered backends without SDK imports."""
     return tuple(sorted(set(_BUILTIN_AGENTS) | set(_AGENT_REGISTRY)))
+
+
+def agent_launch(name: str) -> AgentLaunch | None:
+    """Return the adapter's optional Workbench configuration."""
+    return getattr(get_agent_backend(name), "workbench_launch", None)
+
+
+def list_agent_launches() -> dict[str, AgentLaunch]:
+    """Discover Workbench adapters through the same registry as the run CLI."""
+    return {name: launch for name in list_agent_backends() if (launch := agent_launch(name)) is not None}

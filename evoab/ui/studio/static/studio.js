@@ -96,7 +96,8 @@ function suiteLabel(suite) {
 }
 function methodLabel(value) {
   return String(value || "").split(" · ").map((part) => ({
-    "Direct Policy": "直接策略", "Agentic Policy": "智能体策略", direct: "直接控制", hybrid: "混合控制",
+    "Direct Policy": "直接策略", "Agentic Policy": "智能体策略", "Agent + Policy": "智能体 + 策略",
+    direct: "直接控制", hybrid: "混合控制",
     native: "原生执行器", codex: "Codex",
   })[part] || part).join(" · ");
 }
@@ -129,8 +130,9 @@ const S = {
   totals: null,
   tasks: {}, // "integration/profile" -> task list
   models: {}, // provider id -> {models, capabilities, recommended}
-  wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: "direct", effort: "low",
-            provider: null, model: null, modelQuery: "" },
+  agentModelSettings: new Map(),
+  wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: "direct_policy", agent: null,
+            agentOptions: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
   history: { query: "", status: "all", bench: "all", model: "all", selected: new Set(), compare: false },
   replay: null,
 };
@@ -170,7 +172,10 @@ function route() {
   const same = current.page === page && current.arg === arg;
   if (!same) {
     clearInterval(runRefreshTimer);
-    if (page === "settings" || current.page === "settings") S.modelSettings = null;
+    if (page === "settings" || current.page === "settings") {
+      S.modelSettings = null;
+      S.agentModelSettings.clear();
+    }
     if (page === "history" || page === "run" || (page === "settings" && arg === "benchmarks")) {
       runRefreshTimer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
     }
@@ -206,15 +211,44 @@ const STEPS = ["类型", "评测集", "任务", "方法", "模型", "确认"];
 
 function wizardReady(upTo) {
   const w = S.wizard;
-  const checks = [!!w.kind, !!w.bench, !!w.task, !!w.method, !!w.model];
+  const agent = selectedAgent();
+  const compatiblePreset = !agent?.filters_presets ||
+    S.agentModelSettings.get(agent.id)?.presets.some((p) => p.name === w.model);
+  const checks = [!!w.kind, !!w.bench, !!w.task, !!agent, !!w.model && compatiblePreset];
   return checks.slice(0, upTo + 1).every(Boolean);
 }
+function availableMethods() {
+  const integration = S.wizard.bench?.integration;
+  return S.config.methods.map((method) => ({ ...method,
+    agents: method.agents.filter((agent) => !agent.integrations || agent.integrations.includes(integration)),
+  })).filter((method) => method.agents.length);
+}
 function selectedMethod() {
-  return S.config.methods.find((m) => m.id === S.wizard.method);
+  return availableMethods().find((m) => m.id === S.wizard.method);
+}
+function selectedAgent() {
+  return selectedMethod()?.agents.find((agent) => agent.id === S.wizard.agent);
+}
+function selectMethod(method, preferredAgent) {
+  S.wizard.method = method?.id;
+  S.wizard.agent = method?.agents.find((agent) => agent.id === preferredAgent)?.id ||
+    method?.agents.find((agent) => agent.id === method.agent)?.id || method?.agents[0]?.id;
+}
+function goToWizardStep(step) {
+  const w = S.wizard;
+  if (step > w.step && w.step === 4) {
+    const fields = document.querySelectorAll(".agent-options input");
+    if ([...fields].some((input) => !input.reportValidity())) return;
+  }
+  w.step = step;
+  route();
 }
 
 function pageNew(main) {
   const w = S.wizard;
+  const body = h("div", { class: "step-body" });
+  const renderers = [stepKind, stepBench, stepTask, stepMethod, stepModel, stepConfirm];
+  renderers[w.step](body);
   const steps = h("nav", { class: "steps", "aria-label": "发起任务步骤" }, STEPS.map((name, i) => {
     const done = i < w.step;
     return h("button", {
@@ -222,15 +256,12 @@ function pageNew(main) {
       "aria-current": i === w.step ? "step" : null,
       "aria-label": `第 ${i + 1} 步，${name}${done ? "，已完成" : ""}`,
       disabled: !wizardReady(i - 1),
-      onclick: () => { w.step = i; route(); },
+      onclick: () => goToWizardStep(i),
     }, h("span", { class: "n", "aria-hidden": "true" }, done ? "✓" : i + 1), name);
   }));
-  const body = h("div", { class: "step-body" });
-  const renderers = [stepKind, stepBench, stepTask, stepMethod, stepModel, stepConfirm];
-  renderers[w.step](body);
   const foot = w.step > 0 && h("div", { class: "step-foot" },
     h("button", { class: "btn", onclick: () => { w.step -= 1; route(); } }, "上一步"),
-    w.step < 5 && h("button", { class: "btn primary", disabled: !wizardReady(w.step), onclick: () => { w.step += 1; route(); } }, "下一步"));
+    w.step < 5 && h("button", { class: "btn primary", disabled: !wizardReady(w.step), onclick: () => goToWizardStep(w.step + 1) }, "下一步"));
   put(main, h("div", { class: "page wide" },
     h("div", { class: "wizard" }, steps, body, foot)));
 }
@@ -337,18 +368,28 @@ async function stepTask(body) {
 
 function stepMethod(body) {
   const w = S.wizard;
+  const method = selectedMethod();
   const groups = [["direct", "智能体控制"], ["hybrid", "智能体与策略协作"]];
   for (const [profile, label] of groups) {
-    const methods = S.config.methods.filter((m) => m.action_profile === profile);
-    body.append(h("section", { class: "method-group" },
+    const methods = availableMethods().filter((m) => m.action_profile === profile);
+    const section = h("section", { class: "method-group" },
       h("h2", { class: "section-title" }, label),
       methods.length ? h("div", { class: "choice-grid" }, methods.map((m) => h("button", {
         class: `choice${w.method === m.id ? " selected" : ""}`, "aria-pressed": String(w.method === m.id),
-        onclick: () => { w.method = m.id; route(); },
+        onclick: () => { selectMethod(m, m.id === w.method ? w.agent : null); route(); },
       }, h("span", { class: "title" }, methodLabel(m.label)), h("span", { class: "desc" }, m.description))))
-        : h("p", { class: "muted small" }, "当前评测集暂无可用方法。")));
+        : h("p", { class: "muted small" }, "当前评测集暂无可用方法。"));
+    if (method?.action_profile === profile && method.interaction !== "direct_policy") {
+      section.append(h("section", { class: "agent-picker", "aria-label": "选择 Agent 实现" },
+        h("h3", { class: "section-title" }, "选择 Agent 实现"),
+        h("div", { class: "choice-grid" }, method.agents.map((agent) => h("button", {
+          class: `choice${w.agent === agent.id ? " selected" : ""}`, "aria-pressed": String(w.agent === agent.id),
+          onclick: () => { w.agent = agent.id; route(); },
+        }, h("span", { class: "title" }, agent.label), h("span", { class: "desc" }, agent.description))))));
+    }
+    body.append(section);
   }
-  if (selectedMethod()?.interaction === "direct_policy") body.append(directOptions());
+  if (method?.interaction === "direct_policy") body.append(directOptions());
 }
 
 const DIRECT_DEFAULTS = { representation: "abs_eef", horizon: "3:15", history: "15:7", blocks: ["gripper", "camera"] };
@@ -380,17 +421,46 @@ function directPayload() {
            prompt_blocks: ["robot", "timing", ...d.blocks].join(",") };
 }
 
+function agentOptions(agent) {
+  if (!agent.options.length) return null;
+  const values = S.wizard.agentOptions.get(agent.id) || {};
+  S.wizard.agentOptions.set(agent.id, values);
+  return h("div", { class: "agent-options card direct-options model-effort" }, agent.options.map((option) =>
+    h("label", { class: "field" }, h("span", { class: "section-title" }, option.label),
+      h("input", { class: "input", type: "number", min: option.minimum, step: 1,
+        value: values[option.name] ?? "", oninput: (event) => {
+          const input = event.target;
+          input.setCustomValidity(input.value && !Number.isSafeInteger(input.valueAsNumber) ? "请输入有效整数。" : "");
+          if (!input.value) delete values[option.name];
+          else if (input.validity.valid) values[option.name] = input.valueAsNumber;
+        } }), h("span", { class: "muted small" }, option.help))));
+}
+
 async function stepModel(body) {
   const w = S.wizard;
-  let m = S.modelSettings;
+  const agent = selectedAgent();
+  if (!agent) return;
+  const m = agent.filters_presets ? S.agentModelSettings.get(agent.id) : S.modelSettings;
   const holder = h("div", {}, !m ? h("div", { class: "muted" }, "读取模型预设…") : null);
   body.append(holder);
   if (!m) {
-    try { m = await loadModelSettings(); } catch (error) { put(holder, h("div", { class: "notice error" }, `读取失败：${error.message}`)); return; }
+    try {
+      await loadModelSettings(agent.filters_presets ? agent.id : null);
+      if (holder.isConnected) route();
+    } catch (error) {
+      put(holder, h("div", { class: "notice error" }, `读取失败：${error.message}`));
+    }
+    return;
   }
   const manage = h("a", { class: "btn small", href: "#settings/models" }, "管理模型");
+  const incompatible = m.incompatible_presets?.length ? h("div", { class: "list model-effort" },
+    h("div", { class: "list-group" }, "不兼容的模型预设"),
+    m.incompatible_presets.map((p) => h("div", { class: "list-item", role: "button", "aria-disabled": "true" },
+      h("div", { class: "t mono" }, p.name), h("div", { class: "s" }, p.reason)))) : null;
   if (!m.presets.length) {
-    put(holder, h("div", { class: "card empty" }, h("b", {}, "还没有模型预设"), "先在设置中添加提供商并新建预设。", manage));
+    w.model = null;
+    put(holder, h("div", { class: "card empty" }, h("b", {}, agent.filters_presets ? "没有可用的模型预设" : "还没有模型预设"),
+      agent.model_help || "先在设置中添加提供商并新建预设。", manage), incompatible);
     return;
   }
   if (!m.presets.some((p) => p.name === w.model)) w.model = null;
@@ -400,8 +470,6 @@ async function stepModel(body) {
     if (!w.effortPicked && only.reasoning_effort && S.config.reasoning_efforts.includes(only.reasoning_effort)) {
       w.effort = only.reasoning_effort;
     }
-    route();
-    return;
   }
   const label = (name) => m.providers.find((p) => p.name === name)?.label || name;
   const groups = {};
@@ -411,6 +479,7 @@ async function stepModel(body) {
       h("span", { class: "section-title", style: "margin:0" }, "模型预设"),
       !w.model ? h("span", { class: "muted small" }, "请点击下方预设以选中") : null,
       h("span", { class: "spacer" }), manage),
+    agent.model_help ? h("p", { class: "muted small" }, agent.model_help) : null,
     h("div", { class: "list" }, Object.entries(groups).map(([provider, items]) => [
       h("div", { class: "list-group" }, label(provider)),
       items.map((p) => h("div", { class: `list-item${w.model === p.name ? " selected" : ""}`,
@@ -421,27 +490,36 @@ async function stepModel(body) {
         } },
         h("div", { class: "t mono" }, p.name),
         h("span", { class: "muted small" }, `${p.model} · 最多输出 ${fmtInt(p.max_tokens)} · ${fmtTokens(p.context_window_tokens)} 上下文${p.reasoning_effort ? ` · 预设推理 ${effortLabel(p.reasoning_effort)}` : ""}`)))])),
+    incompatible,
     h("div", { class: "model-effort" },
       h("div", { class: "section-title", id: "effort-label" }, "推理强度"),
       h("div", { class: "segmented", role: "group", "aria-labelledby": "effort-label" },
         S.config.reasoning_efforts.map((e) => h("button", { class: w.effort === e ? "active" : "",
-          "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; w.effortPicked = true; route(); } }, effortLabel(e))))));
+          "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; w.effortPicked = true; route(); } }, effortLabel(e))))),
+    agentOptions(agent));
 }
 
 function commandPreview() {
   const w = S.wizard;
   const method = selectedMethod();
+  const agent = selectedAgent();
   const {runtime_profile: profile, native_task: task} = w.task;
   const parts = [
     "evoab run", `--integration ${w.bench.integration}`, "--deploy local", ...(profile ? [`--runtime-profile ${profile}`] : []),
-    `--task ${task}`, `--tool-profile ${method.tool_profile}`, "--no-sam3", `--agent ${method.agent}`,
+    `--task ${task}`, `--tool-profile ${method.tool_profile}`, "--no-sam3", `--agent ${agent.id}`,
     `--model ${w.model}`, `--reasoning-effort ${w.effort}`, `--interaction-mode ${method.interaction}`,
+    ...agent.cli_flags,
   ];
+  const options = w.agentOptions.get(agent.id) || {};
+  for (const option of agent.options) {
+    if (option.name in options) parts.push(`${option.flag} ${options[option.name]}`);
+  }
   if (method.interaction === "direct_policy") {
     const d = directPayload();
     parts.push(`--direct-representation ${d.representation}`, `--direct-horizon ${d.horizon}`, `--direct-history ${d.history}`,
       `--direct-prompt-blocks ${d.prompt_blocks}`);
   }
+  if (w.bench.container) parts.push("--container");
   return [...parts, "--monitor"].join(" \\\n  ");
 }
 
@@ -452,11 +530,15 @@ function stepConfirm(body) {
     return;
   }
   const method = selectedMethod();
+  const agent = selectedAgent();
+  const options = w.agentOptions.get(agent.id) || {};
   const rows = [
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`], ["任务", taskName(w.task.task)],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", methodLabel(method.label)], ["推理强度", effortLabel(w.effort)],
     ["模型预设", w.model],
+    ...(method.interaction === "direct_policy" ? [] : [["Agent", agent.label]]),
+    ...agent.options.filter((option) => option.name in options).map((option) => [option.label, options[option.name]]),
     ...(method.interaction === "direct_policy" ? [["直接策略设置", Object.entries(directPayload()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
   ];
   body.append(
@@ -470,13 +552,16 @@ function stepConfirm(body) {
 
 async function launchRun(event) {
   const w = S.wizard;
+  const agent = selectedAgent();
+  const options = w.agentOptions.get(agent.id);
   const button = event.currentTarget;
   button.disabled = true;
   try {
     await api("/api/runs", {
       method: "POST",
       json: { integration: w.bench.integration, profile: w.bench.profile, task: w.task.task,
-              model: w.model, reasoning_effort: w.effort, method: w.method,
+              model: w.model, reasoning_effort: w.effort, method: w.method, agent: agent.id,
+              ...(options && Object.keys(options).length ? { agent_options: options } : {}),
               ...(selectedMethod()?.interaction === "direct_policy" ? { direct: directPayload() } : {}) },
     });
   } catch (error) {
@@ -621,7 +706,9 @@ function projectLinks(bench) {
 }
 
 function selectBenchmark(bench, p) {
-  Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile, title: bench.title }, task: null, suite: "all", query: "" });
+  Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile,
+    title: bench.title, container: !!p.image }, task: null, suite: "all", query: "" });
+  selectMethod(selectedMethod() || availableMethods()[0], S.wizard.agent);
 }
 
 function startWith(bench, p, task = null) {
@@ -872,7 +959,12 @@ async function settingsOverview(body) {
 
 // -- models ------------------------------------------------------------------
 
-async function loadModelSettings() { return (S.modelSettings = await api("/api/models")); }
+async function loadModelSettings(agent) {
+  if (!agent) return (S.modelSettings = await api("/api/models"));
+  const settings = await api(`/api/models?agent=${encodeURIComponent(agent)}`);
+  S.agentModelSettings.set(agent, settings);
+  return settings;
+}
 
 function settingsModels(body) {
   put(body, h("iframe", { class: "model-settings-frame", title: "模型设置", src: "/model-ui/" }));
@@ -1059,7 +1151,10 @@ function benchmarkCards() {
 function applyDefaults(force = false) {
   const s = S.config.settings || {};
   const w = S.wizard;
-  if (force || !w.touched) w.method = S.config.methods.find((m) => m.id === s.default_method)?.id || S.config.methods[0].id;
+  if (force || !w.touched) {
+    const method = S.config.methods.find((m) => m.id === s.default_method) || S.config.methods[0];
+    selectMethod(method, s.default_agent);
+  }
   if (s.default_effort && (force || !w.touched)) w.effort = s.default_effort;
   if (s.default_model && (force || !w.model)) w.model = s.default_model;
 }

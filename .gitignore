@@ -23,6 +23,7 @@ htmlcov/
 /.agents/
 /.claude/
 /.codex/
+/.reference/
 /a
 *.pid
 *.tmp

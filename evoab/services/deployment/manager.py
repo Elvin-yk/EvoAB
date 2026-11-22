@@ -131,13 +131,19 @@ def evaluator_entry():
     run(args)
 
 
-def run_local(args):
+def run_evaluation(args):
+    from evoab.agents.registry import get_agent_backend
+
+    if args.deploy == 'local':
+        adapter = adapter_for(args)
+    else:
+        adapter = None
     output, run_id = output_directory(args, args.integration)
     args._session_dir = str(output)
-    args.run_id = run_id
     child = None
     monitor = None
-    service = Deployment(args, adapter_for(args), output, run_id)
+    service = Deployment(args, adapter, output, run_id) if adapter is not None else None
+    evaluator_plan = getattr(get_agent_backend(args.agent_backend), 'evaluator_plan', None)
     status = dict(state='deploying', episode_exit_code=None)
     code = 1
     with cancellation_signals():
@@ -147,21 +153,31 @@ def run_local(args):
                 monitor = LiveMonitor(args, output).start()
                 monitor.update(state='deploying')
                 args._monitor_parent = True
-            service.start()
-            args.env_url = service.url
+            if service is not None:
+                args.run_id = run_id
+                service.start()
+                args.env_url = service.url
+                args._episode_identity = service.info
+                args._deployment = dict(manifest='deployment.json', owned=True, runtime=service.record['runtime'])
             if monitor is not None:
-                monitor.attach(service.url)
-            args._episode_identity = service.info
-            args._deployment = dict(manifest='deployment.json', owned=True, runtime=service.record['runtime'])
-            child = OwnedProcess([sys.executable, '-c',
-                'from evoab.services.deployment.manager import evaluator_entry; evaluator_entry()'],
-                shutdown_timeout=args.shutdown_timeout_s)
+                monitor.attach(args.env_url)
+            if evaluator_plan is None:
+                command = [sys.executable, '-c',
+                    'from evoab.services.deployment.manager import evaluator_entry; evaluator_entry()']
+                input_data = json.dumps(vars(args), default=str).encode()
+                log_path = None
+            else:
+                plan = evaluator_plan(args)
+                command, input_data = plan.command, plan.input_data
+                log_path = output / 'evaluator.log'
+                print(f'Evaluator log: {log_path}', flush=True)
+            child = OwnedProcess(command, log_path=log_path, shutdown_timeout=args.shutdown_timeout_s)
             # Parent survives episode timeout to release its own environment process group.
-            child.start(input_data=json.dumps(vars(args), default=str).encode())
+            child.start(input_data=input_data)
             status['state'] = 'evaluating'
             deadline = time.monotonic() + args.episode_timeout_s if args.episode_timeout_s else None
             while True:
-                if service.process.process.poll() is not None:
+                if service is not None and service.process.process.poll() is not None:
                     status.update(state='environment_failed', error='Owned environment exited during evaluation')
                     code = 1
                     break
@@ -172,6 +188,11 @@ def run_local(args):
                 try:
                     code = child.process.wait(timeout=.1)
                     status['state'] = 'finished'
+                    if evaluator_plan is not None and not (output / 'result.json').is_file():
+                        message = 'Evaluator did not publish result.json; see evaluator.log'
+                        status.update(state='evaluator_failed', error=message)
+                        print(message, file=sys.stderr)
+                        code = code or 1
                     break
                 except subprocess.TimeoutExpired:
                     continue
@@ -179,14 +200,17 @@ def run_local(args):
             code = 130
             status['state'] = 'cancelled'
         except (ValueError, OSError, RuntimeError, TimeoutError) as error:
-            status.update(state='deployment_failed', error=str(error))
-            print(f'Local deployment failed: {error}; see {output}', file=sys.stderr)
+            deployment_error = evaluator_plan is None or (service is not None and service.info is None)
+            status.update(state='deployment_failed' if deployment_error else 'evaluator_failed', error=str(error))
+            label = 'Local deployment' if deployment_error else 'Evaluator'
+            print(f'{label} failed: {error}; see {output}', file=sys.stderr)
         finally:
             try:
                 if child is not None:
                     child.close(sig=signal.SIGINT)
             finally:
-                service.close()
+                if service is not None:
+                    service.close()
                 status['episode_exit_code'] = code
                 write_json_atomic(output / 'supervisor.json', status)
                 if monitor is not None:

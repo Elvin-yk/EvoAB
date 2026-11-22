@@ -196,15 +196,26 @@ def _models(bench, args) -> None:
 
 
 def _runs_launch(bench, args) -> None:
+    from evoab.workbench.launcher import preferred_choice
+
     settings = bench.settings()
+    method, agent = args.method, args.agent
+    if method is None:
+        if agent is not None:
+            method = "agentic"
+        else:
+            method, agent = preferred_choice(args.integration, settings.get("default_method"),
+                                             settings.get("default_agent"))
     payload = {
         "integration": args.integration,
         "profile": args.profile,
         "task": args.task,
         "model": args.model or settings.get("default_model"),
         "reasoning_effort": args.effort or settings.get("default_effort") or "low",
-        "method": args.method or settings.get("default_method") or "direct_policy",
+        "method": method,
     }
+    if agent is not None:
+        payload["agent"] = agent
     direct = {key: getattr(args, key) for key in ("representation", "horizon", "history", "prompt_blocks")
               if getattr(args, key) is not None}
     if direct:
@@ -337,7 +348,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--task", required=True, help="Task ID as listed by `evoab benchmarks tasks`, e.g. libero_object/pick_up_...")
     p.add_argument("--model", help="Model preset (default: the last one launched)")
     p.add_argument("--effort", help="Reasoning effort (default: settings.default_effort or low)")
-    p.add_argument("--method", help="direct_policy or agentic (default: the last one launched, else direct_policy)")
+    p.add_argument("--method", help="Execution mode (direct_policy, agentic, agent_policy) or legacy alias rua")
+    p.add_argument("--agent", help="Registered Agent implementation (for example native or rua)")
     p.add_argument("--representation", help="Direct policy: abs_eef or delta_eef")
     p.add_argument("--horizon", help="Direct policy: rows per chunk, MIN:MAX")
     p.add_argument("--history", help="Direct policy: observation window and stride, LENGTH:STRIDE")

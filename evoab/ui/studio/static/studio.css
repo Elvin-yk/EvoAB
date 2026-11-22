@@ -195,6 +195,8 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 .list-item.selected { background: var(--accent-soft); }
 .list-item .t { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-item .s { color: var(--muted); font-size: 12.5px; grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-item[aria-disabled="true"] { background: var(--panel); cursor: default; }
+.list-item[aria-disabled="true"] .s { white-space: normal; overflow-wrap: anywhere; }
 .list-group { padding: 6px 14px; font-size: 12px; color: var(--muted); background: var(--sunk); border-bottom: 1px solid var(--line); position: sticky; top: 0; }
 .segmented { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
 .segmented button { border: 0; background: var(--panel); padding: 5px 12px; cursor: pointer; border-right: 1px solid var(--line); }
@@ -270,6 +272,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .task-selection span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
 .task-selection button { flex: none; }
 .method-group + .method-group { margin-top: 20px; }
+.agent-picker { margin-top: 16px; padding-inline-start: 12px; border-inline-start: 1px solid var(--line); }
 .expert-demo summary { padding: 4px 0; font-weight: normal; color: var(--accent); }
 .expert-demo[open] { flex-basis: 100%; }
 .expert-demo video { display: block; width: min(100%, 360px); aspect-ratio: 1; background: black; }

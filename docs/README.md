@@ -27,6 +27,7 @@ first PyPI release.
 
 - **[CLI reference](running.md#single-episode-cli)** — provider access, context,
   scheduling, budgets and integration-specific options.
+- **[RUA on RoboDojo](rua.md)** — select the RUA method and run it against the Docker benchmark.
 - **[Claude Code](getting-started.md#use-the-claude-agent)** — Messages provider
   configuration and backend-specific options.
 - **[Interactive terminal](getting-started.md#view-one-task-in-the-terminal)** —

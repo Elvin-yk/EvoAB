@@ -19,6 +19,18 @@
   `image-imports` and can be edited, saved or reset in Studio; the saved setting
   and `EVOAB_IMAGE_IMPORT_DIR` both feed the archive listing and the setup child.
 
+- RUA uses the shared HTTP preset resolver and its declared wire profiles.
+  Studio shows incompatible presets with provider-specific reasons. The existing
+  Codex OAuth preset requires separate authorization for public Responses.
+  The RUA evaluator also rejects model replies that echo request credentials.
+
+- Studio groups registered Agent implementations under Agentic Policy.
+  RoboDojo offers the built-in Agent and RUA, with model presets and settings
+  supplied by each adapter. `evoab runs launch --method agentic --agent rua`
+  and its legacy `--method rua` alias start the same evaluator. RUA runs on the
+  host and connects to EvoAB's prepared Docker episode. See
+  [RUA on RoboDojo](docs/rua.md) for configuration and verification.
+
 - Studio serves the nanobot settings UI as versioned, cacheable assets. Benchmark
   registration and manifest management have been removed from Studio, the HTTP
   API and the CLI. Existing profiles and historical runs remain readable.

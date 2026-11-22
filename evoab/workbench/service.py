@@ -15,12 +15,16 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from evoab.agents.registry import agent_launch
+from evoab.provider.contracts import PresetCompatibilityError
 from evoab.workbench import benchmarks, direct_trace, jobs, trace
-from evoab.workbench.launcher import DIRECT_OPTIONS, METHODS, REASONING_EFFORTS, LaunchRequest, launch, validate
+from evoab.workbench.launcher import (
+    DIRECT_OPTIONS, REASONING_EFFORTS, LaunchRequest, launch, method_identity, methods, resolve_selection, validate,
+)
 from evoab.workbench.runs import STUDIO_DIR, load_launches, scan_runs, usage_totals
 
 # Launch defaults, remembered from the last launch.
-SETTING_KEYS = ("default_model", "default_effort", "default_method", "image_import_dir")
+SETTING_KEYS = ("default_model", "default_effort", "default_method", "default_agent", "image_import_dir")
 
 #: Mirrors for benchmark builds where the public package and model hubs are unreachable
 #: (mainland China): variables that upstream recipes and EvoAB's layer read.
@@ -102,12 +106,19 @@ class Workbench:
             value = json.loads(self.settings_path().read_text(encoding="utf-8"))
         except (OSError, ValueError):
             value = {}
-        return {key: value.get(key) for key in SETTING_KEYS}
+        value = value if isinstance(value, dict) else {}
+        defaults = {key: value[key] if isinstance(value.get(key), str) else None for key in SETTING_KEYS}
+        defaults["default_method"], defaults["default_agent"] = method_identity(
+            defaults["default_method"], defaults["default_agent"],
+        )
+        return defaults
 
     def update_settings(self, changes: dict[str, Any]) -> dict[str, Any]:
         unknown = set(changes) - set(SETTING_KEYS)
         if unknown:
             raise Invalid(f"unknown settings: {', '.join(sorted(unknown))}")
+        if any(value is not None and not isinstance(value, str) for value in changes.values()):
+            raise Invalid("Studio defaults must be strings or null")
         if "image_import_dir" in changes:
             from evoab.services.deployment.image_import import normalize_directory
             try:
@@ -116,7 +127,12 @@ class Workbench:
                 # Raised before writing, so an invalid path never replaces the saved one.
                 raise Invalid(str(error)) from error
         current = self.settings()
+        if "default_method" in changes and "default_agent" not in changes:
+            current["default_agent"] = None
         current.update(changes)
+        current["default_method"], current["default_agent"] = method_identity(
+            current["default_method"], current["default_agent"],
+        )
         path = self.settings_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -126,7 +142,7 @@ class Workbench:
         return {
             "runs_root": str(self.runs_root),
             "reasoning_efforts": REASONING_EFFORTS,
-            "methods": METHODS,
+            "methods": methods(),
             "direct_options": {k: list(v[1]) if v[1] else None for k, v in DIRECT_OPTIONS.items()},
             "settings": self.settings(),
         }
@@ -239,8 +255,31 @@ class Workbench:
         except RuntimeError as error:
             raise Unavailable(str(error)) from error
 
-    def model_settings(self) -> dict[str, Any]:
-        return self._catalog(lambda c: c.settings)
+    def model_settings(self, agent: str | None = None) -> dict[str, Any]:
+        if agent is None:
+            return self._catalog(lambda c: c.settings)
+        try:
+            launch_config = agent_launch(agent)
+        except ValueError as error:
+            raise Invalid(str(error)) from error
+        if launch_config is None:
+            raise Invalid(f"Agent {agent!r} is unavailable in Workbench")
+        settings = self._catalog(lambda c: c.settings)
+        if launch_config.validate_preset is None:
+            return settings
+        presets, incompatible = [], []
+        for preset in settings["presets"]:
+            try:
+                launch_config.validate_preset(preset["name"])
+            except ValueError as error:
+                reason = (str(error) if isinstance(error, PresetCompatibilityError)
+                          else "This preset could not be used with the selected Agent. Check its provider settings.")
+                incompatible.append({"name": preset["name"], "model": preset.get("model"), "reason": reason})
+            except RuntimeError as error:
+                raise Unavailable(str(error)) from error
+            else:
+                presets.append(preset)
+        return {**settings, "presets": presets, "incompatible_presets": incompatible}
 
     def save_preset(self, fields: dict[str, Any], existing: str | None = None) -> dict[str, Any]:
         return self._catalog(lambda c: c.save_preset, fields, existing=existing)
@@ -291,12 +330,15 @@ class Workbench:
         with _admission:
             try:
                 request = LaunchRequest(**payload)
+                request, _, _ = resolve_selection(request)
                 task = validate(request)
             except (TypeError, ValueError) as error:
                 raise Invalid(str(error)) from error
+            except RuntimeError as error:
+                raise Unavailable(str(error)) from error
             launch_id = launch(request, task, self.runs_root)
             self.update_settings({"default_model": request.model, "default_effort": request.reasoning_effort,
-                                  "default_method": request.method})
+                                  "default_method": request.method, "default_agent": request.agent})
         return {"launch_id": launch_id, "short_id": launch_id.rsplit("_", 1)[-1], "request": asdict(request)}
 
     def _launch_record(self, launch_id: str) -> dict[str, Any]:

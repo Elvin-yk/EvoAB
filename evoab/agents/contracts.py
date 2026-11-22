@@ -29,6 +29,39 @@ class AgentCapabilities:
     tool_event_source: Literal["agent", "execution"] = "execution"
 
 
+@dataclass(frozen=True)
+class LaunchIntegerOption:
+    """Optional integer that Studio can forward to a registered CLI flag."""
+
+    name: str
+    flag: str
+    label: str
+    help: str
+    minimum: int = 0
+
+
+@dataclass(frozen=True)
+class AgentLaunch:
+    """Benchmark launch capabilities declared by an agent adapter."""
+
+    label: str
+    modes: tuple[Literal["direct_policy", "agentic", "agent_policy"], ...]
+    description: str = ""
+    integrations: tuple[str, ...] | None = None
+    cli_flags: tuple[str, ...] = ()
+    options: tuple[LaunchIntegerOption, ...] = ()
+    validate_preset: Callable[[str], object] | None = None
+    model_help: str = ""
+
+
+@dataclass(frozen=True)
+class EvaluatorPlan:
+    """Host process for an agent that owns its own prepared-episode client."""
+
+    command: tuple[str, ...]
+    input_data: bytes
+
+
 @dataclass
 class AgentResult:
     """Final result from one agent run() call."""

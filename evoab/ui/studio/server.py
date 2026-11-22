@@ -98,8 +98,8 @@ def create_app(runs_root: Path) -> FastAPI:
     # -- models: providers, presets, usage ------------------------------------
 
     @app.get("/api/models")
-    def model_settings() -> dict[str, Any]:
-        return bench.model_settings()
+    def model_settings(agent: str | None = None) -> dict[str, Any]:
+        return bench.model_settings(agent)
 
     @app.post("/api/models/presets", status_code=201)
     def preset_create(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:

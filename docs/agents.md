@@ -12,6 +12,13 @@ tool dispatch, event interpretation and native artifact export. `session.py`
 invokes a registered agent without switching on its name. Robot tools and
 resource scheduling remain in `tools/` and `execution/`.
 
+An external evaluator can supply an `EvaluatorPlan` from its registered agent
+descriptor when it owns the planner, tools and prepared-episode client as one
+process. The CLI supervisor owns deployment, timeouts and process cleanup.
+The evaluator receives the prepared episode URL, identity and run directory via
+stdin and publishes the official result through the environment's finalization
+contract. This entry point is for `evoab run`. See [RUA on RoboDojo](rua.md).
+
 ## Codex calculation interpreter
 
 `--agent-python /path/to/compute-venv/bin/python` (Python API:
@@ -53,6 +60,37 @@ launcher or container configuration; a working directory is not such a boundary.
    the run path, so configuration validation remains offline.
 4. Add lifecycle and protocol tests. New SDK dependencies require a dependency
    declaration; new upstream vendor conversions are separate provider work.
+
+### Workbench launch registration
+
+An adapter can declare `workbench_launch = AgentLaunch(...)` on its registered
+class. The declaration lists its execution modes, supported integrations, model
+preset validator, and any integer options exposed in Studio. Leave
+`integrations` unset when the adapter works with every benchmark offered for
+the declared modes. Flags and option mappings refer to existing `evoab run`
+arguments and are supplied by the adapter. The registry provides both the
+Studio picker metadata and the server-side launch mapping. Adapters without a
+launch declaration remain available through their existing entry points.
+
+Workbench execution modes are `direct_policy` for action chunks, `agentic`
+for an agent using tools, and `agent_policy` for an agent using the Hybrid
+tool profile. A mode appears when an adapter supports it on the selected
+benchmark. The existing Hybrid CLI remains available with its actor service
+configuration.
+
+The launch API accepts `method` for the execution mode, `agent` for the adapter
+ID, and optional `agent_options` for declared parameters. The mode's default
+adapter handles requests that omit `agent`. `GET /api/config` lists modes under
+`methods`, with registered choices under each mode's `agents`. The optional
+`agent` query on `GET /api/models` filters presets using that adapter's
+validator and reports unavailable choices with reasons in `incompatible_presets`.
+Validators can raise `PresetCompatibilityError` for messages safe to display.
+HTTP-backed adapters can use `resolve_http_preset` with their client protocol
+and supported wire profiles. Legacy `method: "rua"` requests and saved settings resolve to
+`method: "agentic", agent: "rua"`. Run history resolves the same alias as it
+reads existing records.
+
+### Run contract
 
 Configuration methods are `add_cli_arguments`, `resolve_defaults`,
 `validate_config`, and `config_options`. Shared model transport flags are

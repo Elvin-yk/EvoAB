@@ -16,7 +16,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from evoab.agents.contracts import AgentCapabilities, AgentResult
+from evoab.agents.contracts import AgentCapabilities, AgentLaunch, AgentResult
 from evoab.agents.registry import register_agent
 
 
@@ -43,6 +43,10 @@ class NativeAgent:
     model_protocol = "native"
     owns_provider = True
     capabilities = AgentCapabilities(tool_event_source="execution")
+    workbench_launch = AgentLaunch(
+        label="EvoAB 内置 Agent", modes=("direct_policy", "agentic"),
+        description="使用 EvoAB 内置运行时与模型预设。",
+    )
 
     @classmethod
     def add_cli_arguments(cls, parser) -> None:
