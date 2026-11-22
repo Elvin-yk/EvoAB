@@ -1,7 +1,8 @@
 # RUA on RoboDojo
 
-Select **RUA** in Studio's RoboDojo method picker, use `evoab runs launch
---method rua`, or run `evoab run --agent rua`. This adapter uses the reference
+In Studio, select RoboDojo, then choose **Agentic Policy → RUA**. From a shell,
+use `evoab runs launch --method agentic --agent rua` or `evoab run --agent rua`.
+The former `evoab runs launch --method rua` remains an alias. The adapter uses the reference
 `uni-robot-agent` source package (tested against the supplied 0.2.0 checkout)
 and its default Codex planner with the `direct` tool profile. The method is
 available for single-episode RoboDojo runs. Existing methods need no migration.
@@ -84,14 +85,17 @@ The command selects RGB with calibration through `--no-depth`. Add
 an already prepared episode, replace `--deploy local --container --no-depth`
 with `--env-url "$EPISODE_URL"`. Configure depth in the existing service.
 
-For Studio or `evoab runs launch --integration robodojo --method rua --task
-"$RUA_TASK" --model "$PRESET"`, export `EVOAB_RUA_PYTHON="$RUA_PYTHON"` before
+For Studio or `evoab runs launch --integration robodojo --method agentic
+--agent rua --task "$RUA_TASK" --model "$PRESET"`, export `EVOAB_RUA_PYTHON="$RUA_PYTHON"` before
 starting the launcher. Studio uses the selected preset's model ID, URL and
-key, plus the reasoning effort selected at launch. The adapter maps standard
+key, plus the reasoning effort selected at launch. The optional turn limit
+maps to `--max-turns`. The adapter maps standard
 Responses and Chat Completions connections to RUA profiles. RUA owns the
 remaining generation settings. Presets using OAuth, catalog proxy configuration
 or custom request overrides are rejected. For an explicitly configured RUA
-provider profile, use the single-episode CLI above.
+provider profile, use the single-episode CLI above. After updating EvoAB on a
+prepared host, restart Studio with its existing runs directory and RUA Python
+setting. The prepared Docker runtime, assets and RUA installation can be reused.
 
 ## Verify the run
 

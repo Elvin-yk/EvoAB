@@ -270,6 +270,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .task-selection span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
 .task-selection button { flex: none; }
 .method-group + .method-group { margin-top: 20px; }
+.agent-picker { margin-top: 16px; padding-inline-start: 12px; border-inline-start: 1px solid var(--line); }
 .expert-demo summary { padding: 4px 0; font-weight: normal; color: var(--accent); }
 .expert-demo[open] { flex-basis: 100%; }
 .expert-demo video { display: block; width: min(100%, 360px); aspect-ratio: 1; background: black; }

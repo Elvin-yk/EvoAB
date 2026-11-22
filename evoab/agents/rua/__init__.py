@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 from urllib.parse import urlsplit
 
-from evoab.agents.contracts import EvaluatorPlan
+from evoab.agents.contracts import AgentLaunch, EvaluatorPlan, LaunchIntegerOption
 
 
 # Settings shared by both harnesses. Service deployment settings stay in EvoAB.
@@ -57,6 +57,13 @@ class RuaAgent:
 
     model_protocol = "responses"
     owns_provider = True
+    workbench_launch = AgentLaunch(
+        label="RUA", modes=("agentic",), integrations=("robodojo",),
+        description="Uni Robot Agent 连接 EvoAB 管理的 RoboDojo 环境。",
+        cli_flags=("--rua-model-preset",), validate_preset=preset_connection,
+        model_help="可选预设使用标准 Responses 或 Chat Completions 接口。",
+        options=(LaunchIntegerOption("max_turns", "--max-turns", "Agent 轮次上限", "留空或填 0 表示不限制轮次。"),),
+    )
 
     @classmethod
     def add_cli_arguments(cls, parser) -> None:

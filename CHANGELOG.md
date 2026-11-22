@@ -2,9 +2,12 @@
 
 ## Unreleased
 
-- Added RUA as a RoboDojo method in Studio and `evoab run --agent rua`.
-  Uni Robot Agent runs on the host and connects to EvoAB's prepared Docker
-  episode. See [RUA on RoboDojo](docs/rua.md) for configuration and verification.
+- Studio groups registered Agent implementations under Agentic Policy.
+  RoboDojo offers the built-in Agent and RUA, with model presets and settings
+  supplied by each adapter. `evoab runs launch --method agentic --agent rua`
+  and its legacy `--method rua` alias start the same evaluator. RUA runs on the
+  host and connects to EvoAB's prepared Docker episode. See
+  [RUA on RoboDojo](docs/rua.md) for configuration and verification.
 
 - Studio serves the nanobot settings UI as versioned, cacheable assets. Benchmark
   registration and manifest management have been removed from Studio, the HTTP

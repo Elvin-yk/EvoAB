@@ -244,11 +244,21 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
 
 
 def _method(run: dict[str, Any]) -> str:
+    from evoab.agents.registry import agent_launch
     from evoab.workbench.launcher import METHODS
+
     method = next((m for m in METHODS if m["id"] == run.get("method_id")), None)
-    if method is not None:
-        return f"{method['label']} · {method['agent']}"
-    return f"{run.get('agent') or 'codex'} · {run.get('tool_profile') or run.get('action_profile') or 'direct'}"
+    agent = run.get("agent") or "codex"
+    if method is None:
+        return f"{agent} · {run.get('tool_profile') or run.get('action_profile') or 'direct'}"
+    if agent != method["agent"]:
+        try:
+            registered = agent_launch(agent)
+        except ValueError:
+            registered = None
+        if registered is not None:
+            agent = registered.label
+    return f"{method['label']} · {agent}"
 
 
 def short_id(run: dict[str, Any]) -> str:
@@ -265,6 +275,8 @@ def scan_runs(root: Path) -> list[dict[str, Any]]:
     the how-many-th started run of the same task with the same model (oldest
     first). Launches that never created a run directory get no attempt.
     """
+    from evoab.workbench.launcher import method_identity
+
     if not root.is_dir():
         return []
     now = time.time()
@@ -287,6 +299,7 @@ def scan_runs(root: Path) -> list[dict[str, Any]]:
         else:
             run["attempt"] = None
         run["short_id"] = short_id(run)
+        run["method_id"], run["agent"] = method_identity(run.get("method_id"), run.get("agent"))
         run["method"] = _method(run)
         run["key"] = f"run/{run['id']}" if run["id"] else f"launch/{run['launch_id']}"
     runs.reverse()
