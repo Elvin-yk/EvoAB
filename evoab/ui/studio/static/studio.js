@@ -168,10 +168,10 @@ function route() {
   const page = section === "launch" ? "run" : section;
   const arg = section === "launch" ? hash : rest.join("/");
   const same = current.page === page && current.arg === arg;
-  if (current.page !== page) {
+  if (!same) {
     clearInterval(runRefreshTimer);
     if (page === "settings" || current.page === "settings") S.modelSettings = null;
-    if (page === "history" || page === "run") {
+    if (page === "history" || page === "run" || (page === "settings" && arg === "benchmarks")) {
       runRefreshTimer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
     }
   }
@@ -631,18 +631,11 @@ function startWith(bench, p, task = null) {
 }
 
 // One deploy action per benchmark: its Docker recipe when it has one, else its native setup recipe.
-function deployNote(bench) {
-  const docker = bench.deploy === "container" ? bench.container : null;
-  if (!docker) return bench.setup === "custom" ? "检查已注册的自定义环境" : "在本机独立环境中安装依赖和任务资源";
-  const how = docker.source === "image" ? "拉取现成 Docker 镜像（数 GB）" : "本机构建 Docker 镜像（首次可能需要一小时以上）";
-  return docker.license ? `${how} · 需接受 ${docker.license}` : how;
-}
-
 async function deploy(bench, p, button) {
   const what = benchmarkName(bench, p.profile);
   const docker = bench.deploy === "container" ? bench.container : null;
   const license = docker?.license ? `\n\n部署需要接受 ${docker.license}（https://docs.omniverse.nvidia.com/eula/）。点“确定”即表示接受。` : "";
-  if (!confirm(`部署 ${what}？\n${deployNote(bench)}，完成后即可发起任务。${license}`)) return;
+  if (!confirm(`部署 ${what}？完成后即可发起任务。${license}`)) return;
   button.disabled = true;
   try {
     const query = docker ? `?container=true${docker.license ? `&accept_license=${encodeURIComponent(docker.license)}` : ""}` : "";
@@ -650,6 +643,31 @@ async function deploy(bench, p, button) {
     toast(`已开始部署 ${what}，进度见下方日志`);
   } catch (error) {
     toast(`无法开始：${error.message}`, true);
+  }
+  await loadBenchmarks();
+  route();
+}
+
+// Uninstall removes this Docker deployment only; runs, archives and shared images stay.
+async function uninstall(bench, p, button) {
+  const what = benchmarkName(bench, p.profile);
+  const message = `卸载 ${what}？\n\n`
+    + "会移除这份 Docker 部署的部署记录和本地运行镜像，之后可以重新部署。\n"
+    + "评测运行记录与轨迹、导入的镜像归档、共享的上游镜像与构建缓存、主机上的模型资源都会保留。\n"
+    + "正在部署、有运行中的评测或镜像仍被容器使用时不会卸载，也不会停止任何容器。";
+  if (!confirm(message)) return;
+  button.disabled = true;
+  try {
+    const result = await api(`/api/benchmarks/${bench.integration}/${p.profile}/setup`, { method: "DELETE" });
+    const image = result.image_action === "shared"
+      ? "；镜像仍被其他部署使用，已保留"
+      : result.image_action === "missing" ? "；镜像此前已不在本机" : "，运行镜像已移除";
+    const remaining = result.remaining
+      ? `；仍有${result.remaining.kind === "container" ? " Docker " : "本机 "}部署（${result.remaining.profile}）可用`
+      : "";
+    toast(`已卸载 ${what}${image}${remaining}`);
+  } catch (error) {
+    toast(`卸载失败：${error.message}`, true);
   }
   await loadBenchmarks();
   route();
@@ -865,6 +883,127 @@ function settingsModels(body) {
 const CHECK_LABELS = { docker: "Docker", docker_access: "Docker 权限", gpu_containers: "GPU 容器", disk: "磁盘空间",
   agent_runtime: "Agent 运行时", model_presets: "模型预设", network: "下载源" };
 
+function imageImportPanel() {
+  const panel = h("div", { class: "card card-pad import-panel" });
+  async function refreshFiles() {
+    try {
+      const imports = await api("/api/benchmarks/image-imports");
+      const targets = S.benchmarks.filter((b) => b.deploy === "container").flatMap((b) =>
+        b.profiles.map((p) => ({ bench: b, profile: p })));
+      const target = h("select", { class: "input", "aria-label": "导入目标仿真", disabled: !targets.length },
+        targets.length ? targets.map((t, i) => h("option", { value: i }, benchmarkName(t.bench, t.profile.profile)))
+          : h("option", { value: "" }, "没有可导入的 Docker 仿真"));
+      const archive = h("select", { class: "input", "aria-label": "本地镜像文件", disabled: !imports.files.length },
+        h("option", { value: "" }, imports.files.length ? "选择镜像文件" : "目录中暂无镜像文件"),
+        imports.files.map((f) => h("option", { value: f.name }, `${f.name}（${(f.size / 2 ** 30).toFixed(2)} GiB）`)));
+      // The directory is a Studio setting on this server; an invalid path is refused by
+      // the backend before it is written, so the saved directory stays in effect.
+      const directory = h("input", { class: "input", type: "text", spellcheck: "false", value: imports.configured || "",
+        placeholder: imports.default_directory, "aria-label": "镜像目录（Dashboard 服务器）" });
+      const save = h("button", { class: "btn", onclick: () => {
+        const value = directory.value.trim();
+        if (value && !(value.startsWith("/") || value.startsWith("~/"))) {
+          toast("请填写以 / 开头的绝对路径，或以 ~/ 开头的路径", true);
+          return;
+        }
+        saveDirectory(value);
+      } }, "保存目录");
+      const restore = h("button", { class: "btn", disabled: !imports.configured, onclick: () => saveDirectory("") }, "恢复默认");
+      async function saveDirectory(value) {
+        save.disabled = restore.disabled = true;
+        try {
+          const saved = await api("/api/settings", { method: "PUT", json: { image_import_dir: value } });
+          S.config.settings = { ...(S.config.settings || {}), ...saved };
+          toast(value ? "镜像目录已保存" : "已恢复默认镜像目录");
+          await refreshFiles();
+        } catch (error) {
+          toast(`目录未保存：${error.message}`, true);
+          save.disabled = restore.disabled = false;
+        }
+      }
+      const submit = h("button", { class: "btn primary", disabled: true, onclick: async () => {
+        const selected = targets[Number(target.value)];
+        if (!selected) return;
+        const docker = selected.bench.container;
+        const license = docker.license ? `
+需要接受 ${docker.license}。确定即表示接受。` : "";
+        if (!confirm(`导入 ${archive.value} 并验证 ${selected.bench.title}？${license}`)) return;
+        submit.disabled = true;
+        try {
+          const params = new URLSearchParams({ container: "true", image_archive: archive.value });
+          if (docker.license) params.set("accept_license", docker.license);
+          await api(`/api/benchmarks/${selected.bench.integration}/${selected.profile.profile}/setup?${params}`, { method: "POST" });
+          toast("已开始导入和验证，进度见对应仿真的日志");
+          await loadBenchmarks();
+          route();
+        } catch (error) {
+          toast(`无法导入：${error.message}`, true);
+          submit.disabled = false;
+        }
+      } }, "导入并验证");
+      archive.addEventListener("change", () => { submit.disabled = !archive.value || !targets.length; });
+      put(panel,
+        h("div", { class: "import-head" },
+          h("div", { class: "section-title" }, "本地镜像导入"),
+          h("p", { class: "muted small import-intro" },
+            "为了避免网络等问题导致镜像下载失败，支持自行下载镜像归档并放到指定目录，之后选择文件并导入验证。"),
+          h("p", { class: "muted small import-intro" },
+            "归档须由 docker save 导出且只包含一个镜像。验证通过后才显示已就绪；安装运行依赖可能仍需联网。")),
+        h("div", { class: "import-dir" },
+          h("label", { class: "import-field" },
+            h("span", { class: "import-label" }, "镜像目录（Dashboard 服务器）"),
+            directory,
+            h("small", { class: "muted" },
+              "这是运行 Dashboard 的服务器上的目录，不是你打开浏览器的电脑。默认 ~/.cache/evoab/image-imports，服务器的缓存目录设置会改变它，以上方显示的实际路径为准。支持 / 开头的绝对路径或 ~/ 开头的路径，切换目录不会移动或删除已有文件。")),
+          h("div", { class: "import-dir-actions" }, save, restore)),
+        h("div", { class: "import-path" },
+          h("div", { class: "import-path-label" }, "当前使用的服务器目录"),
+          h("code", {}, imports.directory),
+          imports.configured ? h("div", { class: "import-path-extra" }, `默认目录：${imports.default_directory}`) : null),
+        h("div", { class: "import-fields" },
+          h("label", { class: "import-field" },
+            h("span", { class: "import-label" }, "目标仿真"),
+            target,
+            h("small", { class: "muted" }, "选择用哪套仿真的固定版本和任务要求来校验并安装这个镜像。")),
+          h("label", { class: "import-field" },
+            h("span", { class: "import-label" }, "镜像文件"),
+            archive,
+            h("small", { class: "muted" }, "从上面的目录中选择已复制或下载的归档；复制完成后先点“刷新文件”。"))),
+        imports.files.length ? null
+          : h("p", { class: "muted small import-empty" },
+            "目录中暂无镜像文件。把 docker save 导出的归档放到上面的目录（例如用 scp 传到服务器），再点“刷新文件”。"),
+        h("div", { class: "import-actions" },
+          submit,
+          h("button", { class: "btn", onclick: refreshFiles }, "刷新文件")),
+        h("p", { class: "muted small import-note" },
+          "支持 .tar、.tar.gz、.tgz、.tar.bz2、.tar.xz。镜像须与所选仿真匹配（否则验证失败），并包含该仿真的固定版本源码和任务资源。"));
+    } catch (error) {
+      put(panel,
+        h("div", { class: "section-title" }, "本地镜像导入"),
+        h("div", { class: "notice error" }, error.message),
+        h("div", { class: "import-actions" },
+          h("button", { class: "btn", onclick: refreshFiles }, "重试"),
+          // A saved directory may disappear, lose permissions or become a file; the
+          // default is reachable without reading the broken one.
+          h("button", { class: "btn", onclick: async () => {
+            try {
+              const saved = await api("/api/settings", { method: "PUT", json: { image_import_dir: null } });
+              S.config.settings = { ...(S.config.settings || {}), ...saved };
+              toast("已恢复默认镜像目录");
+              await refreshFiles();
+            } catch (reset) {
+              toast(`无法恢复默认目录：${reset.message}`, true);
+            }
+          } }, "恢复默认目录")));
+    }
+  }
+  put(panel,
+    h("div", { class: "section-title" }, "本地镜像导入"),
+    h("p", { class: "muted small" }, "读取导入目录…"));
+  refreshFiles();
+  return panel;
+}
+
 function settingsBenchmarks(body) {
   const checks = h("div", { class: "card card-pad system-check" }, h("div", { class: "muted small" }, "检查部署条件…"));
   api("/api/system/check").then((r) => put(checks,
@@ -875,7 +1014,8 @@ function settingsBenchmarks(body) {
   put(body, h("div", { class: "page wide" },
     pageHead("评测环境"),
     checks,
-    benchmarkCards()));
+    imageImportPanel(),
+    h("div", { id: "benchmarkCards" }, benchmarkCards())));
 }
 
 function benchmarkCards() {
@@ -883,21 +1023,32 @@ function benchmarkCards() {
     // A runtime that registered no tasks is not usable: show it as a failed deployment to redo.
     const status = p.status === "ready" && !p.launchable ? "setup_failed" : p.status;
     const dockerMissing = bench.deploy === "container" && !bench.container?.docker;
-    // One button: 部署 until the runtime is ready, then a disabled 已部署 (runs start from 发起任务).
+    // 部署 until the runtime is ready, then a disabled 已部署 (runs start from 发起任务).
     const action = status === "ready"
       ? h("button", { class: "btn small", disabled: true }, "已部署")
       : h("button", { class: "btn small primary", disabled: dockerMissing || status === "preparing",
           title: dockerMissing ? "需要 Docker，见上方部署条件" : "",
           onclick: (e) => deploy(bench, p, e.currentTarget) }, "部署");
+    // Only a Docker deployment can be removed; an adopted native runtime, a running
+    // setup or a missing Docker client leaves 卸载 disabled (the backend refuses too).
+    const nativeRuntime = p.installed && p.runtime_kind !== "container";
+    const removal = bench.deploy === "container"
+      ? h("button", { class: "btn small", disabled: !p.installed || nativeRuntime || dockerMissing || status === "preparing",
+          title: nativeRuntime ? "当前是本机安装，不是 Docker 部署"
+            : dockerMissing ? "需要 Docker，见上方部署条件" : p.installed ? "" : "尚未部署",
+          onclick: (e) => uninstall(bench, p, e.currentTarget) }, "卸载")
+      : null;
     const detail = status === "ready"
       ? h("a", { class: "small", href: "#", onclick: (e) => { e.preventDefault(); openTasks(bench, p); } }, `${p.task_count} 个任务`)
-      : h("span", { class: "muted small" }, status === "preparing" ? "正在部署，日志见下方" : deployNote(bench));
+      : status === "preparing" ? h("span", { class: "muted small" }, "正在部署，日志见下方")
+      : bench.setup === "custom" ? h("span", { class: "muted small" }, "检查已注册的自定义环境") : null;
     return [
       h("div", { class: "profile-row" },
         h("strong", {}, p.profile === "default" ? "运行环境" : `运行环境 · ${p.profile}`),
         pill(status, BENCH_STATUS), detail,
-        h("span", { class: "acts" }, action)),
-      p.setup_log && ["preparing", "setup_failed"].includes(status) ? h("pre", { class: "profile-log log" }, p.setup_log) : null,
+        h("span", { class: "acts" }, action, removal)),
+      status === "ready" && p.last_setup_failed ? h("div", { class: "notice error" }, "最近一次部署失败，当前仍可使用此前验证的环境。") : null,
+      p.setup_log && (["preparing", "setup_failed"].includes(status) || p.last_setup_failed) ? h("pre", { class: "profile-log log" }, p.setup_log) : null,
     ];
   };
   return S.benchmarks.map((b) => h("article", { class: "card bench" },
@@ -916,6 +1067,13 @@ function applyDefaults(force = false) {
 // -- startup -----------------------------------------------------------------
 
 async function refresh() {
+  if (current.page === "settings" && current.arg === "benchmarks") {
+    try {
+      await loadBenchmarks();
+      if ($("benchmarkCards")) put($("benchmarkCards"), benchmarkCards());
+    } catch { /* Keep the last status until the next refresh. */ }
+    return;
+  }
   try { await loadRuns(); } catch { return; }
   const page = current.page;
   if (page === "history" && pageHistory.refresh) pageHistory.refresh();

@@ -86,6 +86,8 @@ def validate_deployment(args):
     service = getattr(args, 'service', None) or 'env'
     if service != 'env' and getattr(args, 'integration', None):
         raise ValueError('--integration only applies to environment services')
+    if getattr(args, 'image_archive', None) and (not getattr(args, 'container', False) or service != 'env'):
+        raise ValueError('--image-archive requires --container and an environment integration')
     if args.command == 'setup':
         if args.runtime_python and (args.wheel or args.python):
             raise ValueError('Adoption is read-only; --wheel and --python require an isolated setup')
@@ -195,6 +197,7 @@ class SetupConfig(RuntimeConfig):
 
     python: str | None = None
     wheel: Path | None = None
+    image_archive: str | None = None
     skip_demo_download: bool = False
     setup_timeout_s: float = Field(default=14400, gt=0, allow_inf_nan=False)
 

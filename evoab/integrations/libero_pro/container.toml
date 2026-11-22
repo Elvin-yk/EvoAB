@@ -8,6 +8,8 @@
 # CC-BY-4.0 dataset zhouxueyang/LIBERO-Pro at a pinned revision. Set HF_ENDPOINT
 # on the host to use a Hugging Face mirror.
 image = "ghcr.io/allenai/vla-evaluation-harness/libero-pro@sha256:8ecd18bfcca2ffdb3803ac8954da1cd046db15db963cca9369fac7ceb66426db"
+# Config digest from the pinned registry manifest, also the docker-save image ID.
+image_id = "sha256:e0f69ac6ac8c832f20882268695999df82549a4c45acf06ae320ff9e1663ed17"
 python = "/opt/conda/envs/libero/bin/python"
 native_root = "/app/libero-pro"
 gpu = true

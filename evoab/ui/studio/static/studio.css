@@ -282,6 +282,28 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .drawer-head h2 { margin: 0; font-size: 16px; }
 .drawer-body { overflow: auto; padding: 16px 20px; flex: 1; }
 
+/* -- local image import (settings > benchmarks) ---------------------------- */
+.import-panel .section-title { margin-bottom: 4px; }
+.import-head { margin-bottom: 14px; }
+.import-intro { margin: 0; max-width: 68ch; }
+.import-dir { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin-bottom: 14px; }
+.import-dir-actions { display: flex; gap: 8px; }
+.import-field small { line-height: 1.5; }
+.import-path { margin-bottom: 16px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); }
+.import-path-label { margin-bottom: 3px; color: var(--muted); font-size: 12px; }
+.import-path-extra { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.import-path code { display: block; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.import-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; margin-bottom: 16px; }
+.import-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.import-label { font-size: 13px; font-weight: 550; }
+.import-field .input { width: 100%; }
+.import-empty { margin: -6px 0 14px; }
+.import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.import-note { margin: 12px 0 0; max-width: 80ch; }
+@media (max-width: 760px) {
+  .import-fields, .import-dir { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* -- settings (two-level, provider list + detail) ------------------------- */
 .settings { display: flex; flex-direction: column; height: 100%; }
 .settings-body { flex: 1; min-height: 0; min-width: 0; overflow: auto; }

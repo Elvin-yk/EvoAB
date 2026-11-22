@@ -58,6 +58,7 @@ class ContainerSpec:
     python: str
     native_root: str | None = None
     image: str | None = None
+    image_id: str | None = None
     dockerfile: str | None = None
     gpu: bool = True
     prepare: tuple[str, ...] = ()
@@ -88,7 +89,7 @@ def spec_for(integration: str) -> ContainerSpec | None:
     if data.get("build") not in (None, "native"):
         raise ValueError(f"{integration}/container.toml: build must be 'native'")
     return ContainerSpec(integration=integration, python=data["python"], native_root=data.get("native_root"),
-                         image=data.get("image"), dockerfile=data.get("dockerfile"), gpu=bool(data.get("gpu", True)),
+                         image=data.get("image"), image_id=data.get("image_id"), dockerfile=data.get("dockerfile"), gpu=bool(data.get("gpu", True)),
                          prepare=tuple(data.get("prepare", ())),
                          environment={k: str(v) for k, v in data.get("environment", {}).items()},
                          build=data.get("build"), root=bool(data.get("root", False)),
@@ -137,7 +138,7 @@ def run_prefix(image: str, *, gpu: bool | int, environment: dict[str, str], moun
     if workdir:
         command += ["-w", workdir]
     if gpu is not False:
-        command += ["--gpus", "all" if gpu is True else f"device={gpu}"]
+        command += ["--runtime=nvidia", "--gpus", "all" if gpu is True else f"device={gpu}"]
     if name:
         command += ["--name", name]
     if interactive:
@@ -197,11 +198,11 @@ def remove(name: str) -> None:
 _PROGRESS = re.compile(r"\x1b\[|\d+%\s*$|#{3,}|(Downloading|Extracting|Waiting|Verifying Checksum)\s*$")
 
 
-def _stream(command, report, *, cwd=None, environment=None) -> None:
+def _stream(command, report, *, cwd=None, environment=None, stdin=None) -> None:
     if report is not None:
         report("$ " + " ".join(shlex.quote(str(part)) for part in command[:6]) + (" …" if len(command) > 6 else ""))
     process = subprocess.Popen([str(c) for c in command], cwd=cwd, env={**os.environ, **(environment or {})},
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                               stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     last = None
     for line in process.stdout:
         line = line.rstrip()
@@ -253,9 +254,13 @@ def _fetch_sources(spec: ContainerSpec, report) -> Path:
 
 
 def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, report, *,
-                        context: Path | None = None, constraints=()) -> str:
+                        context: Path | None = None, constraints=(), local_image: str | None = None) -> str:
     """Pull or build the upstream image, then build EvoAB's local layer on it; return its tag."""
-    if spec.image:
+    if local_image:
+        # Docker builders resolve FROM by name; give the verified content ID a local tag.
+        base = f"evoab/imported:{local_image.removeprefix('sha256:')}"
+        _stream([docker(), "tag", local_image, base], report)
+    elif spec.image:
         _stream([docker(), "pull", spec.image], report)
         base = spec.image
     elif spec.build == "native":
@@ -310,7 +315,7 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
                  f"|| {python} -m pip install --no-cache-dir{pip_pins} {install}",
                  *place,
                  "RUN rm -rf /tmp/evoab-wheel",
-                 *[f"RUN {command}" for command in spec.prepare],
+                 *[f"RUN {command}" for command in (() if local_image and local_image != spec.image_id else spec.prepare)],
                  "ENTRYPOINT []", "CMD []", f'LABEL org.evoab.integration="{spec.integration}" org.evoab.version="{version}"']
         (context_path / "Dockerfile").write_text("\n".join(line for line in lines if line) + "\n", encoding="utf-8")
         _stream([docker(), "build", "-t", tag, *_build_args(), context_path], report)
@@ -377,8 +382,19 @@ def prepare(args, adapter, *, report=print):
     recipe = adapter.recipe(args)
     root = container_root(args, recipe)
     started = time.time()
+    imported = getattr(args, "image_archive", None)
     with runtime_lock(root, args.setup_timeout_s):
+        previous = {}
+        published = False
         try:
+            if imported:
+                for name in ("validation.json", "runtime.json"):
+                    path = root / name
+                    previous[name] = (path.stat(), path.read_bytes()) if path.is_file() else None
+            local_image = None
+            if imported:
+                from .image_import import load_archive
+                local_image = load_archive(imported, spec, args, report)
             host = getattr(adapter, "container_data", None)
             host_data = host(args, root, report) if host else None
             mounts = list((host_data or {}).pop("mounts", []))
@@ -386,7 +402,13 @@ def prepare(args, adapter, *, report=print):
             # The runtime wheel must not move pins the simulator stack depends on.
             tag = build_runtime_image(spec, args.wheel, __version__, report,
                                       context=Path(host_data["native_root"]) if host_data else None,
-                                      constraints=recipe.settings.get("constraints", ()))
+                                      constraints=recipe.settings.get("constraints", ()), local_image=local_image)
+            if imported:
+                result = subprocess.run([docker(), "image", "inspect", tag, "--format", "{{.Id}}"],
+                                        capture_output=True, text=True)
+                if result.returncode or not result.stdout.strip().startswith("sha256:"):
+                    raise RuntimeError(f"Cannot inspect imported runtime image: {result.stderr.strip()}")
+                tag = result.stdout.strip()
             python = runtime_python(tag, spec.python, root=spec.root, mounts=mounts)
             if host_data is not None:
                 data = host_data
@@ -404,7 +426,7 @@ def prepare(args, adapter, *, report=print):
             runtime = Runtime(recipe.name, python, recipe.digest, __version__, root,
                               {**data, "container": {"image": tag, "upstream": spec.image or spec.dockerfile or "native",
                                                      "gpu": spec.gpu, "root": spec.root, "mounts": mounts,
-                                                     "recipe_digest": spec.digest}},
+                                                     "recipe_digest": spec.digest, "imported_image": local_image, "archive": imported}},
                               environment)
             catalog = getattr(adapter, "catalog_tasks", None)
             if catalog is not None:
@@ -413,7 +435,23 @@ def prepare(args, adapter, *, report=print):
             validation.update(preparation="container", image=tag, upstream=spec.image or spec.dockerfile or "native",
                               elapsed_s=time.time() - started, gpu_verified=False)
             publish_runtime(runtime, validation)
+            published = True
+            if imported:
+                from .setup import check_launch
+                check_launch(args, adapter, runtime, report=report)
+                validation["launch_verified"] = True
+                publish_runtime(runtime, validation)
         except BaseException as error:
+            if imported and published:
+                for name, record in previous.items():
+                    if record is None:
+                        (root / name).unlink(missing_ok=True)
+                    else:
+                        stat, content = record
+                        with tempfile.NamedTemporaryFile(dir=root, delete=False) as restored:
+                            restored.write(content)
+                        os.utime(restored.name, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+                        os.replace(restored.name, root / name)
             write_json_atomic(root / "setup_failure.json", dict(error=str(error), type=type(error).__name__,
                                                                elapsed_s=time.time() - started))
             raise
@@ -426,3 +464,156 @@ def container_root(args, recipe) -> Path:
     from .runtime import runtime_root
     native = runtime_root(args, recipe)
     return native.with_name(native.name + "-container")
+
+
+# -- uninstall -----------------------------------------------------------------
+
+#: Records that make a container runtime prepared; everything else in its root stays
+#: (host assets, launch checks, previews and the setup lock's inode belong to the host).
+DEPLOYMENT_RECORDS = ("runtime.json", "validation.json", "setup_failure.json")
+#: Label every local EvoAB runtime image carries; see ``build_runtime_image``.
+EVOAB_LABEL = "org.evoab.integration"
+_IMAGE_REFERENCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,254}")
+_ABSENT_IMAGE = re.compile(r"no such (?:image|object)", re.IGNORECASE)
+
+
+class ContainerError(RuntimeError):
+    """Docker could not finish the operation; every recorded deployment stays as it was."""
+
+
+class RuntimeInUse(ContainerError):
+    """Containers still reference the runtime image, so EvoAB will not remove it."""
+
+    def __init__(self, image: str, containers: list[dict[str, str]]):
+        names = ", ".join(item["name"] for item in containers[:3])
+        more = f" and {len(containers) - 3} more" if len(containers) > 3 else ""
+        super().__init__(f"{image} is used by container {names}{more}; stop or remove it first")
+        self.image = image
+        self.containers = containers
+
+
+def _docker_run(*arguments: str, timeout: float = 60):
+    """Run one Docker CLI command; a missing client is a failure, not an absent image.
+
+    The call is bounded: a hung daemon must fail this request instead of blocking the
+    Studio admission lock that also serializes launches and deploys.
+    """
+    try:
+        command = docker()
+    except RuntimeError as error:
+        raise ContainerError(str(error)) from error
+    try:
+        return subprocess.run([command, *arguments], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        raise ContainerError(f"Docker did not answer within {timeout:.0f}s: {arguments[0]} {arguments[1]}") from error
+
+
+def _detail(result) -> str:
+    text = ((result.stderr or "") + (result.stdout or "")).strip()
+    return text.splitlines()[-1] if text else "no output"
+
+
+def image_record(reference: str) -> dict | None:
+    """A local image's content ID and labels, or None when Docker reports it absent.
+
+    Only Docker's own "no such image/object" answer counts as absence; a daemon or
+    client error raises instead, so cleanup can never mistake one for a removed image.
+    """
+    result = _docker_run("image", "inspect", reference, "--format", "{{.Id}} {{json .Config.Labels}}")
+    if result.returncode:
+        if _ABSENT_IMAGE.search(result.stderr or ""):
+            return None
+        raise ContainerError(f"Docker cannot inspect {reference}: {_detail(result)}")
+    identifier, _, raw = (result.stdout or "").strip().partition(" ")
+    if not identifier.startswith("sha256:"):
+        raise ContainerError(f"Docker returned no content ID for {reference}")
+    try:
+        labels = json.loads(raw or "{}")
+    except ValueError as error:
+        raise ContainerError(f"Docker returned unreadable labels for {reference}") from error
+    return {"id": identifier, "labels": labels if isinstance(labels, dict) else {}}
+
+
+def image_containers(identifier: str) -> list[dict[str, str]]:
+    """Every container that references one image, including stopped and created ones."""
+    result = _docker_run("ps", "--all", "--filter", f"ancestor={identifier}",
+                         "--format", "{{.ID}}\t{{.Names}}\t{{.State}}")
+    if result.returncode:
+        raise ContainerError(f"Docker cannot list containers: {_detail(result)}")
+    rows = []
+    for line in (result.stdout or "").splitlines():
+        fields = (line.split("\t") + ["", "", ""])[:3]
+        if fields[0]:
+            rows.append({"id": fields[0], "name": fields[1], "state": fields[2]})
+    return rows
+
+
+def remove_image(reference: str) -> str:
+    """Remove one image reference without ``--force``; "removed", "missing", or raise."""
+    result = _docker_run("image", "rm", reference)
+    if result.returncode:
+        if _ABSENT_IMAGE.search(result.stderr or ""):
+            return "missing"
+        raise ContainerError(f"Docker could not remove {reference}: {_detail(result)}")
+    return "removed"
+
+
+def forget_runtime(root: Path) -> list[str]:
+    """Unpublish one deployment's records; assets, checks, previews and the lock stay."""
+    removed = []
+    for name in DEPLOYMENT_RECORDS:
+        path = Path(root) / name
+        if path.is_file() or path.is_symlink():
+            path.unlink()
+            removed.append(name)
+    return removed
+
+
+def _recorded_image(root: Path) -> str:
+    """The image one runtime record publishes, cross-checked against its interpreter."""
+    data = json.loads((Path(root) / "runtime.json").read_text(encoding="utf-8"))
+    payload = data.get("data") if isinstance(data, dict) else None
+    container = (payload or {}).get("container") if isinstance(payload, dict) else None
+    image = container.get("image") if isinstance(container, dict) else None
+    python = str(data.get("python") or "") if isinstance(data, dict) else ""
+    recorded = parse(python)[0] if is_container(python) else None
+    if image and recorded and image != recorded:
+        raise ContainerError("Runtime record and interpreter name different images; rerun setup")
+    reference = image or recorded
+    if not isinstance(reference, str) or _IMAGE_REFERENCE.fullmatch(reference) is None:
+        raise ContainerError("Runtime record has no removable image reference")
+    return reference
+
+
+def uninstall_runtime(root: Path, integration: str, *, others=(), timeout: float = 5.0) -> dict:
+    """Remove one prepared deployment's image and records, keeping the runtime directory.
+
+    ``root`` comes from EvoAB's own cache scan and ``others`` are (deployment, image)
+    pairs of other records that must keep working, so a shared image is left alone.
+    Setup exclusion reuses the runtime lock. Containers are never stopped: an image
+    still referenced by one is refused, and Docker's non-force removal refuses images
+    a concurrently started container takes after that check.
+    """
+    from .runtime import runtime_lock
+
+    root = Path(root)
+    if not (root / "runtime.json").is_file():
+        raise ValueError("This deployment is no longer recorded")
+    with runtime_lock(root, timeout):
+        reference = _recorded_image(root)
+        image = image_record(reference)
+        shared: list[str] = []
+        if image is None:
+            action = "missing"
+        else:
+            used = image_containers(image["id"])
+            if used:
+                raise RuntimeInUse(reference, used)
+            if image["labels"].get(EVOAB_LABEL) != integration:
+                raise ContainerError(f"{reference} is not {integration}'s EvoAB runtime image; refusing to remove it")
+            shared = sorted({name for name, other in others
+                             if isinstance(other, str) and _IMAGE_REFERENCE.fullmatch(other)
+                             and (image_record(other) or {}).get("id") == image["id"]})
+            action = "shared" if shared else remove_image(reference)
+        return {"image": reference, "image_id": image["id"] if image else None, "image_action": action,
+                "shared_with": shared, "records": forget_runtime(root)}

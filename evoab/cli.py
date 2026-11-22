@@ -226,6 +226,9 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     setup.add_argument("--wheel", type=Path, help="Install a matching evoab-runtime wheel in the native environment")
     setup.add_argument("--setup-timeout-s", type=float, default=14400)
     setup.add_argument("--skip-demo-download", action="store_true", help="Skip optional expert demonstration videos")
+    setup.add_argument("--image-archive", metavar="FILENAME",
+                       help="Import one docker save archive from EVOAB_IMAGE_IMPORT_DIR "
+                            "(default: the runtime cache's image-imports directory)")
     setup.add_argument("--check-launch", action="store_true",
                        help="After setup, start one task's environment service once and fail if it does not become ready")
     setup.add_argument("--accept-license", metavar="NAME",
@@ -303,7 +306,7 @@ def main(argv=None, *, _supervised=False) -> None:
                 from evoab.services.deployment.process import cancellation_signals
                 with cancellation_signals():
                     runtime = prepare(args, adapter)
-                    if getattr(args, "check_launch", False):
+                    if getattr(args, "check_launch", False) and not getattr(args, "image_archive", None):
                         from evoab.services.deployment.setup import check_launch
                         check_launch(args, adapter, runtime)
             else:

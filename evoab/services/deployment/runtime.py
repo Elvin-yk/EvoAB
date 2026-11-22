@@ -54,6 +54,11 @@ def read_runtime(args, recipe, root=None):
     runtime = Runtime(**{**data, 'root': Path(data['root'])})
     if runtime.recipe_digest != recipe.digest or runtime.package_version != __version__:
         raise ValueError('Runtime version mismatch; rerun setup')
+    if runtime.data.get('container', {}).get('imported_image') and not getattr(args, 'check', False):
+        validation_path = root / 'validation.json'
+        validation = json.loads(validation_path.read_text()) if validation_path.is_file() else {}
+        if not validation.get('launch_verified'):
+            raise ValueError('Imported runtime has not passed its environment launch check')
     from .container import is_container
     if not is_container(runtime.python) and not Path(runtime.python).is_file():
         raise ValueError('Prepared interpreter is missing; rerun setup')

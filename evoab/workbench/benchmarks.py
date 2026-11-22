@@ -180,6 +180,8 @@ def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
         runtime = cached[1]
         if runtime is None:
             continue
+        if runtime.container and runtime.container.get("imported_image") and not runtime.validation.get("launch_verified"):
+            continue
         if _BY_INTEGRATION[runtime.integration].task_selector:
             args = SimpleNamespace(integration=runtime.integration, runtime_profile=runtime.profile, cache_dir=root)
             try:
@@ -249,8 +251,12 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
                            payload.get("container"))
 
 
+def _setup_dir(runs_root: Path) -> Path:
+    return runs_root / ".studio" / "setup"
+
+
 def _setup_record(runs_root: Path, integration: str, profile: str) -> Path:
-    return runs_root / ".studio" / "setup" / f"{integration}-{profile}.json"
+    return _setup_dir(runs_root) / f"{integration}-{profile}.json"
 
 
 def preferred_runtimes() -> dict[tuple[str, str], PreparedRuntime]:
@@ -294,7 +300,7 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 runtime = next((r for (i, _), r in prepared.items() if i == info.integration), None)
             record_path = _setup_record(runs_root, info.integration, profile)
             job = jobs.read_record(record_path)
-            failed = job is not None and job.get("exit_code") not in (None, 0)
+            failed = job is not None and job.get("exit_code") not in (None, 0) and not job.get("uninstalled_at")
             if job and jobs.is_running(job):
                 status = "preparing"
             elif failed and runtime is not None and runtime.prepared_at >= float(job.get("started_at") or 0):
@@ -302,7 +308,7 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 status = "setup_failed"
             elif runtime is not None:
                 status = "ready"
-            elif job and job.get("exit_code") not in (None, 0):
+            elif failed:
                 status = "setup_failed"
             elif info.setup == "auto" or container is not None:
                 status = "not_prepared"
@@ -322,6 +328,8 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                                and bool(runtime.tasks)),
                 "empty": (status == "ready" and runtime is not None and info.task_selector is not None
                           and not runtime.tasks),
+                "last_setup_failed": failed,
+                "installed": runtime is not None,
                 "setup_log": jobs.log_tail(record_path, 12) if job else "",
                 "runtime_kind": runtime.kind if runtime else None,
                 "image": (runtime.container or {}).get("image") if runtime else None,
@@ -385,6 +393,88 @@ def runtime_for_launch(integration: str, profile: str) -> PreparedRuntime | None
     return preferred_runtimes().get((integration, profile))
 
 
+def _shown_runtime(integration: str, profile: str, prepared: dict) -> PreparedRuntime | None:
+    """The runtime Studio's row for this profile shows (its overview fallback included)."""
+    runtime = prepared.get((integration, profile))
+    if runtime is None and profile == "default":
+        runtime = next((entry for (name, _), entry in prepared.items() if name == integration), None)
+    return runtime
+
+
+def _recorded_images(root: Path) -> list[tuple[str, str]]:
+    """(deployment, image) for every other runtime record naming a Docker image.
+
+    Raw records count, not only currently ready ones: an older or stale record still
+    depends on its image, so its reference must survive this deployment's cleanup.
+    """
+    from evoab.services.deployment.container import is_container, parse
+
+    target = Path(root).resolve()
+    found = []
+    for record in sorted(cache_root().glob("*/*/runtime.json")):
+        if record.parent.resolve() == target:
+            continue
+        try:
+            data = json.loads(record.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        payload = data.get("data") if isinstance(data, dict) else None
+        deployment = (payload or {}).get("container") if isinstance(payload, dict) else None
+        image = deployment.get("image") if isinstance(deployment, dict) else None
+        python = str(data.get("python") or "") if isinstance(data, dict) else ""
+        if not image and is_container(python):
+            image = parse(python)[0]
+        if image:
+            found.append((record.parent.parent.name, str(image)))
+    return found
+
+
+def uninstall(runs_root: Path, integration: str, profile: str = "default", *, timeout: float = 5.0) -> dict[str, Any]:
+    """Remove one Docker deployment's image and records; keep runs, assets and caches.
+
+    The target is the runtime Studio shows for that profile, so this never removes
+    another profile's installation. Active setup and Studio runs are refused here;
+    the CLI's own launches are protected only by Docker's non-force image removal.
+    """
+    from evoab.services.deployment import container as runtime_images
+
+    info = _BY_INTEGRATION.get(integration)
+    if info is None or info.integration == "custom":
+        raise ValueError(f"unknown benchmark {integration!r}")
+    if container_info(integration) is None:
+        raise ValueError(f"{integration} has no Docker recipe to uninstall")
+    if profile not in (info.profiles or ("default",)):
+        raise ValueError(f"unknown profile {profile!r} for {integration}")
+    for record_path in _setup_dir(runs_root).glob(f"{integration}-*.json"):
+        job = jobs.read_record(record_path)
+        if job is not None and jobs.is_running(job):
+            raise ValueError(f"{integration} is being prepared; wait for deployment to finish")
+    from evoab.workbench.runs import load_launches
+    if any(item.get("integration") == integration and item.get("alive") for item in load_launches(runs_root)):
+        raise ValueError(f"{integration} has a running evaluation; stop it first")
+    runtime = _shown_runtime(integration, profile, preferred_runtimes())
+    if runtime is None:
+        raise ValueError(f"{integration}/{profile} is not deployed")
+    if not runtime.container:
+        raise ValueError(f"{integration}/{profile} is a native installation; "
+                         "only Docker deployments are uninstalled here")
+    if not runtime.root.resolve().is_relative_to(cache_root().resolve()):
+        raise ValueError("The recorded runtime is outside the EvoAB cache; not uninstalling it")
+    try:
+        result = runtime_images.uninstall_runtime(runtime.root, integration,
+                                                  others=_recorded_images(runtime.root), timeout=timeout)
+    except TimeoutError as error:
+        raise ValueError(f"{integration} is being prepared; wait for deployment to finish") from error
+    # Keep the setup log; only its failed status would outlive the deployment it described.
+    for name in {profile, runtime.profile}:
+        record_path = _setup_record(runs_root, integration, name)
+        if record_path.is_file():
+            jobs.update_record(record_path, uninstalled_at=time.time())
+    remaining = _shown_runtime(integration, profile, preferred_runtimes())
+    return {**result, "integration": integration, "profile": profile, "runtime_profile": runtime.profile,
+            "remaining": {"profile": remaining.profile, "kind": remaining.kind} if remaining else None}
+
+
 def tasks_for(integration: str, profile: str) -> list[dict[str, Any]]:
     runtime = runtime_for_launch(integration, profile)
     if runtime is not None:
@@ -403,12 +493,23 @@ def task_info(integration: str, profile: str, task: str) -> dict[str, Any] | Non
 
 def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | None = None, *,
                 container: bool = False, environment: dict[str, str] | None = None,
-                accept_license: str | None = None) -> int:
+                accept_license: str | None = None, image_archive: str | None = None,
+                image_directory: str | Path | None = None) -> int:
     """Run ``evoab setup`` for one profile in the background.
 
     ``wheel`` is the evoab-runtime wheel installed into the isolated runtime;
     without it setup installs ``evoab-runtime`` from the package index.
+    ``image_directory`` fixes the directory the archive name resolves in; the setup
+    child receives it as ``EVOAB_IMAGE_IMPORT_DIR``, so both the pre-check and the
+    child's import read the same path chosen when the job started.
     """
+    if image_archive:
+        from evoab.services.deployment.image_import import DIRECTORY_ENV, archive_path, import_directory
+        directory = import_directory(directory=image_directory)
+        archive_path(image_archive, directory=directory)
+        if not container or integration == "custom":
+            raise ValueError("Image import requires a supported container deployment")
+        environment = {**(environment or {}), DIRECTORY_ENV: str(directory)}
     info = next((b for b in REGISTRY if b.integration == integration), None)
     if integration == "custom":
         from evoab.integrations.custom import manifest as manifests
@@ -429,6 +530,8 @@ def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | No
             raise ValueError(f"{integration}/{profile} is already being prepared")
         command = [sys.executable, "-m", "evoab", "setup", "--integration", integration, "--container",
                    "--skip-demo-download", "--check-launch"]
+        if image_archive:
+            command += ["--image-archive", image_archive]
         if accept_license:
             command += ["--accept-license", accept_license]
         if info is not None and info.profiles:

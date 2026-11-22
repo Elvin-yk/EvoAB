@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Studio can uninstall one prepared Docker deployment (卸载 beside 部署/已部署):
+  `DELETE /api/benchmarks/<integration>/<profile>/setup` removes that
+  deployment's records and local runtime image while keeping runs and
+  trajectories, import archives, shared upstream images and build caches, and
+  host assets. It refuses while the integration has an active setup, an active
+  Studio run or any container (stopped included) using the image, never stops
+  containers, prunes images or forces removal, keeps images another recorded
+  deployment references, retains the setup log but clears its failed status, and
+  unregisters only after Docker positively reports an already-missing image.
+  Native installations are not uninstalled. See `docs/containers.md`.
+
+- Studio can import single-image Docker archives from a server directory it shows,
+  reuse container deployment checks, and require a successful environment launch
+  before offering imported runtimes. That directory defaults to the cache's
+  `image-imports` and can be edited, saved or reset in Studio; the saved setting
+  and `EVOAB_IMAGE_IMPORT_DIR` both feed the archive listing and the setup child.
+
 - Studio serves the nanobot settings UI as versioned, cacheable assets. Benchmark
   registration and manifest management have been removed from Studio, the HTTP
   API and the CLI. Existing profiles and historical runs remain readable.

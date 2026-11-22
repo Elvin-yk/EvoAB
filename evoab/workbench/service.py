@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,7 @@ from evoab.workbench.launcher import DIRECT_OPTIONS, METHODS, REASONING_EFFORTS,
 from evoab.workbench.runs import STUDIO_DIR, load_launches, scan_runs, usage_totals
 
 # Launch defaults, remembered from the last launch.
-SETTING_KEYS = ("default_model", "default_effort", "default_method")
+SETTING_KEYS = ("default_model", "default_effort", "default_method", "image_import_dir")
 
 #: Mirrors for benchmark builds where the public package and model hubs are unreachable
 #: (mainland China): variables that upstream recipes and EvoAB's layer read.
@@ -80,6 +81,12 @@ def default_runs_root() -> Path:
     return Path(os.environ.get("EVOAB_RUNS_ROOT") or Path.home() / "evoab-runs").expanduser()
 
 
+#: Admission order for deploy, uninstall and launch inside this Studio process, so an
+#: uninstall cannot slip between a launch's checks and its process start. The CLI is
+#: not covered: its runs are protected by Docker's own non-force image removal.
+_admission = threading.RLock()
+
+
 class Workbench:
     def __init__(self, runs_root: Path | None = None):
         self.runs_root = Path(runs_root or default_runs_root()).expanduser()
@@ -101,6 +108,13 @@ class Workbench:
         unknown = set(changes) - set(SETTING_KEYS)
         if unknown:
             raise Invalid(f"unknown settings: {', '.join(sorted(unknown))}")
+        if "image_import_dir" in changes:
+            from evoab.services.deployment.image_import import normalize_directory
+            try:
+                changes = {**changes, "image_import_dir": normalize_directory(changes["image_import_dir"])}
+            except ValueError as error:
+                # Raised before writing, so an invalid path never replaces the saved one.
+                raise Invalid(str(error)) from error
         current = self.settings()
         current.update(changes)
         path = self.settings_path()
@@ -133,14 +147,49 @@ class Workbench:
         raise NotFound("expert preview is not installed")
 
     def prepare(self, integration: str, profile: str = "default", container: bool = False,
-                accept_license: str | None = None) -> dict[str, Any]:
+                accept_license: str | None = None, image_archive: str | None = None) -> dict[str, Any]:
         """Prepare a runtime; ``container`` pulls or builds the benchmark's Docker image instead."""
-        try:
-            pid = benchmarks.start_setup(self.runs_root, integration, profile, None, container=container,
-                                         environment=build_mirrors(), accept_license=accept_license)
-        except ValueError as error:
-            raise Conflict(str(error)) from error
+        with _admission:
+            try:
+                directory = None
+                if image_archive:
+                    from evoab.services.deployment.image_import import import_directory
+                    # Resolved once, here: the setup child receives this path and later setting
+                    # edits cannot redirect a job that is already queued.
+                    directory = import_directory(directory=self.settings().get("image_import_dir"))
+                pid = benchmarks.start_setup(self.runs_root, integration, profile, None, container=container,
+                                             environment=build_mirrors(), accept_license=accept_license,
+                                             image_archive=image_archive, image_directory=directory)
+            except ValueError as error:
+                raise Conflict(str(error)) from error
         return {"pid": pid, "integration": integration, "profile": profile, "container": container}
+
+    def uninstall(self, integration: str, profile: str = "default") -> dict[str, Any]:
+        """Remove one prepared Docker deployment's records and local runtime image.
+
+        Experiment runs, import archives, shared upstream images, build caches and
+        host assets stay; a busy setup, run or container refuses the removal.
+        """
+        from evoab.services.deployment import container
+        with _admission:
+            try:
+                return benchmarks.uninstall(self.runs_root, integration, profile)
+            except ValueError as error:
+                raise Conflict(str(error)) from error
+            except container.RuntimeInUse as error:
+                raise Conflict(str(error)) from error
+            except container.ContainerError as error:
+                raise Unavailable(str(error)) from error
+
+    def image_imports(self) -> dict[str, Any]:
+        """Archives in the configured server directory, with its expanded path."""
+        from evoab.services.deployment.image_import import available_archives, default_directory, import_directory
+        setting = self.settings().get("image_import_dir")
+        try:
+            listing = available_archives(import_directory(directory=setting))
+        except ValueError as error:
+            raise Unavailable(str(error)) from error
+        return {**listing, "configured": setting, "default_directory": str(default_directory())}
 
     def system_check(self) -> dict[str, Any]:
         """What a machine needs before one-click benchmark deployment, each with a fix."""
@@ -239,14 +288,15 @@ class Workbench:
         return matches[0]
 
     def launch(self, payload: dict[str, Any]) -> dict[str, Any]:
-        try:
-            request = LaunchRequest(**payload)
-            task = validate(request)
-        except (TypeError, ValueError) as error:
-            raise Invalid(str(error)) from error
-        launch_id = launch(request, task, self.runs_root)
-        self.update_settings({"default_model": request.model, "default_effort": request.reasoning_effort,
-                              "default_method": request.method})
+        with _admission:
+            try:
+                request = LaunchRequest(**payload)
+                task = validate(request)
+            except (TypeError, ValueError) as error:
+                raise Invalid(str(error)) from error
+            launch_id = launch(request, task, self.runs_root)
+            self.update_settings({"default_model": request.model, "default_effort": request.reasoning_effort,
+                                  "default_method": request.method})
         return {"launch_id": launch_id, "short_id": launch_id.rsplit("_", 1)[-1], "request": asdict(request)}
 
     def _launch_record(self, launch_id: str) -> dict[str, Any]:

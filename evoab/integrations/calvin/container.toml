@@ -6,6 +6,8 @@
 # calvin_models; broader exception on PyBullet disconnect). It re-initializes
 # the git repositories, so the local layer records the pinned revisions.
 image = "ghcr.io/allenai/vla-evaluation-harness/calvin@sha256:6d018bfe4cdeb3af2c8841e4504e4e613a1f8c9acdd040eec3b8c81c7af20174"
+# Config digest from the pinned registry manifest, also the docker-save image ID.
+image_id = "sha256:581db3128e78bd749f7bca9668cf70b2b9655f9da4a4f488bf6bd233772431d2"
 python = "/opt/conda/envs/calvin/bin/python"
 native_root = "/app/calvin/calvin_env"
 gpu = true
