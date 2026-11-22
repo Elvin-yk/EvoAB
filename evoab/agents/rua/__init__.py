@@ -50,14 +50,19 @@ class RuaAgent:
     @classmethod
     def add_cli_arguments(cls, parser) -> None:
         group = parser.add_argument_group("RUA evaluator")
-        group.add_argument("--rua-python", help="Interpreter with uni-robot-agent installed (or EVOAB_RUA_PYTHON)")
+        group.add_argument("--rua-python", help="RUA interpreter (or EVOAB_RUA_PYTHON, then checkout rua/venv if present)")
         group.add_argument("--rua-model-preset", action="store_true",
                            help="Treat --model as an EvoAB model preset, as Studio does")
 
     @classmethod
     def resolve_defaults(cls, args) -> None:
-        args.rua_python = (getattr(args, "rua_python", None) or os.environ.get("EVOAB_RUA_PYTHON")
-                           or sys.executable)
+        python = getattr(args, "rua_python", None) or os.environ.get("EVOAB_RUA_PYTHON")
+        if not python:
+            resources = Path(__file__).resolve().parents[3] / "rua"
+            venv = resources / "venv"
+            if not venv.is_symlink() and (venv / ".evoab-rua-ready").is_file():
+                python = str(venv / "bin" / "python")
+        args.rua_python = python or sys.executable
         if args.reasoning_effort is None:
             args.reasoning_effort = "max"
 

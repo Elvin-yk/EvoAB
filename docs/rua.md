@@ -7,8 +7,8 @@ The former `evoab runs launch --method rua` remains an alias. The adapter uses t
 and its default Codex planner with the `direct` tool profile. The method is
 available for single-episode RoboDojo runs. Existing methods need no migration.
 
-See the [RUA resource directory](../rua/README.md) for source links, the
-evaluation-host helper, and the audited call and path dependencies.
+See the [RUA resource directory](../rua/README.md) for physical resource
+migration, the evaluation-host workflow, and the audited path dependencies.
 
 ## Episode ownership
 
@@ -31,18 +31,20 @@ the evaluator and removes containers it started.
 ## Prepare the evaluation host
 
 Run from the EvoAB checkout on the integration branch with the adapter changes
-present. Use Python 3.11 or later on the host. `RUA_PYTHON` can be the Python
-executable of the existing RUA environment. To prepare a host-only RUA
-interpreter from the provided checkout, run the following on the evaluation host.
+present. Use Python 3.11 or later on the host. For an existing evaluation setup
+with sibling RUA resources, use the [migration workflow](../rua/README.md).
+The following commands apply to a fresh source checkout after placing the
+upstream sources in `rua/source/`. Use your existing EvoAB host Python when
+available.
 
 ```bash
 cd /path/to/EvoAB
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[agent]'
 
-python3 -m venv ../.venv-rua-evaluator
-RUA_PYTHON="$PWD/../.venv-rua-evaluator/bin/python"
-"$RUA_PYTHON" -m pip install -e /path/to/rua-source
+python3 -m venv rua/venv
+RUA_PYTHON="$PWD/rua/venv/bin/python"
+"$RUA_PYTHON" -m pip install -e "$PWD/rua/source"
 ```
 
 Check the RUA install and look up the tasks in EvoAB's prepared catalog.
@@ -111,9 +113,9 @@ selected model. The resolver also reports catalog proxies, request overrides
 and credential-bearing base URLs as incompatible with this transport.
 
 For an explicitly configured RUA provider profile, use the single-episode CLI
-above. After updating EvoAB on a
-prepared host, restart Studio with its existing runs directory and RUA Python
-setting. The prepared Docker runtime, assets and RUA installation can be reused.
+above. After the physical migration, restart Studio with the same runs
+directory and the new `EVOAB_RUA_PYTHON` and `EVOAB_CACHE_DIR` printed by
+`migrate_resources.py --verify`. The prepared Docker image is reused.
 
 ## Verify the run
 

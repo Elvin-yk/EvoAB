@@ -1,5 +1,5 @@
 include README.md CHANGELOG.md CONTRIBUTING.md AGENTS.md CLAUDE.md pyrightconfig.json
-include rua/.gitignore rua/README.md rua/link_resources.py
+include rua/.gitignore rua/README.md rua/link_resources.py rua/migrate_resources.py
 recursive-include docs *.md
 recursive-include .github/workflows *.yml
 recursive-include assets *.md *.png *.html *.pdf *.sh *.txt

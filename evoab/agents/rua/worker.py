@@ -73,6 +73,19 @@ def main() -> None:
     except ImportError as error:
         raise SystemExit(f"RUA runtime import failed: {error}. Install the reference uni-robot-agent in --rua-python.") from error
 
+    if sys.argv[1:] == ["--check-runtime"]:
+        import openai_codex
+        import uni_robot_agent
+
+        spec = load_integration("robodojo").get_integration_spec()
+        flags = ["--integration", "robodojo", "--agent", "codex", "--model", "runtime-check",
+                 "--env-url", "http://127.0.0.1:18080", "--no-sam3", "--validate-config"]
+        args = build_parser(spec).parse_args(["run", *flags])
+        resolve_settings(args, spec, explicit={flag for flag in flags if flag.startswith("--")})
+        print(json.dumps({"rua": str(Path(uni_robot_agent.__file__).resolve()),
+                          "version": uni_robot_agent.__version__, "sdk": openai_codex.__version__}))
+        return
+
     payload = json.load(sys.stdin)
     settings = payload["settings"]
     integration = settings["integration"]

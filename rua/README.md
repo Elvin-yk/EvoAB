@@ -1,102 +1,204 @@
-# RUA resources and path audit
+# RUA resources and physical migration
 
-This directory is the source-checkout entry point for Uni Robot Agent (RUA)
-resources. `adapter/` points to the packaged `evoab/agents/rua/` adapter. The
-links to external resources are local to each checkout.
+The source checkout is the entry point for Uni Robot Agent (RUA) resources.
 
 ```text
-rua/
-├── README.md
-├── .gitignore
-├── link_resources.py
-├── adapter -> ../evoab/agents/rua
-├── source       upstream reference checkout
-├── venv         existing RUA interpreter environment, when provisioned
-├── cache        existing cache, when provisioned
-├── cache-reuse  existing simulator cache, when provisioned
-└── candidate    existing candidate source, when provisioned
+EvoAB/
+├── evoab/agents/rua/         packaged adapter and isolated evaluator entry
+└── rua/
+    ├── README.md
+    ├── .gitignore
+    ├── link_resources.py    legacy layout helper
+    ├── migrate_resources.py
+    ├── adapter -> ../evoab/agents/rua
+    ├── source/              physical upstream source
+    ├── venv/                new RUA Python environment
+    ├── cache/               physical cache copy
+    ├── cache-reuse/         physical cache copy
+    └── candidate/           physical candidate copy
 ```
 
-## Local source and existing editable installs
+The five directories and the local migration journal are ignored by Git. The
+EvoAB host Python (for example, `../.venv311`) stays in its existing location.
+WSL development may keep `.reference/rua-source/` and the local convenience
+link `rua/source -> ../.reference/rua-source`. The physical migration below is
+for the evaluation checkout with all five sibling resources.
 
-In the WSL development checkout, `source` is a relative link to
-`../.reference/rua-source`. Open `rua/source/uni_robot_agent/` to inspect the
-complete upstream package. Existing `.reference/rua-source` references still
-resolve to the original checkout. Keeping the source in place also preserves
-any absolute path already recorded by an editable install, editor, or script.
-For a new checkout that already has the legacy reference directory, create the
-same link from the EvoAB root and verify both entries.
+## 1. Audit and prepare an offline wheelhouse
+
+Run these commands on the evaluation host from the repository root. Use the
+evaluation account and the existing EvoAB interpreter. Pick the cache from the
+most recent representative run's `deployment.json` field `runtime_manifest`.
+For a record at `<cache>/robodojo/<version>-<digest>-container/runtime.json`,
+set `ACTIVE_CACHE` to `<cache>`. Confirm this against the Studio service's
+`EVOAB_CACHE_DIR` and the CLI's `--cache-dir` when used. If the selected record
+is in the home cache, that is the cache to supply. Native deployments use
+`--native` for audit and migration and omit `--container` from the episode
+commands below. Studio prefers Docker when both preparations are available.
 
 ```bash
-ln -sT ../.reference/rua-source rua/source
-test rua/source -ef .reference/rua-source
-test -f rua/source/uni_robot_agent/__init__.py
-git check-ignore -v rua/source
+git switch feat/rua-integration
+git pull --ff-only origin feat/rua-integration
+
+HOST_PY="$PWD/../.venv311/bin/python"
+ACTIVE_CACHE="/absolute/path/to/the/old/active/evoab-cache"
+"$HOST_PY" rua/migrate_resources.py --audit --cache-dir "$ACTIVE_CACHE"
 ```
 
-If the link is already present, run the verification lines. The other local
-aliases are optional and depend on which resources exist on that machine.
+The audit reports the selected record, host bind mounts, native source and
+asset paths, base interpreter, installed distribution pins, link and file
+references, available disk space and detectable active users. If another
+runtime record is intentionally used outside the selected cache, pass its
+physical path with `--manifest /absolute/path/to/runtime.json` to both audit
+and migration. Apply this only to records owned by the evaluation account
+and confirm that their consumers are stopped. The audit covers the five
+resource trees and the selected records. Review any Studio service files,
+shell startup files, cron jobs or scripts outside that scope for old paths.
 
-## Existing resources on the evaluation host
-
-The script expects a Git checkout next to the existing resource directories.
-Run it manually when the evaluation window permits. The default resource root
-is the checkout's parent directory. `--resource-root` selects a different
-parent when needed.
-
-| Alias inside the checkout | Directory under the existing resource root |
-| --- | --- |
-| `rua/source` | `rua-source/` |
-| `rua/venv` | `.venv-rua/` |
-| `rua/cache` | `rua-cache/` |
-| `rua/cache-reuse` | `rua-cache-reuse/` |
-| `rua/candidate` | `rua-candidate-0.2.0/` |
-
-Use an existing host Python. For the deployment layout with `.venv311` next
-to the checkout, run the following from the EvoAB root.
+Create a wheelhouse outside the five resource directories. Preserve the
+exact variants and sources, especially CUDA wheels, local builds and any
+direct archive provenance identified by the audit. For packages from the
+ordinary configured package index, an example is:
 
 ```bash
-../.venv311/bin/python rua/link_resources.py --check
-../.venv311/bin/python rua/link_resources.py
-git check-ignore -v rua/source rua/venv rua/cache rua/cache-reuse rua/candidate
+WHEELHOUSE="$HOME/rua-migration-wheelhouse"
+mkdir -p "$WHEELHOUSE"
+"$HOST_PY" rua/migrate_resources.py --print-pins > "$WHEELHOUSE/requirements.txt"
+../.venv-rua/bin/python -m pip download --only-binary=:all: --no-deps \
+  --dest "$WHEELHOUSE" -r "$WHEELHOUSE/requirements.txt"
+```
+
+If the old Python has no pip, use a separate pip-enabled interpreter of the
+same version and platform to retrieve wheels. Retrieve proprietary, custom,
+direct or CUDA wheels from their original trusted artifact sources and place
+them in the wheelhouse instead of substituting same-version builds. Include
+the source checkout's `[build-system].requires` wheels for the isolated
+editable build. In the audited RUA 0.2.0 source this is
+`setuptools>=77.0.3`. The build helper runs in isolation and does not change
+the target's pinned package inventory. The tool rejects external/duplicate
+system-site distributions and unrelated editable or VCS installations. An
+old non-editable RUA install must match the sibling source files before the
+tool replaces it with an editable one.
+Reconcile those dependencies in a separate, equivalent environment before
+proceeding. An inventory containing no compatible wheels is a preflight
+failure. The transaction itself installs from the wheelhouse without an
+index.
+
+## 2. Copy, verify and isolate the originals
+
+Drain only the evaluation account's affected runs and stop its Studio
+launcher. Keep it stopped until the old directories have been isolated. The
+tool checks this user's Linux processes and local Docker bind mounts, without
+signalling processes or changing containers. The operator must account for
+other users and any supervisor that can launch new jobs during the maintenance
+window. Leave unrelated GPU jobs running.
+
+```bash
+"$HOST_PY" rua/migrate_resources.py --migrate --quiescent \
+  --cache-dir "$ACTIVE_CACHE" --wheelhouse "$WHEELHOUSE"
+"$HOST_PY" rua/migrate_resources.py --verify
+"$HOST_PY" rua/migrate_resources.py --isolate --quiescent
+"$HOST_PY" rua/migrate_resources.py --verify
+```
+
+The tool requires temporary capacity for both copies. It uses resumable
+rsync staging with checksum comparison, including for cross-filesystem copies.
+It refuses mount points inside resource trees and pre-existing destination
+directories unless they belong to its journal. Links inside copied resources
+are rebased against their new physical paths and checked for dangling or
+legacy targets. Known deployment records and generated RoboDojo robot
+configuration paths are rebased. Unknown live references are reported with
+filenames for manual review while the originals remain available. Native
+simulator environments that are embedded in a cache, and contain path-bound
+executables or extension metadata, need dedicated relocation or a stable
+external runtime. Moving such an environment by renaming its venv is unsafe;
+the migrator stops on unresolved references. The Docker image and its
+container-internal interpreter stay unchanged.
+
+The new RUA venv is built at its final path using the original base Python,
+with the exact installed package versions and an editable install from
+`rua/source`. It checks the Python prefix and versions, installed editable
+metadata, dependency consistency, executable shebangs, extension references,
+and runs the actual isolated EvoAB Worker import and parser check.
+
+A runtime record inside the copied trees is updated in the copy. When a
+selected external record references a moved resource, the tool saves its
+original bytes and atomically updates that record. Unrelated cache entries,
+images and shared assets remain in their original locations. The manifest
+and Studio catalog are checked with EvoAB's real loaders. The Docker check
+also verifies the local image and same-path mounts. No simulation is started
+by any of the migration commands.
+
+Isolation renames the five originals to a private sibling backup directory,
+then reruns CPU verification with the old paths absent. It creates no
+compatibility links at the old paths. Each operation is journaled in
+`rua/.migration/state.json`. Repeat the same interrupted phase to resume.
+If a prepared record cannot be safely migrated, resolve the reported
+dependency or roll back before restarting the previous environment.
+
+## 3. Run the acceptance episode and restart Studio
+
+Use both exports printed by `--verify`. The following assumes the original
+active cache was `../rua-cache-reuse`; use the printed cache path when the
+original active cache was different. Launch Studio from this shell or update
+its service configuration with these values before restarting it. Preserve
+its other settings and runs root.
+
+```bash
+export EVOAB_RUA_PYTHON="$PWD/rua/venv/bin/python"
+export EVOAB_CACHE_DIR="$PWD/rua/cache-reuse"
+
+"$HOST_PY" -m evoab benchmarks tasks robodojo
+RUA_TASK="stack_bowls"  # Use an available task from the catalog.
+PRESET="deepseek-flash"
+run_args=(run --integration robodojo --agent rua --rua-model-preset
+  --model "$PRESET" --deploy local --container --task "$RUA_TASK"
+  --tool-profile direct --no-sam3 --no-depth
+  --output-dir "$PWD/runs/rua-migration-acceptance")
+
+"$HOST_PY" -m evoab "${run_args[@]}" --validate-config
+"$HOST_PY" -m evoab "${run_args[@]}"
+```
+
+An API-key preset such as `deepseek-flash` requires its existing local model
+configuration. A Codex OAuth preset remains incompatible with the RUA HTTP
+adapter. Check the live run's `deployment.json`, `evaluator.log`,
+`supervisor.json` and `result.json`. The terminal's `Run artifacts` path
+identifies the exact run. Acceptance requires the selected manifest, RUA
+attachment, evaluator exit zero, and the official `task_success: true`
+and `accepted: true`. GPU acceptance is separate from all CPU checks. In
+Studio, confirm **Agentic Policy → RUA** and its preset list using the new
+settings.
+
+## 4. Finalize or roll back
+
+When the acceptance episode has finished, keep the affected jobs and
+Studio stopped while finalizing. Pass the exact post-isolation run directory.
+
+```bash
+"$HOST_PY" rua/migrate_resources.py --finalize --quiescent --run-dir "/path/from/Run artifacts"
 git status --short
 ```
 
-The script checks all targets and conflicting paths before creating links,
-keeps existing links that resolve to the expected directory, and opens the
-original RUA interpreter in isolated mode to import `uni_robot_agent`.
-It also checks the interpreter through `rua/venv` after linking and reports
-Git-visible untracked regular files of at least 10 MiB. It uses the Git index
-and ignore rules without traversing ignored resource links. If another process
-creates an alias after preflight, link creation fails for that alias. Review
-the conflict and repeat the script to complete any remaining links.
+Finalize records the evidence and keeps the dated transaction in
+`rua/.migration/` and the original resources in the printed
+`.rua-backup-<id>` sibling directory. At the old locations there should be
+neither resource directories nor aliases. Retain the backup until retention
+and recovery requirements are met. To reclaim disk space later, archive the
+backup and remove only that specific, independently verified snapshot. The
+tool never deletes original data.
 
-The links are for browsing and operator access. Keep the running Studio's
-configured interpreter and cache paths at their existing absolute locations.
-Studio can continue using the resources while the aliases are created, so this
-layout change needs no Studio restart or simulator setup. Keep the existing
-RoboDojo manifests and the environment of the Studio process. The script does
-not install packages, invoke Docker or edit configuration.
-
-### Rollback
-
-On WSL, check `readlink rua/source` and run `unlink rua/source` if it points to
-`../.reference/rua-source`. The original checkout stays accessible under
-`.reference/rua-source`.
-
-On the evaluation host, remove only aliases reported as `Created` by the
-script. Confirm each alias before unlinking it. For example, from the checkout
-root on the default layout:
+To roll back, stop the affected Studio/jobs and run:
 
 ```bash
-resource_root="$(cd .. && pwd -P)"
-test -L rua/venv && test "$(readlink rua/venv)" = "$resource_root/.venv-rua" && unlink rua/venv
+"$HOST_PY" rua/migrate_resources.py --rollback --quiescent
 ```
 
-Apply the same check to any other alias you created using the mapping table.
-Use `unlink` on the alias path without a trailing slash. The tracked `adapter`
-link is part of the checkout. The original resources and runtime manifests
-are unaffected by this rollback.
+Rollback restores the five originals and any prior aliases and byte-for-byte
+external manifest backups. It leaves new resource copies under the private
+journal. Reset the CLI or Studio's interpreter and cache settings to the
+previous values before restarting. Rollback is available after finalize as
+long as the transaction journal and quarantined originals remain available.
 
 ## Verified call path
 
@@ -160,28 +262,17 @@ are unaffected by this rollback.
    through MCP, and the supervisor closes the evaluator and any owned
    environment. Model/tool completion and official task success are distinct.
 
-## Path and dependency matrix
+## Path and dependency audit
 
-| Reference | Existing path or setting | Use | Effect of the new layout |
+| Original → new | Reference | Migration and risk | Verification |
 | --- | --- | --- | --- |
-| Developer/editor | `.reference/rua-source/` | Full reference source | Also accessible at `rua/source/`, with the original directory in place |
-| Agent registry | `evoab.agents.rua:RuaAgent` | Runtime Python adapter | `rua/adapter` is a browsing link to the same package |
-| Adapter `resolve_defaults()` and `evaluator_plan()` | `--rua-python`, then `EVOAB_RUA_PYTHON`, then `sys.executable` | Host RUA interpreter | The absolute interpreter path is used without dereferencing the venv's `bin/python` symlink. Relative CLI paths are anchored to the working directory |
-| Evaluator startup | `Path(__file__).with_name("worker.py").resolve()` and `<python> -I -u` | Real worker script and isolated imports | `rua/source` is outside the import contract. `-I` ignores `PYTHONPATH` and user site directories. Editable installs can still reference an absolute source path through the selected venv's site-packages |
-| Upstream `_run_agent()` and `CodexAgent.run()` | Gateway and MCP loopback URLs, SDK cwd `.` for this mode | Model requests and tool callbacks | Both servers run inside the isolated RUA process. The SDK's relative working directory follows the evaluator's inherited cwd |
-| Upstream `context.prompt.get_prompts_dir()` and `tools.skills` | `Path(__file__).resolve()` under the imported `uni_robot_agent` package | Prompts, RoboDojo supplements and packaged skills | The chosen interpreter's installed package continues to supply these files |
-| Workbench `jobs.start()` and supervisor | Studio `sys.executable`, inherited cwd and environment | Parent launches `python -m evoab`, then starts the selected RUA interpreter | Existing Studio interpreter and cwd still determine imports and relative path resolution |
-| `config.resolve_settings()` | `--env-url` / `EVOAB_ENV_URL`, `--provider-url` / `EVOAB_PROVIDER_URL`, `--rua-model-preset` | Environment and model endpoints | Managed deployment injects its environment URL. The model preset and explicit provider still use their existing configuration paths |
-| `catalog.config_path()` | `EVOAB_AGENT_HOME` or `~/.config/evoab/agent` | Model presets, provider configuration and usage data | Resource links do not supply or alter model credentials |
-| `runtime.cache_root()` and `read_runtime()` | `--cache-dir`, `EVOAB_CACHE_DIR` or `~/.cache/evoab`, plus recipe, package version and digest | `runtime.json` lookup | Keep the active cache setting. The two cache aliases do not select a manifest |
-| RoboDojo `deployment.plan()` and `container.wrap_plan()` | Manifest `python`, `root`, `data.native_root`, `data.assets_dir` and container mount declarations | Simulator image, absolute mounts, task layout and service interpreter | Keep manifest paths and original resources. `/root/miniconda3/envs/RoboDojo/bin/python` in `container.toml` is an image-internal path. RoboDojo prepends the native root and its XPolicyLab directory to `sys.path` inside the simulator |
-| Deployment and RUA session | `--output-dir` or Studio `--runs-root` / `EVOAB_RUNS_ROOT` | Run directory, logs, artifact store and run-local `.codex` when using the Gateway | The supervisor resolves the run directory to an absolute path. `deployment.json` records the selected `runtime_manifest` |
-| Packaging and CI | `evoab*` package discovery, explicit `MANIFEST.in` entries, `scripts/validation/release_contents.py` | Wheel, source archive and native distribution staging | The source manifest and release allowlist include only this guide, helper and ignore file from `rua/`. Release validation rejects the local links and reference checkout |
-
-The branch audit found no checkout-relative RUA source or cache path in the
-planner's startup contract. The ARX ONE body and Piper resource files also
-contain `rua` names, including hardware deployment paths under `/opt` and
-`/etc`. They belong to separate hardware integrations. The existing RoboDojo
-shell examples and evaluator scripts call EvoAB entry points and consume their
-configured paths. To identify the cache actually used on an evaluation host,
-read that run's `deployment.json` for the selected manifest.
+| `../rua-source` → `rua/source` | RUA upstream, editable finder/`.pth`, `.egg-link` and `direct_url.json` | Checksum-copy and install editable at the new path. A candidate installed in place of the expected source needs review | Isolated Worker reports its imported source, version and Codex SDK |
+| `../.venv-rua` → `rua/venv` | Studio startup environment, `--rua-python`, `pyvenv.cfg`, shebangs, installed packages, compiled extensions | Rebuild with the original base Python, pinned dependencies and offline wheels. Override precedence is CLI, environment, verified checkout venv, then host Python | Compare the inventory, check dependency consistency, metadata, legacy paths and Worker/CLI |
+| `../rua-cache` and `../rua-cache-reuse` → `rua/cache` and `rua/cache-reuse` | `--cache-dir`, `EVOAB_CACHE_DIR`, internal symlinks, runtime records | Checksum-copy physical data. Rebase known references without changing which cache is selected | Verify symlinks, selected manifest, same-path mounts and frozen task layout |
+| `../rua-candidate-0.2.0` → `rua/candidate` | Candidate source and related cache links | Checksum-copy and adjust references inside managed resource trees | Verify reachable links and integrity before switching |
+| Selected `runtime.json` → corresponding path reached by the new cache setting | Supervisor `runtime_for()`, Workbench `prepared_runtimes()`, and historical `deployment.json` | Rebase the copied record or atomically update the explicitly selected external record with backup. Historical artifacts remain as evidence | Use actual EvoAB loaders and check the record path in the acceptance run |
+| RoboDojo `native_root`, asset source, generated asset overlay and XDG paths | Manifest data/environment and Docker mount list encoded in `python` | Rebase affected host paths only. A mount with a stale path loses access inside the container. External assets unrelated to the five directories stay in place | Check mount metadata, host files, `native_root/Assets` and representative launch plan |
+| Container-internal `/root/miniconda3/envs/RoboDojo/bin/python` → same path | RoboDojo container recipe and `docker://…#…` | Retain the image and interpreter. Rebase only the host mounts encoded after it | Check local image and validate live episode separately |
+| `../.venv311` → same path | EvoAB CLI, Studio and Workbench `sys.executable` | Preserve the host environment; Studio jobs inherit its environment and working directory | Launch the actual EvoAB CLI with the migrated evaluator |
+| Adapter `evoab/agents/rua/worker.py` → same path | Adapter `Path(__file__)`, worker `-I` | Preserve the separate interpreter. `-I` ignores `PYTHONPATH` and the user site; editable metadata and venv site-packages determine the import | Launch the existing Worker with its CPU check |
+| Gateway and MCP loopback, model preset files and run workdir → same locations | Worker threads, Codex SDK binary, Provider catalog, current working directory | No provider or authentication changes. Relative settings still follow the launch working directory | CLI settings validation or separate live model/tool test |
