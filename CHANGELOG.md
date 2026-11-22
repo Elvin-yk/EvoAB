@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- RUA uses the shared HTTP preset resolver and its declared wire profiles.
+  Studio shows incompatible presets with provider-specific reasons. The existing
+  Codex OAuth preset requires separate authorization for public Responses.
+  The RUA evaluator also rejects model replies that echo request credentials.
+
 - Studio groups registered Agent implementations under Agentic Policy.
   RoboDojo offers the built-in Agent and RUA, with model presets and settings
   supplied by each adapter. `evoab runs launch --method agentic --agent rua`

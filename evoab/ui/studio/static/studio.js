@@ -453,10 +453,14 @@ async function stepModel(body) {
     return;
   }
   const manage = h("a", { class: "btn small", href: "#settings/models" }, "管理模型");
+  const incompatible = m.incompatible_presets?.length ? h("div", { class: "list model-effort" },
+    h("div", { class: "list-group" }, "不兼容的模型预设"),
+    m.incompatible_presets.map((p) => h("div", { class: "list-item", role: "button", "aria-disabled": "true" },
+      h("div", { class: "t mono" }, p.name), h("div", { class: "s" }, p.reason)))) : null;
   if (!m.presets.length) {
     w.model = null;
     put(holder, h("div", { class: "card empty" }, h("b", {}, agent.filters_presets ? "没有可用的模型预设" : "还没有模型预设"),
-      agent.model_help || "先在设置中添加提供商并新建预设。", manage));
+      agent.model_help || "先在设置中添加提供商并新建预设。", manage), incompatible);
     return;
   }
   if (!m.presets.some((p) => p.name === w.model)) w.model = null;
@@ -486,6 +490,7 @@ async function stepModel(body) {
         } },
         h("div", { class: "t mono" }, p.name),
         h("span", { class: "muted small" }, `${p.model} · 最多输出 ${fmtInt(p.max_tokens)} · ${fmtTokens(p.context_window_tokens)} 上下文${p.reasoning_effort ? ` · 预设推理 ${effortLabel(p.reasoning_effort)}` : ""}`)))])),
+    incompatible,
     h("div", { class: "model-effort" },
       h("div", { class: "section-title", id: "effort-label" }, "推理强度"),
       h("div", { class: "segmented", role: "group", "aria-labelledby": "effort-label" },

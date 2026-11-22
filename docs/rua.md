@@ -89,11 +89,26 @@ For Studio or `evoab runs launch --integration robodojo --method agentic
 --agent rua --task "$RUA_TASK" --model "$PRESET"`, export `EVOAB_RUA_PYTHON="$RUA_PYTHON"` before
 starting the launcher. Studio uses the selected preset's model ID, URL and
 key, plus the reasoning effort selected at launch. The optional turn limit
-maps to `--max-turns`. The adapter maps standard
-Responses and Chat Completions connections to RUA profiles. RUA owns the
-remaining generation settings. Presets using OAuth, catalog proxy configuration
-or custom request overrides are rejected. For an explicitly configured RUA
-provider profile, use the single-episode CLI above. After updating EvoAB on a
+maps to `--max-turns`. The shared HTTP preset resolver uses the provider
+catalog's resolved model, request API and authentication type, and checks them
+against RUA's declared wire profiles. API-key Responses presets such as
+`deepseek-flash` use `passthrough.responses`. Chat Completions presets use the
+existing Responses-to-Chat profile. RUA continues to own its Responses gateway,
+stream handling and MCP tool delivery. A response that echoes a request
+credential is rejected before the gateway can save it or deliver a tool call.
+
+Studio displays disabled presets with their reason. The existing `openai_codex`
+OAuth backend uses Nanobot's Codex login flow and the Codex service on
+`chatgpt.com`. For public Responses with ChatGPT plan usage, OpenAI documents
+[separate app authorization](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+and a [specific Responses contract](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
+RUA cannot reuse the existing Codex credential through its HTTP adapter.
+An API-key Responses preset is usable when its endpoint grants access to the
+selected model. The resolver also reports catalog proxies, request overrides
+and credential-bearing base URLs as incompatible with this transport.
+
+For an explicitly configured RUA provider profile, use the single-episode CLI
+above. After updating EvoAB on a
 prepared host, restart Studio with its existing runs directory and RUA Python
 setting. The prepared Docker runtime, assets and RUA installation can be reused.
 

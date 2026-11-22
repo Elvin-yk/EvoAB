@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from evoab.agents.registry import agent_launch
+from evoab.provider.contracts import PresetCompatibilityError
 from evoab.workbench import benchmarks, direct_trace, jobs, trace
 from evoab.workbench.launcher import (
     DIRECT_OPTIONS, REASONING_EFFORTS, LaunchRequest, launch, method_identity, methods, resolve_selection, validate,
@@ -217,16 +218,19 @@ class Workbench:
         settings = self._catalog(lambda c: c.settings)
         if launch_config.validate_preset is None:
             return settings
-        presets = []
+        presets, incompatible = [], []
         for preset in settings["presets"]:
             try:
                 launch_config.validate_preset(preset["name"])
-            except ValueError:
-                continue
+            except ValueError as error:
+                reason = (str(error) if isinstance(error, PresetCompatibilityError)
+                          else "This preset could not be used with the selected Agent. Check its provider settings.")
+                incompatible.append({"name": preset["name"], "model": preset.get("model"), "reason": reason})
             except RuntimeError as error:
                 raise Unavailable(str(error)) from error
-            presets.append(preset)
-        return {**settings, "presets": presets}
+            else:
+                presets.append(preset)
+        return {**settings, "presets": presets, "incompatible_presets": incompatible}
 
     def save_preset(self, fields: dict[str, Any], existing: str | None = None) -> dict[str, Any]:
         return self._catalog(lambda c: c.save_preset, fields, existing=existing)

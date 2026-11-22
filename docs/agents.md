@@ -83,7 +83,10 @@ ID, and optional `agent_options` for declared parameters. The mode's default
 adapter handles requests that omit `agent`. `GET /api/config` lists modes under
 `methods`, with registered choices under each mode's `agents`. The optional
 `agent` query on `GET /api/models` filters presets using that adapter's
-validator. Legacy `method: "rua"` requests and saved settings resolve to
+validator and reports unavailable choices with reasons in `incompatible_presets`.
+Validators can raise `PresetCompatibilityError` for messages safe to display.
+HTTP-backed adapters can use `resolve_http_preset` with their client protocol
+and supported wire profiles. Legacy `method: "rua"` requests and saved settings resolve to
 `method: "agentic", agent: "rua"`. Run history resolves the same alias as it
 reads existing records.
 

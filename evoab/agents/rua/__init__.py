@@ -6,9 +6,9 @@ import json
 import os
 from pathlib import Path
 import sys
-from urllib.parse import urlsplit
 
 from evoab.agents.contracts import AgentLaunch, EvaluatorPlan, LaunchIntegerOption
+from evoab.provider.http_presets import resolve_http_preset, validate_http_provider_url
 
 
 # Settings shared by both harnesses. Service deployment settings stay in EvoAB.
@@ -26,30 +26,12 @@ _WORKER_OPTIONS = (
 )
 
 
-def preset_connection(name: str) -> tuple[str, str, str, str | None]:
+def preset_connection(name: str) -> tuple[str, str, str, str]:
     """Map a Studio preset to a model and transport supported by RUA's Codex planner."""
-    from evoab.provider import catalog
-
-    config = catalog.load_config()
-    from nanobot.providers.routing import resolve_automatic_model_api, resolve_provider_route
-
-    preset = (config.model_presets or {}).get(name)
-    if preset is None:
-        raise ValueError(f"Unknown model preset {name!r}")
-    route = resolve_provider_route(config, preset=preset)
-    provider = route.provider_config
-    base_url = config.get_api_base(route.model, preset=preset)
-    if route.backend != "openai_compat" or not provider or not base_url or (route.spec and route.spec.is_oauth):
-        raise ValueError("RUA requires an OpenAI-compatible HTTP model preset")
-    if (provider.use_proxy or provider.extra_headers or provider.extra_query or provider.extra_body
-            or (route.spec and route.spec.default_extra_headers)):
-        raise ValueError("RUA model presets require a connection without custom request overrides or a catalog proxy")
-    api = route.model_api.preferred_api if route.model_api else resolve_automatic_model_api(config, preset=preset)[1]
-    profiles = {"responses": "passthrough.responses", "chat_completions": "omnirouter.chat_completions"}
-    if api not in profiles:
-        raise ValueError(f"RUA does not support the preset's {api} API")
-    model = route.spec.request_model_name(route.model) if route.spec else route.model
-    return model, base_url, profiles[api], provider.api_key
+    connection = resolve_http_preset(
+        name, client_protocol="responses", profiles=("passthrough.responses", "omnirouter.chat_completions"),
+    )
+    return connection.model, connection.base_url, connection.profile, connection.api_key
 
 
 class RuaAgent:
@@ -61,7 +43,7 @@ class RuaAgent:
         label="RUA", modes=("agentic",), integrations=("robodojo",),
         description="Uni Robot Agent 连接 EvoAB 管理的 RoboDojo 环境。",
         cli_flags=("--rua-model-preset",), validate_preset=preset_connection,
-        model_help="可选预设使用标准 Responses 或 Chat Completions 接口。",
+        model_help="支持使用 API Key 的标准 Responses 或 Chat Completions 预设。",
         options=(LaunchIntegerOption("max_turns", "--max-turns", "Agent 轮次上限", "留空或填 0 表示不限制轮次。"),),
     )
 
@@ -104,9 +86,7 @@ class RuaAgent:
         args.provider_profile = args.provider_profile or "passthrough.responses"
         validate_provider_profile(args.provider_profile, client_protocol=cls.model_protocol)
         if args.provider_url:
-            provider = urlsplit(args.provider_url)
-            if provider.scheme not in {"http", "https"} or not provider.hostname:
-                raise ValueError("RUA requires an absolute HTTP(S) model provider URL")
+            validate_http_provider_url(args.provider_url)
         elif any(flag.startswith("--provider-") for flag in explicit) or explicit & {
             "--model-parallel-tool-calls", "--no-model-parallel-tool-calls",
         }:

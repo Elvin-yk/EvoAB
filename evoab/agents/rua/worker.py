@@ -2,10 +2,63 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager, nullcontext
 import json
 import os
 from pathlib import Path
 import sys
+
+
+_CREDENTIAL_HEADERS = {"authorization", "proxy-authorization", "x-api-key", "api-key", "cookie", "set-cookie"}
+
+
+@contextmanager
+def protect_model_transport():
+    """Keep authentication echoes out of the reference gateway's traces and SDK replies."""
+    import httpx
+    from uni_robot_agent.provider import client
+    from uni_robot_agent.services.errors import HttpCallError
+
+    transport = client.ModelTransport
+
+    class GuardedTransport(transport):
+        def request(self, method, url, *, content, headers, check=True):
+            credentials: set[bytes] = set()
+            for name, value in headers.items():
+                name = name.lower()
+                if name in {"authorization", "proxy-authorization"}:
+                    value = value.partition(" ")[2] or value
+                if name in _CREDENTIAL_HEADERS and value:
+                    credentials.update((value.encode(), json.dumps(value)[1:-1].encode()))
+            try:
+                response = super().request(method, url, content=content, headers=headers, check=False)
+            except Exception as error:
+                diagnostic = str(error).encode(errors="replace")
+                if any(secret in diagnostic for secret in credentials):
+                    raise RuntimeError("Model transport returned a credential in its diagnostic.") from None
+                raise
+
+            response_headers = response.headers.raw
+            if any(secret in response.content or any(secret in name or secret in value for name, value in response_headers)
+                   for secret in credentials):
+                # Reject the whole response so a redacted tool argument cannot execute.
+                status = response.status_code if response.is_error else 502
+                response = httpx.Response(status, json={"error": {
+                    "code": "credential_in_response", "message": "The model provider returned authentication material.",
+                }})
+            for name in _CREDENTIAL_HEADERS:
+                response.headers.pop(name, None)
+            if check and not response.is_success:
+                raise HttpCallError(response)
+            return response
+
+    # The supplied RUA version constructs this transport inside its ModelClient.
+    # Scope the override to this evaluator run and leave the gateway's retry and binding intact.
+    client.ModelTransport = GuardedTransport
+    try:
+        yield
+    finally:
+        client.ModelTransport = transport
 
 
 def main() -> None:
@@ -64,7 +117,8 @@ def main() -> None:
     print(f"RUA attached to {integration} episode {args.run_id} (protocol 4, tool schema 8)", flush=True)
 
     try:
-        run(args)
+        with protect_model_transport() if args.provider_url else nullcontext():
+            run(args)
     finally:
         result_path = session_dir / "result.json"
         if result_path.is_file():
