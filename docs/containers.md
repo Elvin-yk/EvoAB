@@ -6,6 +6,7 @@ pinned by digest, or ships a build recipe that the user's machine builds once.
 
 | Integration | Source | Image or recipe |
 |---|---|---|
+| LIBERO | public image | [AllenAI original LIBERO image recipe](https://github.com/allenai/vla-evaluation-harness/blob/505ae54c1c9ba07cb3aec82ce2808402acd43035/docker/Dockerfile.libero), pinned by digest |
 | LIBERO-PRO | public image | `ghcr.io/allenai/vla-evaluation-harness/libero-pro` (pinned digest) plus the official perturbation suites from `zhouxueyang/LIBERO-Pro` |
 | LIBERO-Plus | local build | `evoab/integrations/libero_plus/Dockerfile` (based on allenai's public base image; their LIBERO-Plus image is not public) |
 | CALVIN | public image | `ghcr.io/allenai/vla-evaluation-harness/calvin` (pinned digest; same `calvin` / `calvin_env` revisions as EvoAB) |
@@ -40,6 +41,20 @@ runtime wheel for development). `evoab benchmarks check` and
 evoab benchmarks prepare libero_pro --container      # or: evoab setup --integration libero_pro --container --wheel WHEEL
 evoab run --integration libero_pro --deploy local --container --runtime-profile libero_object --task TASK ...
 ```
+
+For original LIBERO, select **LIBERO** in Studio or use:
+
+```bash
+evoab benchmarks prepare libero --container
+evoab run --integration libero --deploy local --container --runtime-profile libero_object \
+  --task pick_up_the_alphabet_soup_and_place_it_in_the_basket --init-state-index 0 \
+  --model YOUR_MODEL_PRESET --no-sam3
+```
+
+Spatial, Object, Goal and Long (`libero_10`) have 10 tasks each, with respective
+step budgets of 220, 280, 300 and 520. The separate `libero_90` suite uses 400
+steps. Select an official starting state by index (default 0); the seed controls
+the simulator separately. Plus and PRO use forked sources and separate runtimes.
 
 Studio lists only benchmarks it can deploy in one step, each with one status
 (未部署, 部署中, 部署失败, 已就绪) and one button: 部署, or 已部署 once ready (runs

@@ -1,0 +1,12 @@
+# AllenAI docker/Dockerfile.libero pins the original LIBERO checkout and removes .git.
+image = "ghcr.io/allenai/vla-evaluation-harness/libero@sha256:bc9930a7e42f970bdde7f3aaddaab0c223bd8e7e922e387cd9eb48aa89ccf2f1"
+image_id = "sha256:197c3766ce4aacf754bbd4721cd30c38f57050960a9bd131de0afe0b9307e516"
+python = "/opt/conda/envs/libero/bin/python"
+native_root = "/app/libero"
+gpu = true
+prepare = ["printf %s 8f1084e3132a39270c3a13ebe37270a43ece2a01 > /app/libero/.evoab-revision"]
+
+[environment]
+MUJOCO_GL = "egl"
+PYOPENGL_PLATFORM = "egl"
+TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD = "1"

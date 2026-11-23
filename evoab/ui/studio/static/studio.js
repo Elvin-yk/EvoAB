@@ -742,6 +742,7 @@ async function renderLaunchLog(run) {
 
 const PROJECT_SOURCES = {
   robodojo: { repo: "RoboDojo-Benchmark/RoboDojo", paper: "2607.04434" },
+  libero: { repo: "Lifelong-Robot-Learning/LIBERO", paper: "2306.03310" },
   libero_pro: { repo: "Zxy-MLlab/LIBERO-PRO", paper: "2510.03827" },
   metaworld: { repo: "Farama-Foundation/Metaworld", paper: "1910.10897" },
   libero_plus: { repo: "sylvestf/LIBERO-plus", paper: "2510.13626" },

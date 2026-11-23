@@ -51,7 +51,7 @@ print('Installed SDK:', evoab.__file__)
     command([executable, '--version'])
     command([executable, '--help'])
     command([python, '-m', 'evoab', '--version'])
-    for integration in ('robodojo', 'robolab', 'robotwin', 'libero_plus',
+    for integration in ('robodojo', 'robolab', 'robotwin', 'libero', 'libero_plus',
                         'libero_pro', 'rmbench', 'calvin', 'arx_one'):
         command([python, '-m', 'evoab', 'run', '--integration', integration,
                  '--model', 'validation-model', '--task', 'validation-task',

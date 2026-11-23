@@ -16,7 +16,7 @@ def parser(*, suites=tuple(BUDGETS), description=__doc__, port=18781):
     return p
 
 
-def prepare(args, *, benchmark_name="libero_plus", revision=REVISION):
+def prepare(args, *, benchmark_name="libero_plus", revision=REVISION, budgets=BUDGETS):
     import os
     import yaml
 
@@ -55,10 +55,10 @@ def prepare(args, *, benchmark_name="libero_plus", revision=REVISION):
     states = suite.get_task_init_states(index)
     if args.init_state_index >= len(states):
         raise ValueError("Initial-state index is outside the official task's states; no modulo wrapping")
-    base_suite = next((name for name in BUDGETS if args.suite == name or args.suite.startswith(name + "_")), None)
+    base_suite = next((name for name in budgets if args.suite == name or args.suite.startswith(name + "_")), None)
     if base_suite is None and args.max_steps is None:
         raise ValueError("Supply --max-steps for a suite without a declared default")
-    max_steps = args.max_steps or BUDGETS[base_suite]
+    max_steps = args.max_steps or budgets[base_suite]
     env = OffScreenRenderEnv(bddl_file_name=suite.get_task_bddl_file_path(index),
                             camera_names=list(CAMERAS), camera_heights=256, camera_widths=256,
                             camera_depths=args.depth, horizon=max_steps + args.settle_steps, ignore_done=True)

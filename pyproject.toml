@@ -84,6 +84,7 @@ namespaces = false
 "evoab.resources" = ["prompts/**/*.md", "prompts/robodojo/task_requirements.json", "prompts/robodojo/instruction_supplements.json", "skills/**/*.md"]
 "evoab.integrations.robolab" = ["SOURCE.md"]
 "evoab.integrations.piper_x" = ["templates/*.json", "SOURCE.md", "README.md"]
+"evoab.integrations.libero" = ["deployment.toml", "container.toml"]
 "evoab.integrations.libero_plus" = ["deployment.toml", "container.toml", "Dockerfile"]
 "evoab.integrations.libero_pro" = ["deployment.toml", "container.toml", "previews/sources.json", "previews/NOTICE", "previews/LICENSE"]
 "evoab.integrations.metaworld" = ["deployment.toml"]
