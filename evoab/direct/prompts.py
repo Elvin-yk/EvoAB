@@ -108,7 +108,8 @@ def camera_text(cameras: dict) -> str:
 
 
 def assemble(*, description, representation: Representation, horizon, limits: Limits,
-             blocks, initial_state: dict, cameras: dict, robot_text: str | None = None) -> tuple[str, dict]:
+             blocks, initial_state: dict, cameras: dict, robot_text: str | None = None,
+             custom_prompt: str = "") -> tuple[str, dict]:
     """The system prompt and the text of each block, keyed by block name."""
     unknown = set(blocks) - set(BLOCKS)
     if unknown:
@@ -140,4 +141,6 @@ def assemble(*, description, representation: Representation, horizon, limits: Li
             "from its own observed pose. To keep an arm still, repeat its target (zero motion for a delta) "
             "and retain its gripper command."
         )
+    if custom_prompt.strip():
+        parts["custom"] = custom_prompt
     return "\n\n".join(parts.values()), parts

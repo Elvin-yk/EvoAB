@@ -51,6 +51,7 @@ class DirectConfig:
     image_max_side: int = 384
     jpeg_quality: int = 85
     max_calls: int = 0  # 0: until the episode ends
+    custom_prompt: str = ""
 
 
 @dataclass
@@ -208,7 +209,7 @@ class DirectPolicy:
             description=self.description, representation=self.representation,
             horizon=self.horizon, limits=self.limits, blocks=self.config.blocks,
             initial_state=initial["proprio"], cameras=snapshot.get("cameras", {}),
-            robot_text=self.config.robot_prompt)
+            robot_text=self.config.robot_prompt, custom_prompt=self.config.custom_prompt)
         tools = [self.representation.schema(self.horizon, self.arm_names)]
         (self.root / "prompt.md").write_text(system + "\n", encoding="utf-8")
         (self.root / "policy.json").write_text(json.dumps({

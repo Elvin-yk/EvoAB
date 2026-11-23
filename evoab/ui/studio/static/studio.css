@@ -288,10 +288,12 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* -- local image import (settings > benchmarks) ---------------------------- */
 .import-panel .section-title { margin-bottom: 4px; }
 .import-head { margin-bottom: 14px; }
-.import-intro { margin: 0; max-width: 68ch; }
-.import-dir { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin-bottom: 14px; }
-.import-dir-actions { display: flex; gap: 8px; }
-.import-field small { line-height: 1.5; }
+.import-intro { margin: 0; overflow-wrap: anywhere; }
+.import-dir { display: grid; gap: 6px; margin-bottom: 14px; }
+.import-dir-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.import-dir-controls .input { flex: 1 1 260px; min-width: 0; }
+.import-dir-actions { display: flex; flex-shrink: 0; gap: 8px; }
+.import-hint, .import-field small { line-height: 1.5; }
 .import-path { margin-bottom: 16px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); }
 .import-path-label { margin-bottom: 3px; color: var(--muted); font-size: 12px; }
 .import-path-extra { margin-top: 6px; color: var(--muted); font-size: 12px; }
@@ -302,9 +304,10 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .import-field .input { width: 100%; }
 .import-empty { margin: -6px 0 14px; }
 .import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.import-note { margin: 12px 0 0; max-width: 80ch; }
+.import-note { margin: 12px 0 0; }
 @media (max-width: 760px) {
-  .import-fields, .import-dir { grid-template-columns: minmax(0, 1fr); }
+  .import-fields { grid-template-columns: minmax(0, 1fr); }
+  .import-dir-controls .input { flex-basis: 100%; }
 }
 
 /* -- settings (two-level, provider list + detail) ------------------------- */
@@ -364,8 +367,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .rv-left { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .player { overflow: hidden; }
 .cams { --cams: 2; display: grid; grid-template-columns: repeat(var(--cams), minmax(0, 1fr)); gap: 2px; background: #0b0b0d; position: relative; min-height: 160px; }
-.cams figure { margin: 0; position: relative; aspect-ratio: 1 / 1; max-height: 38vh; width: 100%; display: grid; place-items: center; justify-self: center; }
-.cams img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.cams figure { margin: 0; position: relative; aspect-ratio: 1 / 1; width: min(100%, 30vh, 256px); justify-self: center; }
+.cams img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
 .cams figcaption { position: absolute; left: 8px; top: 6px; font-size: 11px; color: #fff; background: rgba(0, 0, 0, 0.55); padding: 1px 7px; border-radius: 5px; font-family: var(--mono); }
 .cams::after { content: attr(data-stamp); position: absolute; right: 8px; bottom: 8px; font-size: 11.5px; color: #fff; background: rgba(0, 0, 0, 0.6); padding: 2px 8px; border-radius: 6px; font-family: var(--mono); }
 .cams .empty { grid-column: 1 / -1; color: #8b8b93; padding: 60px 0; }
@@ -563,6 +566,14 @@ details.sys.inner { margin: 6px 0; }
 .bad-text { color: var(--bad); }
 .direct-options { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
 .direct-options .field .section-title { margin: 0 0 6px; }
+/* Let long option labels wrap inside the wizard instead of overflowing. */
+.direct-options .segmented { flex-wrap: wrap; max-width: 100%; }
+.direct-options .segmented button { flex: 0 1 auto; white-space: normal; text-align: left; }
+@media (max-width: 560px) {
+  .direct-options { padding: 12px; }
+  .direct-options .segmented { display: flex; }
+  .direct-options .segmented button { flex: 1 1 auto; }
+}
 .check { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; cursor: pointer; }
 .dp-player.waiting .dp-output, .dp-player.waiting .dp-note, .dp-player.waiting .dp-alert { display: none !important; }
 .dp-player.waiting .dp-telemetry::after { content: "模型推理中：动作块返回后才会执行"; font-size: 12px; color: var(--muted); align-self: center; }

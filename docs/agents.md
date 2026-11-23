@@ -78,6 +78,11 @@ tool profile. A mode appears when an adapter supports it on the selected
 benchmark. The existing Hybrid CLI remains available with its actor service
 configuration.
 
+For Direct Policy, Studio can append optional per-run instructions to every model request.
+The launch field is `direct.custom_prompt` (up to 8192 characters in Studio);
+the CLI equivalent is `--direct-custom-prompt`. Blank text uses the standard prompt.
+The run records the assembled text in `direct/prompt.md`.
+
 The launch API accepts `method` for the execution mode, `agent` for the adapter
 ID, and optional `agent_options` for declared parameters. The mode's default
 adapter handles requests that omit `agent`. `GET /api/config` lists modes under

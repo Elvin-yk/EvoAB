@@ -35,6 +35,7 @@ DIRECT_OPTIONS = {
     "horizon": ("--direct-horizon", None),
     "history": ("--direct-history", None),
     "prompt_blocks": ("--direct-prompt-blocks", None),
+    "custom_prompt": ("--direct-custom-prompt", None),
 }
 
 
@@ -161,7 +162,10 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         command.append("--container")
     if method["interaction"] == "direct_policy":
         for key, value in (request.direct or {}).items():
-            command += [DIRECT_OPTIONS[key][0], str(value)]
+            if key == "custom_prompt":
+                command.append(f"--direct-custom-prompt={value}")
+            else:
+                command += [DIRECT_OPTIONS[key][0], str(value)]
     return command + [
         "--output-dir", str(output_root),
         # Port 0 picks a free port; the CLI then prints the run directory at start.
@@ -196,6 +200,10 @@ def validate(request: LaunchRequest) -> dict:
         choices = DIRECT_OPTIONS[key][1]
         if choices and value not in choices:
             raise ValueError(f"{key} must be one of {choices}")
+        if key == "custom_prompt":
+            if not isinstance(value, str) or "\x00" in value or len(value) > 8192:
+                raise ValueError("custom_prompt must be text of at most 8192 characters without NUL")
+            continue
         if not isinstance(value, str) or not value or " " in value:
             raise ValueError(f"invalid {key} value {value!r}")
     return task

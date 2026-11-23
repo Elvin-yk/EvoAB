@@ -102,6 +102,25 @@ function methodLabel(value) {
   })[part] || part).join(" · ");
 }
 
+// Studio-only copy for the method cards; the execution mode still comes from the API.
+const METHOD_COPY = {
+  direct_policy: {
+    title: "LLM 直接给动作数字",
+    desc: "LLM 读取当前画面和历史观测，按固定格式一次交出 8D 绝对位姿或 7D 增量动作数字，由环境控制器逐行执行。它不自选机器人工具，也没有独立的 VLA 动作模型。",
+  },
+  agentic: {
+    title: "Agent 选择工具（Tool）",
+    desc: "Agent 看着当前画面和历史观测，自己挑机器人工具（移动、抓取、感知等），每次按返回结果决定下一步，动作由环境执行。没有独立的 VLA 动作模型。",
+  },
+  agent_policy: {
+    title: "Agent 调用 VLA",
+    desc: "Agent 通过 Hybrid 动作工具调用 VLA（视觉-语言-动作模型）：VLA 把图像和指令转成动作片段，Agent 决定何时调用并检查结果，再由环境控制器执行。",
+  },
+};
+function methodCopy(method) {
+  return METHOD_COPY[method.id] || { title: methodLabel(method.label), desc: method.description };
+}
+
 function effortLabel(value) {
   return ({ none: "关闭", minimal: "最低", low: "低", medium: "中", high: "高", xhigh: "很高",
     max: "最高" })[value] || value;
@@ -369,19 +388,30 @@ async function stepTask(body) {
 function stepMethod(body) {
   const w = S.wizard;
   const method = selectedMethod();
-  const groups = [["direct", "智能体控制"], ["hybrid", "智能体与策略协作"]];
-  for (const [profile, label] of groups) {
+  const groups = [
+    ["direct", "直接控制", "模型直接输出末端动作，或由 Agent 调用机器人工具；两种方式都不接入动作模型（VLA）。"],
+    ["hybrid", "策略协作", "Agent 调用动作模型（VLA）执行动作，适合已接入动作模型服务（actor）的评测集。"],
+  ];
+  body.append(h("h1", { class: "wizard-title" }, "选择运行方法"));
+  for (const [profile, label, note] of groups) {
     const methods = availableMethods().filter((m) => m.action_profile === profile);
     const section = h("section", { class: "method-group" },
       h("h2", { class: "section-title" }, label),
-      methods.length ? h("div", { class: "choice-grid" }, methods.map((m) => h("button", {
-        class: `choice${w.method === m.id ? " selected" : ""}`, "aria-pressed": String(w.method === m.id),
-        onclick: () => { selectMethod(m, m.id === w.method ? w.agent : null); route(); },
-      }, h("span", { class: "title" }, methodLabel(m.label)), h("span", { class: "desc" }, m.description))))
-        : h("p", { class: "muted small" }, "当前评测集暂无可用方法。"));
+      h("p", { class: "muted small", style: "margin:0 0 10px" }, note),
+      methods.length ? h("div", { class: "choice-grid" }, methods.map((m) => {
+        const copy = methodCopy(m);
+        return h("button", {
+          class: `choice${w.method === m.id ? " selected" : ""}`, "aria-pressed": String(w.method === m.id),
+          onclick: () => { selectMethod(m, m.id === w.method ? w.agent : null); route(); },
+        }, h("span", { class: "title" }, copy.title), h("span", { class: "desc" }, copy.desc));
+      }))
+        : h("p", { class: "muted small" }, profile === "hybrid"
+          ? "暂无可用的策略协作 Agent。该模式需要评测集接入动作模型（VLA）；此处为空只说明当前没有 Agent 提供该模式。"
+          : "当前评测集没有可用的直接控制 Agent，可在上一步换一个评测集。"));
     if (method?.action_profile === profile && method.interaction !== "direct_policy") {
       section.append(h("section", { class: "agent-picker", "aria-label": "选择 Agent 实现" },
         h("h3", { class: "section-title" }, "选择 Agent 实现"),
+        h("p", { class: "muted small", style: "margin:0 0 10px" }, "同一方法可由不同 Agent 实现；Agent 决定工具调用和模型连接方式。"),
         h("div", { class: "choice-grid" }, method.agents.map((agent) => h("button", {
           class: `choice${w.agent === agent.id ? " selected" : ""}`, "aria-pressed": String(w.agent === agent.id),
           onclick: () => { w.agent = agent.id; route(); },
@@ -393,13 +423,22 @@ function stepMethod(body) {
 }
 
 const DIRECT_DEFAULTS = { representation: "abs_eef", horizon: "3:15", history: "15:7", blocks: ["gripper", "camera"] };
+const GRIPPER_NOTE = "夹爪一栏始终是绝对开合：0 表示张开，1 表示闭合，两种格式都一样。";
+const REPRESENTATION_HELP = {
+  abs_eef: "每行直接说清「移动到哪里、转到什么方向」。8 个数依次是：x、y、z 是抓取点在世界中的位置（米），qw、qx、qy、qz 描述目标朝向（按 wxyz 顺序），最后一个是夹爪开合。",
+  delta_eef: "每行只说清「在上一个目标上移动多少、转多少」。7 个数依次是：dx、dy、dz 是位置移动量（米），drx、dry、drz 是旋转量（弧度，绕世界坐标轴），最后一个是夹爪开合。第一行从当前实际位姿算起。",
+};
+const HORIZON_HELP = "每轮让模型给几个动作目标。行数由模型在所选范围内自己决定，每行执行一个控制步。给得少，模型会更频繁地停下来重新看画面再决定；给得多，就一次连续执行更多目标，中间不再看图。";
+const HISTORY_HELP = "按控制步计，不是秒。模型每次都拿到当前画面和往前若干步的画面：默认「当前、7 步前、14 步前」是 3 帧，「当前和 15 步前」是 2 帧。刚开局还没走过这些步，就只取已有的画面。";
 function directOptions() {
   const w = S.wizard;
   w.direct = w.direct || { ...DIRECT_DEFAULTS, blocks: [...DIRECT_DEFAULTS.blocks] };
   const d = w.direct;
-  const seg = (label, key, options) => h("div", { class: "field" }, h("div", { class: "section-title" }, label),
+  const seg = (label, key, options, help) => h("div", { class: "field" },
+    h("div", { class: "section-title" }, label),
     h("div", { class: "segmented" }, options.map(([value, text]) => h("button", { class: d[key] === value ? "active" : "",
-      "aria-pressed": String(d[key] === value), onclick: () => { d[key] = value; route(); } }, text))));
+      "aria-pressed": String(d[key] === value), onclick: () => { d[key] = value; route(); } }, text))),
+    h("p", { class: "muted small", style: "margin:0" }, typeof help === "function" ? help(d[key]) : help));
   const block = (name, text, hint) => h("label", { class: "check" },
     h("input", { type: "checkbox", checked: d.blocks.includes(name),
       onchange: (e) => { d.blocks = e.target.checked ? [...new Set([...d.blocks, name])] : d.blocks.filter((b) => b !== name); } }),
@@ -407,18 +446,32 @@ function directOptions() {
   return h("section", { class: "method-group" },
     h("h2", { class: "section-title" }, "直接策略设置"),
     h("div", { class: "card direct-options" },
-      seg("动作表示", "representation", [["abs_eef", "绝对末端位姿 (8D)"], ["delta_eef", "逐步末端增量 (7D)"]]),
-      seg("每次输出的行数", "horizon", [["3:15", "3–15"], ["1:5", "1–5"], ["16:32", "16–32"], ["15:15", "固定 15"]]),
-      seg("观测历史", "history", [["15:7", "t−14, t−7, t"], ["1:1", "仅当前"], ["30:15", "t−29, t−14, t"]]),
-      h("div", { class: "field" }, h("div", { class: "section-title" }, "提示词块"),
-        h("p", { class: "muted small" }, "本体与坐标系、执行时序、输出格式始终包含；几何信息由环境实测生成，可选。"),
-        block("gripper", "夹爪几何", "抓取点与夹爪各轴在世界坐标中的方向、开口宽度"),
-        block("camera", "相机几何", "每个相机的位置、朝向与归一化内参（来自环境标定）"))));
+      h("p", { class: "muted small", style: "margin:0" }, "只影响直接策略。"),
+      seg("动作表示（给目标位姿，或给每步的变化量）", "representation",
+        [["abs_eef", "绝对位姿（8 个数）"], ["delta_eef", "增量位姿（7 个数）"]],
+        (value) => `${REPRESENTATION_HELP[value]}${GRIPPER_NOTE}`),
+      seg("动作块长度 H（每次推理输出几个动作目标）", "horizon",
+        [["3:15", "3–15 个"], ["1:5", "1–5 个"], ["16:32", "16–32 个"], ["15:15", "固定 15 个"]], HORIZON_HELP),
+      seg("观测历史（每个相机取哪些控制时刻的画面）", "history",
+        [["15:7", "当前、7 步前、14 步前"], ["1:1", "仅当前"], ["30:15", "当前和 15 步前"]], HISTORY_HELP),
+      h("div", { class: "field" },
+        h("div", { class: "section-title" }, "额外提供给模型的信息"),
+        h("p", { class: "muted small", style: "margin:0" },
+          "本体与坐标系、执行时序、动作格式始终会传给模型，不能关闭。下面两项是环境实测的几何信息，默认开启；环境没有提供时会自动跳过。"),
+        block("gripper", "夹爪几何", "开启后模型能读到：动作里的位置指两指之间的抓取点，夹爪各轴在世界中的朝向、两指张开的宽度，以及用测得开合值判断是否夹住物体的方法。"),
+        block("camera", "相机几何", "开启后模型能读到：每个相机装在世界中的位置、朝哪个方向看、画面上下左右各对应什么方向，以及把画面里的位置换算成坐标用的焦距和中心点。")),
+      h("label", { class: "field" },
+        h("span", { class: "section-title" }, "自定义提示词（可选）"),
+        h("textarea", { class: "input", rows: 3, maxlength: 8192,
+          placeholder: "例如：接近物体时，先对齐夹爪再下降。",
+          oninput: (e) => { d.custom_prompt = e.target.value; } }, d.custom_prompt || ""),
+        h("small", { class: "muted" }, "追加到本次直接策略的每一轮提示词。留空使用默认提示词。"))));
 }
 function directPayload() {
   const d = S.wizard.direct || DIRECT_DEFAULTS;
   return { representation: d.representation, horizon: d.horizon, history: d.history,
-           prompt_blocks: ["robot", "timing", ...d.blocks].join(",") };
+           prompt_blocks: ["robot", "timing", ...d.blocks].join(","),
+           ...(d.custom_prompt?.trim() ? { custom_prompt: d.custom_prompt } : {}) };
 }
 
 function agentOptions(agent) {
@@ -518,6 +571,7 @@ function commandPreview() {
     const d = directPayload();
     parts.push(`--direct-representation ${d.representation}`, `--direct-horizon ${d.horizon}`, `--direct-history ${d.history}`,
       `--direct-prompt-blocks ${d.prompt_blocks}`);
+    if (d.custom_prompt) parts.push("--direct-custom-prompt='" + d.custom_prompt.replaceAll("'", "'\"'\"'") + "'");
   }
   if (w.bench.container) parts.push("--container");
   return [...parts, "--monitor"].join(" \\\n  ");
@@ -990,8 +1044,9 @@ function imageImportPanel() {
         imports.files.map((f) => h("option", { value: f.name }, `${f.name}（${(f.size / 2 ** 30).toFixed(2)} GiB）`)));
       // The directory is a Studio setting on this server; an invalid path is refused by
       // the backend before it is written, so the saved directory stays in effect.
-      const directory = h("input", { class: "input", type: "text", spellcheck: "false", value: imports.configured || "",
-        placeholder: imports.default_directory, "aria-label": "镜像目录（Dashboard 服务器）" });
+      const directory = h("input", { class: "input", id: "imageImportDirectory", type: "text", spellcheck: "false",
+        value: imports.configured || "", placeholder: imports.default_directory,
+        "aria-label": "镜像目录（Dashboard 服务器）" });
       const save = h("button", { class: "btn", onclick: () => {
         const value = directory.value.trim();
         if (value && !(value.startsWith("/") || value.startsWith("~/"))) {
@@ -1038,20 +1093,20 @@ function imageImportPanel() {
         h("div", { class: "import-head" },
           h("div", { class: "section-title" }, "本地镜像导入"),
           h("p", { class: "muted small import-intro" },
-            "为了避免网络等问题导致镜像下载失败，支持自行下载镜像归档并放到指定目录，之后选择文件并导入验证。"),
-          h("p", { class: "muted small import-intro" },
-            "归档须由 docker save 导出且只包含一个镜像。验证通过后才显示已就绪；安装运行依赖可能仍需联网。")),
+            "为了避开网络问题导致的镜像下载失败，可以自己下载镜像归档放到 Dashboard 服务器上的目录，再在这里选择归档和目标仿真，由 Studio 通过该服务器上的 Docker 导入并校验；校验通过后环境才会显示为已就绪。")),
         h("div", { class: "import-dir" },
-          h("label", { class: "import-field" },
-            h("span", { class: "import-label" }, "镜像目录（Dashboard 服务器）"),
+          h("label", { class: "import-label", for: "imageImportDirectory" }, "镜像目录（Dashboard 服务器）"),
+          h("div", { class: "import-dir-controls" },
             directory,
-            h("small", { class: "muted" },
-              "这是运行 Dashboard 的服务器上的目录，不是你打开浏览器的电脑。默认 ~/.cache/evoab/image-imports，服务器的缓存目录设置会改变它，以上方显示的实际路径为准。支持 / 开头的绝对路径或 ~/ 开头的路径，切换目录不会移动或删除已有文件。")),
-          h("div", { class: "import-dir-actions" }, save, restore)),
+            h("div", { class: "import-dir-actions" }, save, restore)),
+          h("small", { class: "muted import-hint" },
+            "填写服务器上的绝对路径（以 / 或 ~/ 开头），留空则使用默认目录；切换目录不会移动或删除已有文件。")),
         h("div", { class: "import-path" },
           h("div", { class: "import-path-label" }, "当前使用的服务器目录"),
           h("code", {}, imports.directory),
-          imports.configured ? h("div", { class: "import-path-extra" }, `默认目录：${imports.default_directory}`) : null),
+          h("div", { class: "import-path-extra" }, imports.configured
+            ? `默认目录：${imports.default_directory}`
+            : "当前使用默认目录，可在上方改为其他服务器目录。")),
         h("div", { class: "import-fields" },
           h("label", { class: "import-field" },
             h("span", { class: "import-label" }, "目标仿真"),
@@ -1060,15 +1115,15 @@ function imageImportPanel() {
           h("label", { class: "import-field" },
             h("span", { class: "import-label" }, "镜像文件"),
             archive,
-            h("small", { class: "muted" }, "从上面的目录中选择已复制或下载的归档；复制完成后先点“刷新文件”。"))),
+            h("small", { class: "muted" }, "必须是 docker save 导出、且只包含一个镜像的归档；复制完成后先点“刷新文件”。"))),
         imports.files.length ? null
           : h("p", { class: "muted small import-empty" },
-            "目录中暂无镜像文件。把 docker save 导出的归档放到上面的目录（例如用 scp 传到服务器），再点“刷新文件”。"),
+            "目录中暂无镜像文件；把归档复制到上面的目录后点“刷新文件”。"),
         h("div", { class: "import-actions" },
           submit,
           h("button", { class: "btn", onclick: refreshFiles }, "刷新文件")),
         h("p", { class: "muted small import-note" },
-          "支持 .tar、.tar.gz、.tgz、.tar.bz2、.tar.xz。镜像须与所选仿真匹配（否则验证失败），并包含该仿真的固定版本源码和任务资源。"));
+          "支持 .tar、.tar.gz、.tgz、.tar.bz2、.tar.xz。镜像须与所选仿真匹配（否则校验失败），并包含该仿真的固定版本源码和任务资源；安装运行依赖时仍可能需要联网。"));
     } catch (error) {
       put(panel,
         h("div", { class: "section-title" }, "本地镜像导入"),
@@ -1111,16 +1166,25 @@ function settingsBenchmarks(body) {
 }
 
 function benchmarkCards() {
+  // Report an installed runtime's actual kind; before installation, name the method Studio
+  // will use, so a native benchmark never implies a Docker deployment.
+  const deployKind = (bench, p) => {
+    const kind = p.installed ? p.runtime_kind || bench.deploy : bench.deploy;
+    return kind === "container" ? "Docker 容器" : kind === "native" ? "本机安装（无 Docker）" : null;
+  };
   const profileRow = (bench, p) => {
     // A runtime that registered no tasks is not usable: show it as a failed deployment to redo.
     const status = p.status === "ready" && !p.launchable ? "setup_failed" : p.status;
     const dockerMissing = bench.deploy === "container" && !bench.container?.docker;
+    const kind = deployKind(bench, p);
     // 部署 until the runtime is ready, then a disabled 已部署 (runs start from 发起任务).
     const action = status === "ready"
-      ? h("button", { class: "btn small", disabled: true }, "已部署")
+      ? h("button", { class: "btn small", disabled: true },
+          p.runtime_kind === "container" ? "已部署（Docker）" : p.runtime_kind === "native" ? "已安装（本机）" : "已部署")
       : h("button", { class: "btn small primary", disabled: dockerMissing || status === "preparing",
           title: dockerMissing ? "需要 Docker，见上方部署条件" : "",
-          onclick: (e) => deploy(bench, p, e.currentTarget) }, "部署");
+          onclick: (e) => deploy(bench, p, e.currentTarget) },
+        bench.deploy === "container" ? "部署（Docker）" : bench.deploy === "native" ? "本机安装" : "部署");
     // Only a Docker deployment can be removed; an adopted native runtime, a running
     // setup or a missing Docker client leaves 卸载 disabled (the backend refuses too).
     const nativeRuntime = p.installed && p.runtime_kind !== "container";
@@ -1137,6 +1201,7 @@ function benchmarkCards() {
     return [
       h("div", { class: "profile-row" },
         h("strong", {}, p.profile === "default" ? "运行环境" : `运行环境 · ${p.profile}`),
+        kind ? h("span", { class: "tag" }, kind) : null,
         pill(status, BENCH_STATUS), detail,
         h("span", { class: "acts" }, action, removal)),
       status === "ready" && p.last_setup_failed ? h("div", { class: "notice error" }, "最近一次部署失败，当前仍可使用此前验证的环境。") : null,

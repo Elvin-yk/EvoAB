@@ -60,6 +60,7 @@ class NativeAgent:
                            help="Observation window and sampling stride (always includes the newest)")
         group.add_argument("--direct-prompt-blocks", default=",".join(BLOCKS),
                            help="Comma-separated prompt blocks; robot and timing are required")
+        group.add_argument("--direct-custom-prompt", default="", help="Append these instructions to each direct policy request.")
         group.add_argument("--direct-prompt-file", type=Path,
                            help="Replace the bundled embodiment description with this text")
         group.add_argument("--direct-step-limits", default="0.02:0.1", metavar="METRES:RADIANS",
@@ -96,6 +97,7 @@ class NativeAgent:
             representation=args.direct_representation, min_horizon=low, max_horizon=high,
             history_length=length, history_stride=stride,
             blocks=tuple(b for b in args.direct_prompt_blocks.split(",") if b), robot_prompt=robot,
+            custom_prompt=args.direct_custom_prompt,
             translation_limit_m=float(metres), rotation_limit_rad=float(radians),
             repair_attempts=args.direct_repair_attempts, max_calls=args.direct_max_calls)}
 
