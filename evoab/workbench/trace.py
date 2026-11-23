@@ -5,6 +5,7 @@ A run directory records three independent streams:
 * ``codex_responses/exchange_NNNN``: every model request the agent made, with
   the agent-side request (``request.codex.json.gz``), the request actually sent
   to the provider, the response stream, timing, retries and token usage;
+* ``agent/rounds.jsonl``: native Agent iterations, tool calls, results and usage;
 * ``trajectory.jsonl``: agent and tool events, including EvoAB robot tool
   executions (queue, start, result, finish);
 * ``monitor_frames.jsonl`` plus ``telemetry/trace.jsonl``: published camera
@@ -98,7 +99,7 @@ def _content_parts(content: Any) -> tuple[str, list[str], int]:
         kind = part.get("type")
         if kind in ("input_text", "output_text", "text", "summary_text"):
             texts.append(str(part.get("text", "")))
-        elif kind in ("input_image", "image_url"):
+        elif kind in ("input_image", "image_url", "image"):
             ref = _image_ref(part)
             if ref:
                 images.append(ref)
@@ -273,7 +274,7 @@ def _usage(meta: dict[str, Any]) -> dict[str, int]:
     out_d = usage.get("output_tokens_details") or usage.get("completion_tokens_details") or {}
     return {
         "input": int(inp),
-        "cached": int(inp_d.get("cached_tokens") or 0),
+        "cached": int(inp_d.get("cached_tokens") or usage.get("cached_input_tokens") or 0),
         "output": int(out),
         "reasoning": int(out_d.get("reasoning_tokens") or 0),
         "total": int(usage.get("total_tokens") or inp + out),
@@ -283,7 +284,7 @@ def _usage(meta: dict[str, Any]) -> dict[str, int]:
 # -- tool executions ----------------------------------------------------------
 
 
-def _robot_executions(events: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+def _robot_executions(events: list[dict[str, Any]], *, native: bool = False) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
     """EvoAB tool executions by their transport id, and agent call id → transport id."""
     executions: dict[str, dict[str, Any]] = {}
     links: dict[str, str] = {}
@@ -291,7 +292,7 @@ def _robot_executions(events: list[dict[str, Any]]) -> tuple[dict[str, dict[str,
         kind = event.get("type")
         if kind == "AgentActivity" and event.get("transport_call_id") and event.get("item_id"):
             links[str(event["item_id"])] = str(event["transport_call_id"])
-        call_id = event.get("call_id")
+        call_id = event.get("call_id") or (event.get("execution_id") if native else None)
         if not call_id or kind not in ("ToolCall", "ToolExecution", "ToolResult"):
             continue
         record = executions.setdefault(str(call_id), {"transport_id": call_id, "name": event.get("tool_name")})
@@ -299,11 +300,13 @@ def _robot_executions(events: list[dict[str, Any]]) -> tuple[dict[str, dict[str,
             record["called_at"] = event.get("timestamp")
         elif kind == "ToolExecution":
             record[f"{event.get('phase')}_at"] = event.get("timestamp")
+            if "arguments" in event:
+                record["arguments"] = event["arguments"]
             record["resource"] = event.get("resource")
             if event.get("phase") == "finished":
                 record["success"] = event.get("success")
         elif kind == "ToolResult":
-            record["arguments"] = event.get("arguments")
+            record["arguments"] = event.get("arguments") or record.get("arguments")
             record["output"] = event.get("output")
             record["success"] = event.get("success", record.get("success"))
             record["result_at"] = event.get("timestamp")
@@ -429,10 +432,10 @@ def _stages(run_dir: Path, events: list[dict[str, Any]], spans: list[dict[str, A
          "frame": initial, "file": "initial_observation.json" if "initial_observation.json" in files else None},
         {"id": "prompt", "title": "组装提示词与工具", "origin": "code", "at": opened,
          "summary": "按固定模板把任务指令、机器人资源、初始观测和工具规则拼成 Agent 的输入；"
-                    "注册 EvoAB 机器人工具（MCP）。",
+                    "载入本次运行的 EvoAB 工具清单。",
          "files": files},
-        {"id": "agent", "title": "启动 Agent 会话", "origin": "runtime", "at": session, "end": first_request,
-         "summary": "Codex 运行时载入基础指令与工具清单，随即发出第 1 次模型请求。"},
+        {"id": "agent", "title": "启动 Agent 会话", "origin": "runtime", "at": session or first_request, "end": first_request,
+         "summary": "Agent 载入任务指令与工具清单，开始模型调用。"},
     ]
     return stages
 
@@ -440,16 +443,115 @@ def _stages(run_dir: Path, events: list[dict[str, Any]], spans: list[dict[str, A
 # -- the trace ----------------------------------------------------------------
 
 
+def _identity(run_dir: Path, result: dict, monitor: dict) -> tuple[str | None, str | None]:
+    manifest = _read_json(run_dir / "telemetry/run_manifest.json") or {}
+    agent = manifest.get("agent_backend") or result.get("agent_backend")
+    if not agent:
+        if (run_dir / "agent/rounds.jsonl").is_file():
+            agent = "native"
+        elif (run_dir / EXCHANGES).is_dir():
+            agent = "codex"
+    return agent, result.get("model") or manifest.get("model") or monitor.get("model")
+
+
+def _native_items(row: dict, *, full: bool = False) -> tuple[list[dict], list[dict]]:
+    # The hook runs after tool dispatch. The assistant reply and following tool
+    # messages were produced in this iteration, not sent to its model request.
+    messages = row.get("input") or []
+    split = next((i for i in reversed(range(len(messages))) if messages[i].get("role") == "assistant"),
+                 len(messages))
+    incoming = [describe_item(msg, full) for msg in messages[:split]]
+    output = []
+    if row.get("reasoning"):
+        output.append({"type": "reasoning", "summary": row["reasoning"]})
+    if row.get("content"):
+        output.append({"role": "assistant", "content": row["content"]})
+    for call in row.get("tool_calls") or []:
+        output.append({"type": "function_call", "call_id": call.get("id"), "name": call.get("name"),
+                       "arguments": json.dumps(call.get("arguments"), ensure_ascii=False)})
+    return incoming, [describe_item(item, full) for item in output]
+
+
+def _native_timeline(run_dir: Path, model: str | None, executions: dict, spans: list[dict]) -> tuple[list[dict], list[dict]]:
+    rows = _jsonl(run_dir / "agent/rounds.jsonl")
+    registered = {tool["name"] for tool in (_read_json(run_dir / "tools.json") or [])}
+    pending = dict(executions)
+    rounds, calls = [], []
+    for index, row in enumerate(rows):
+        start, end = row["started_at"], row["finished_at"]
+        incoming, output = _native_items(row)
+        ids = []
+        events = list(row.get("tool_events") or [])
+        for ordinal, tool in enumerate(row.get("tool_calls") or []):
+            name = tool["name"]
+            arguments = tool.get("arguments") or {}
+            key = f"{index}/{ordinal}"
+            ids.append(key)
+            # Older native runs have separate provider and executor IDs. Match
+            # each execution once within its iteration, including repeated calls.
+            match = next((eid for eid, e in pending.items() if e["name"] == name
+                          and start <= (e.get("queued_at") or e.get("started_at") or 0) <= end
+                          and (e.get("arguments") or {}) == arguments), None)
+            execution = pending.pop(match) if match is not None else {}
+            event = next((e for e in events if e.get("name") == name), {})
+            if event:
+                events.remove(event)
+            began, finished = execution.get("started_at"), execution.get("finished_at")
+            result = execution.get("output")
+            detail = json.dumps(result, ensure_ascii=False) if result is not None else event.get("detail")
+            robot = bool(execution) or name in registered
+            calls.append({"call_id": key, "provider_call_id": tool.get("id"), "transport_id": match,
+                          "round": index, "name": name, "arguments": arguments, "executor": "robot" if robot else "agent",
+                          "issued_at": execution.get("queued_at"), "queued_at": execution.get("queued_at"),
+                          "started_at": began, "finished_at": finished,
+                          "duration_s": finished - began if began and finished else None,
+                          "success": execution.get("success", event["status"] == "ok" if event.get("status") else None),
+                          "result": describe_item({"type": "function_call_output", "call_id": key, "output": detail}) if detail else None,
+                          "robot": _robot_summary(result) if result else None, "nested": [],
+                          "service_calls": _service_calls(spans, began, finished), "used_in_round": None})
+        rounds.append({"index": index, "model": model, "started_at": start, "finished_at": end,
+                       "duration_s": end - start, "complete": True, "error": row.get("error"),
+                       "usage": _usage(row), "context": {"tools": len(registered)}, "attempts": [],
+                       "trigger": {"kind": "initial" if index == 0 else "continuation",
+                                   "text": "原生 Agent 根据任务和观测请求模型。" if index == 0 else "原生 Agent 继续本轮推理。"},
+                       "new_input": incoming, "output": output, "calls": ids})
+    return rounds, calls
+
+
 def build_trace(run_dir: Path) -> dict[str, Any]:
     events = _jsonl(run_dir / "trajectory.jsonl")
     spans = _spans(run_dir)
     frames = _frames(run_dir)
-    exchanges, store = load_exchanges(run_dir)
-    executions, links = _robot_executions(events)
-    activity = _agent_activity(events)
     result = _read_json(run_dir / "result.json")
     monitor = _read_json(run_dir / "monitor.json") or {}
 
+    agent, model = _identity(run_dir, result or {}, monitor)
+    executions, links = _robot_executions(events, native=agent == "native")
+    if agent == "native":
+        rounds, calls = _native_timeline(run_dir, model, executions, spans)
+    else:
+        rounds, calls = _exchange_timeline(run_dir, executions, links, _agent_activity(events), spans)
+    t0 = monitor.get("started_at") or (rounds[0]["started_at"] if rounds else None)
+    end_at = monitor.get("finished_at") or next((e.get("timestamp") for e in reversed(events)
+                                                  if e.get("type") == "SessionClosed"), None)
+    ending = _ending(run_dir, result, rounds, calls, monitor.get("max_episode_steps"))
+    return {
+        "agent": agent, "model": model,
+        "t0": t0,
+        "t_end": end_at,
+        "live": result is None,
+        "instruction": monitor.get("instruction"),
+        "max_steps": monitor.get("max_episode_steps"),
+        "stages": _stages(run_dir, events, spans, frames, rounds[0]["started_at"] if rounds else None),
+        "rounds": rounds,
+        "calls": calls,
+        "frames": frames,
+        "ending": ending,
+    }
+
+
+def _exchange_timeline(run_dir: Path, executions: dict, links: dict, activity: dict, spans: list[dict]) -> tuple[list[dict], list[dict]]:
+    exchanges, store = load_exchanges(run_dir)
     # Where each call's output first appears as input: that round consumed it.
     consumed_in: dict[str, tuple[int, str]] = {}
     for index, exchange in enumerate(exchanges):
@@ -577,22 +679,7 @@ def build_trace(run_dir: Path) -> dict[str, Any]:
 
     direct = {links[c["call_id"]] for c in calls if c["call_id"] in links}
     _attach_nested(rounds, calls, executions, direct, spans)
-    t0 = monitor.get("started_at") or (rounds[0]["started_at"] if rounds else None)
-    end_at = monitor.get("finished_at") or next((e.get("timestamp") for e in reversed(events)
-                                                  if e.get("type") == "SessionClosed"), None)
-    ending = _ending(run_dir, result, rounds, calls, monitor.get("max_episode_steps"))
-    return {
-        "t0": t0,
-        "t_end": end_at,
-        "live": result is None,
-        "instruction": monitor.get("instruction"),
-        "max_steps": monitor.get("max_episode_steps"),
-        "stages": _stages(run_dir, events, spans, frames, rounds[0]["started_at"] if rounds else None),
-        "rounds": rounds,
-        "calls": calls,
-        "frames": frames,
-        "ending": ending,
-    }
+    return rounds, calls
 
 
 def _attach_nested(rounds: list[dict[str, Any]], calls: list[dict[str, Any]],
@@ -671,7 +758,7 @@ def _ending(run_dir: Path, result: dict[str, Any] | None, rounds: list[dict[str,
     if finish_call:
         chain.append(f"模型在第 {finish_call['round'] + 1} 轮调用了 finish（{json.dumps(finish_call['arguments'], ensure_ascii=False)[:200]}）。")
     elif last and not last_calls and last["complete"] and not result.get("error"):
-        chain.append(f"第 {last['index'] + 1} 轮模型只回复了文字、没有调用任何工具，Codex 因此结束本次会话，未调用 finish。")
+        chain.append(f"第 {last['index'] + 1} 轮模型只回复了文字、没有调用任何工具，会话结束，未调用 finish。")
     category = result.get("failure_category")
     if category:
         chain.append(f"失败类别：{category}。")
@@ -693,6 +780,16 @@ def _ending(run_dir: Path, result: dict[str, Any] | None, rounds: list[dict[str,
 
 def round_detail(run_dir: Path, index: int) -> dict[str, Any]:
     """Everything sent and received in one round, untruncated."""
+    if _identity(run_dir, _read_json(run_dir / "result.json") or {}, {})[0] == "native":
+        rows = _jsonl(run_dir / "agent/rounds.jsonl")
+        if not 0 <= index < len(rows):
+            raise IndexError(index)
+        row = rows[index]
+        incoming, output = _native_items(row, full=True)
+        return {"kind": "native", "index": index, "input": incoming, "output": output,
+                "tools": _read_json(run_dir / "tools.json") or [],
+                "meta": {k: row.get(k) for k in ("iteration", "started_at", "finished_at", "usage",
+                                                  "finish_reason", "stop_reason", "error", "tool_events")}}
     directories = sorted((run_dir / EXCHANGES).glob("exchange_*"))
     if not 0 <= index < len(directories):
         raise IndexError(index)

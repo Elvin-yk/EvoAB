@@ -12,12 +12,16 @@ const RV = {
   t: null, follow: true, playing: false, speed: 1, selected: null, open: new Set(),
 };
 
+const replayAgent = () => RV.trace?.agent || RV.run?.agent;
+const agentName = () => ({ native: "原生 Agent", codex: "Codex" })[replayAgent()] || replayAgent() || "Agent";
+const nativeReplay = () => replayAgent() === "native";
+
 const ORIGIN = {
   code: ["固定代码", "harness"],
-  runtime: ["Codex 运行时", "runtime"],
+  get runtime() { return [agentName() + " 运行时", "runtime"]; },
   model: ["模型决定", "model"],
   robot: ["EvoAB 机器人工具", "robot"],
-  agent: ["Codex 内置工具", "runtime"],
+  get agent() { return [agentName() + " 内置工具", "runtime"]; },
   script: ["Codex 脚本 → 机器人工具", "robot"],
 };
 const originTag = (kind) => h("span", { class: `origin ${ORIGIN[kind][1]}` }, ORIGIN[kind][0]);
@@ -126,7 +130,11 @@ function buildMoments(tr) {
 function renderHead() {
   const run = RV.run;
   const tr = RV.trace;
-  const u = run.usage || {};
+  const u = tr?.agent === "native" ? {
+    input_tokens: tr.rounds.reduce((n, r) => n + r.usage.input, 0),
+    output_tokens: tr.rounds.reduce((n, r) => n + r.usage.output, 0),
+    cached_input_tokens: tr.rounds.reduce((n, r) => n + r.usage.cached, 0),
+  } : run.usage || {};
   const direct = tr?.kind === "direct";
   const robotCalls = !tr ? null : direct ? tr.totals.steps
     : tr.calls.filter((c) => c.executor === "robot").length + tr.calls.reduce((n, c) => n + c.nested.length, 0);
@@ -147,7 +155,8 @@ function renderHead() {
     ["推理词元", u.reasoning_tokens && fmtInt(u.reasoning_tokens)],
     ["机器人动作", !direct && robotCalls != null ? String(robotCalls) : null],
   ];
-  const context = [methodLabel(run.method), model.model || run.model].filter(Boolean).join(" · ");
+  const method = methodLabel(run.method);
+  const context = [direct || !replayAgent() ? method : [method.split(" · ")[0], agentName()].filter(Boolean).join(" · "), model.model || tr?.model || run.model].filter(Boolean).join(" · ");
   const facts = [
     ["用时", fmtDuration(run.elapsed_s)], ["环境步数", `${steps ?? "—"}${tr?.max_steps ? ` / ${tr.max_steps}` : ""}`],
     [direct ? "推理次数" : "模型轮次", fmtInt(tr ? (direct ? tr.totals.calls : tr.rounds.length) : u.requests)],
@@ -269,8 +278,8 @@ function drawLanes() {
     h("div", { class: "lane axis" }, h("div", { class: "lane-label" }), h("div", { class: "lane-track" }, ticks)),
     lane("模型", `${tr.rounds.length} 轮`, tr.rounds.map((r) => bar(r.started_at, r.finished_at,
       `round ${r.trigger.kind.startsWith("compact") ? "compact" : ""} ${r.error ? "fail" : ""}`, `第 ${r.index + 1} 轮 · ${secs(r.duration_s)} · ${fmtTokens(r.usage.input)} 入 / ${fmtTokens(r.usage.output)} 出`, `round:${r.index}`))),
-    lane("机器人", `${robot.length} 次`, robot),
-    lane("内置工具", `${agentTools.filter(Boolean).length} 次`, agentTools),
+    lane("机器人", `${tr.calls.filter((c) => c.executor === "robot").length + tr.calls.reduce((n, c) => n + c.nested.length, 0)} 次`, robot),
+    lane("内置工具", `${tr.calls.filter((c) => c.executor !== "robot").length} 次`, agentTools),
     lane("环境步数", tr.max_steps ? `上限 ${tr.max_steps}` : "", stepsSvg),
     lane("画面", `${tr.frames.length} 帧`, tr.frames.map((f) => h("i", { class: "frame", style: `left:${pct(f.t)}` }))),
     h("div", { class: "cursor", id: "rvCursor" }));
@@ -347,9 +356,11 @@ function drawInspector(t, frame, now) {
   const running = round && (!round.finished_at || round.finished_at > t);
   const robotNow = tr.calls.flatMap((c) => [c, ...c.nested]).find((x) => x.started_at && x.started_at <= t && (!x.finished_at || x.finished_at >= t) && (x.robot || x.transport_id));
   let what;
-  if (robotNow) what = `机器人正在执行 ${robotNow.name}`;
+  if (tr.ending && t >= endTime()) what = tr.ending.task_success ? "运行结束 · 任务成功" : "运行结束 · " + (tr.ending.task_success === false ? "任务未完成" : "未记录任务判定");
+  else if (robotNow) what = `机器人正在执行 ${robotNow.name}`;
+  else if (running && nativeReplay()) what = `原生 Agent 第 ${round.index + 1} 轮进行中`;
   else if (running) what = `等待模型输出（第 ${round.index + 1} 轮，已用 ${secs(t - round.started_at)}）`;
-  else if (round) what = `第 ${round.index + 1} 轮已返回，Codex 正在执行工具或准备下一轮`;
+  else if (round) what = `第 ${round.index + 1} 轮已返回，${agentName()} 正在执行工具或准备下一轮`;
   else what = "Agent 尚未开始：固定代码正在准备环境与提示词";
   put($("rvNow"),
     h("div", { class: "now-row" }, h("span", { class: "muted small" }, "此刻"), h("b", {}, what)),
@@ -433,9 +444,12 @@ function toggleAll(open) {
 function step(id, cls, head, ...body) {
   const node = h("div", { class: `step ${cls}${RV.open.has(id) ? " open" : ""}${RV.selected === id ? " current" : ""}`, "data-step": id },
     h("div", { class: "step-head", onclick: () => {
-      node.classList.toggle("open");
-      if (node.classList.contains("open")) RV.open.add(id); else RV.open.delete(id);
-      select(id, true);
+      if (node.classList.toggle("open")) {
+        RV.open.add(id);
+        select(id, true);
+      } else {
+        RV.open.delete(id);
+      }
     } }, head),
     h("div", { class: "step-body" }, body));
   return node;
@@ -531,17 +545,17 @@ function roundStep(r, calls) {
       h("span", { class: "faint small" }, `${secs(r.duration_s)} · ${fmtTokens(u.input)} 入 / ${fmtTokens(u.output)} 出`)],
     section("为什么调用", h("div", { class: "why" }, originTag(r.trigger.kind === "initial" ? "code" : "runtime"), r.trigger.text)),
     section("输入",
-      h("div", { class: "small muted" }, `本轮新增 ${r.new_input.length} 项` + (r.echoed ? `（另有 ${r.echoed} 项是上一轮模型自己的输出，原样回传）` : "") +
+      h("div", { class: "small muted" }, nativeReplay() ? `本轮新收到 ${r.new_input.length} 项消息 · 可用 EvoAB 工具 ${r.context.tools} 个` : `本轮新增 ${r.new_input.length} 项` + (r.echoed ? `（另有 ${r.echoed} 项是上一轮模型自己的输出，原样回传）` : "") +
         `；完整上下文 ${r.context.items} 项 · ${r.context.instructions_chars ? `系统指令 ${fmtInt(r.context.instructions_chars)} 字` : "系统指令在开发者消息中"} · 可用工具 ${r.context.tools} 个` +
         (r.context.truncated ? ` · 上下文策略截掉 ${r.context.dropped} 项` : "")),
       r.new_input.map(itemView),
-      h("button", { class: "btn small", onclick: (e) => { e.stopPropagation(); openRound(r.index, "input"); } }, "查看完整输入（含系统指令、工具定义、实际发给模型的请求）")),
+      h("button", { class: "btn small", onclick: (e) => { e.stopPropagation(); openRound(r.index, "input"); } }, nativeReplay() ? "查看本轮记录" : "查看完整输入（含系统指令、工具定义、实际发给模型的请求）")),
     section("调用与耗时",
       h("div", { class: "kv-grid" },
         kv("模型", `${r.model || "—"}${r.reasoning ? ` · 推理 ${r.reasoning}` : ""}`),
         kv("接口", `${r.endpoint || "—"}（${r.wire_profile || "—"}）`),
         kv("开始 → 结束", `${clock(r.started_at)} → ${clock(r.finished_at)}`),
-        kv("耗时", secs(r.duration_s)),
+        kv(nativeReplay() ? "整轮耗时（含工具执行）" : "耗时", secs(r.duration_s)),
         kv("尝试", r.attempts.length ? r.attempts.map((a) => `#${a.attempt} ${a.status ?? "—"} ${secs(a.elapsed_s)}`).join("，") : "—"),
         kv("状态", r.error ? `出错：${r.error}` : r.complete ? "完成" : "进行中"))),
     section("消耗",
@@ -551,8 +565,8 @@ function roundStep(r, calls) {
     section("输出", r.output.length ? r.output.map(itemView) : h("div", { class: "muted small" }, "无输出")),
     section("去向", outCalls.length
       ? h("ul", { class: "small" }, outCalls.map((c) => h("li", {}, h("a", { onclick: (e) => { e.stopPropagation(); select(`call:${c.call_id}`, true); } }, c.name),
-          ` 由${ORIGIN[c.executor][0]}执行`, c.used_in_round != null ? `，结果作为第 ${c.used_in_round + 1} 轮的输入` : "，结果未被后续轮次读取")))
-      : h("div", { class: "small" }, text ? "模型只回复了文字、没有调用工具：Codex 结束本次会话（不再请求模型）。" : "—")));
+          ` 由${ORIGIN[c.executor][0]}执行`, c.used_in_round != null ? `，结果作为第 ${c.used_in_round + 1} 轮的输入` : nativeReplay() ? "" : "，结果未被后续轮次读取")))
+      : h("div", { class: "small" }, text ? "本轮模型回复了文字，没有调用工具。" : "—")));
 }
 
 const kv = (k, v) => [h("span", { class: "k" }, k), h("span", { class: "v" }, v)];
@@ -584,17 +598,17 @@ function callStep(c, r) {
     [h("span", { class: "t mono" }, clock(c.started_at || c.issued_at)), h("b", { class: "mono" }, c.name), originTag(c.executor),
       c.success === false ? h("span", { class: "pill bad" }, "失败") : null, h("span", { class: "spacer" }),
       h("span", { class: "faint small" }, secs(c.duration_s))],
-    section("谁发起", h("div", { class: "small" }, `第 ${r.index + 1} 轮模型输出了这次调用；${c.executor === "robot" ? "Codex 通过 MCP 转发给 EvoAB，EvoAB 排队后在环境服务中执行。" : c.executor === "script" ? "Codex 在沙箱里运行模型写的脚本，脚本再调用 EvoAB 机器人工具（见下方）。" : "由 Codex 运行时自己执行（不经过 EvoAB）。"}`)),
+    section("谁发起", h("div", { class: "small" }, `第 ${r.index + 1} 轮模型输出了这次调用；${c.executor === "robot" ? `${agentName()} 将调用交给 EvoAB 工具执行器。` : c.executor === "script" ? "Codex 在沙箱里运行模型写的脚本，脚本再调用 EvoAB 机器人工具（见下方）。" : "由当前 Agent 的内置工具执行。"}`)),
     section(c.arguments?.script != null ? "输入（脚本）" : "输入（参数）", h("pre", { class: "txt" }, c.arguments?.script ?? pretty(c.arguments))),
     section("时间", h("div", { class: "kv-grid" },
       kv("发出", clock(c.issued_at)), c.queued_at ? kv("排队", clock(c.queued_at)) : null,
       kv("开始 → 结束", `${clock(c.started_at)} → ${clock(c.finished_at)}`), kv("用时", secs(c.duration_s)))),
     c.robot ? section("对环境的影响", robotFacts(c), services(c)) : null,
     c.nested.length ? section(`脚本里的机器人调用（${c.nested.length}）`, c.nested.map((n) => nestedView(n))) : null,
-    section("输出（模型看到的结果）", res ? itemView(res) : h("div", { class: "muted small" }, "尚未返回或未被记录")),
+    section(nativeReplay() ? "工具执行结果" : "输出（模型看到的结果）", res ? itemView(res) : h("div", { class: "muted small" }, "尚未返回或未被记录")),
     section("去向", h("div", { class: "small" }, c.used_in_round != null
       ? [`结果被追加到对话，成为 `, h("a", { onclick: (e) => { e.stopPropagation(); select(`round:${c.used_in_round}`, true); } }, `第 ${c.used_in_round + 1} 轮`), " 的输入。"]
-      : "没有后续轮次读取这个结果。")));
+      : nativeReplay() ? "原生日志未记录后续请求与这次结果的关联。" : "没有后续轮次读取这个结果。")));
 }
 
 function nestedView(n) {
@@ -613,7 +627,7 @@ async function openRound(index, tab = "input") {
   const body = h("div", { class: "drawer-body" }, h("div", { class: "muted" }, "读取完整请求…"));
   const tabs = h("div", { class: "tabs" });
   const drawer = h("div", { class: "drawer wide" },
-    h("div", { class: "drawer-head" }, h("h2", {}, `第 ${index + 1} 轮 · 完整输入与输出`), h("span", { class: "spacer" }),
+    h("div", { class: "drawer-head" }, h("h2", {}, `第 ${index + 1} 轮 · ${nativeReplay() ? "原生 Agent 记录" : "完整输入与输出"}`), h("span", { class: "spacer" }),
       h("button", { class: "btn small", onclick: close }, "关闭")), tabs, body);
   document.body.append(backdrop, drawer);
   let d;
@@ -642,6 +656,10 @@ async function openRound(index, tab = "input") {
         : t.parameters ? h("pre", { class: "txt" }, pretty(t.parameters)) : null))],
     meta: ["原始记录", () => h("pre", { class: "txt" }, pretty(d.meta))],
   };
+  if (d.kind === "native") {
+    views.input = ["本轮新增输入", () => d.input.map(itemView)];
+    delete views.wire;
+  }
   const show = (name) => {
     put(tabs, Object.entries(views).map(([k, [label]]) => h("button", { class: k === name ? "active" : "", onclick: () => show(k) }, label)));
     put(body, views[name][1]());
