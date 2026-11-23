@@ -153,6 +153,7 @@ def summarize_run(
         return None
     outcome = _read_json(run_dir / "native_outcome.json") or {}
     supervisor = _read_json(run_dir / "supervisor.json") or {}
+    research = _read_json(run_dir / "research_trial.json") or {}
     config = (result or {}).get("config") or {}
     instruction = (result or {}).get("instruction") or launch.get("instruction")
     if not instruction:
@@ -185,8 +186,9 @@ def summarize_run(
         "simulated": launch.get("simulated", True),
         "provider_id": launch.get("provider_id"),
         "provider": launch.get("provider_label") or config.get("provider_url"),
-        "model": (result or {}).get("model_preset") or (result or {}).get("model") or launch.get("model"),
-        "agent": (result or {}).get("agent_backend") or launch.get("agent"),
+        "model": (result or {}).get("model_preset") or (result or {}).get("model") or launch.get("model") or research.get("model"),
+        "research_id": research.get("research_id"),
+        "agent": "physicalrsi" if research else (result or {}).get("agent_backend") or launch.get("agent"),
         "method_id": "direct_policy" if (run_dir / "direct" / "policy.json").is_file() else (
             (result or {}).get("method") or launch.get("method")
         ),
@@ -247,6 +249,9 @@ def _method(run: dict[str, Any]) -> str:
     from evoab.agents.registry import agent_launch
     from evoab.workbench.launcher import METHODS
 
+    if run.get("research_id"):
+        return "PhysicalRSI · System 1"
+
     method = next((m for m in METHODS if m["id"] == run.get("method_id")), None)
     agent = run.get("agent") or "codex"
     if method is None:
@@ -276,15 +281,19 @@ def scan_runs(root: Path) -> list[dict[str, Any]]:
     first). Launches that never created a run directory get no attempt.
     """
     from evoab.workbench.launcher import method_identity
+    from evoab.workbench.trash import hidden_ids
 
     if not root.is_dir():
         return []
     now = time.time()
     launches = load_launches(root)
+    hidden_runs, hidden_launches = hidden_ids(root)
+    launches = [l for l in launches if l.get("launch_id") not in hidden_launches
+                and l.get("run_dir") not in hidden_runs]
     by_dir = {launch["run_dir"]: launch for launch in launches if launch["run_dir"]}
     runs = []
     for child in root.iterdir():
-        if child.is_dir() and child.name != STUDIO_DIR:
+        if child.is_dir() and child.name != STUDIO_DIR and child.name not in hidden_runs:
             summary = summarize_run(child, now, by_dir.get(child.name))
             if summary is not None:
                 runs.append(summary)

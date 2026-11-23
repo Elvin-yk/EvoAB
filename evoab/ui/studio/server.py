@@ -139,6 +139,26 @@ def create_app(runs_root: Path) -> FastAPI:
 
     # -- runs -----------------------------------------------------------------
 
+    @app.get("/api/research")
+    def research_list() -> dict[str, Any]:
+        return {"campaigns": bench.research_campaigns()}
+
+    @app.post("/api/research", status_code=201)
+    def research_start(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        return bench.start_research(payload)
+
+    @app.post("/api/research/trash")
+    def research_recycle(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        return bench.recycle_research(payload.get("refs"))
+
+    @app.post("/api/research/{ref}/stop")
+    def research_stop(ref: str) -> dict[str, Any]:
+        return bench.research_action(ref, "stop")
+
+    @app.post("/api/research/{ref}/resume")
+    def research_resume(ref: str) -> dict[str, Any]:
+        return bench.research_action(ref, "resume")
+
     @app.get("/api/runs")
     def run_list() -> dict[str, Any]:
         items = bench.runs(live=lambda monitor_id: live_progress(collection, monitor_id))
@@ -147,6 +167,28 @@ def create_app(runs_root: Path) -> FastAPI:
     @app.post("/api/runs", status_code=201)
     def run_start(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         return bench.launch(payload)
+
+    @app.post("/api/runs/trash")
+    def run_recycle(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        result = bench.recycle_runs(payload.get("refs"))
+        collection.rescan(force=True)
+        return result
+
+    @app.get("/api/trash")
+    def trash_list() -> dict[str, Any]:
+        return {"runs": bench.recycled_runs()}
+
+    @app.post("/api/trash/restore")
+    def trash_restore(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        result = bench.restore_runs(payload.get("ids"))
+        collection.rescan(force=True)
+        return result
+
+    @app.post("/api/trash/delete")
+    def trash_delete(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        result = bench.purge_runs(payload.get("ids"))
+        collection.rescan(force=True)
+        return result
 
     @app.post("/api/runs/{launch_id}/stop")
     def run_stop(launch_id: str) -> dict[str, Any]:

@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Studio recognizes prepared native runtimes separately from optional Docker
+  prerequisites and checks disk capacity on the runtime cache filesystem.
+
+- Fix recycle-bin clearing blocked by invisible incomplete research records;
+  display retained-research dependencies before deletion, explain protected
+  batches, and provide selection of deletable items.
+
+- Research campaigns now share recoverable deletion with ordinary runs. The
+  recycle bin has run/research categories and category-scoped selection and
+  clearing; history and research pages offer select-all. Referenced episode
+  evidence cannot be permanently deleted while its campaign is retained.
+
+- Add full PhysicalRSI research campaigns through the original 0.3.0 core:
+  composed System 1 skills, language-proposed controller mutations, fresh paired
+  evaluation, statistical selection, lineage and development-only research
+  memory updates. Studio's self-improvement page and `evoab research` share
+  launch, status, stop and audited resume operations. See `docs/physicalrsi.md`.
+
+- Studio run history can move completed or failed runs to a persistent recycle
+  bin, restore them, or permanently delete selected entries. Active runs are
+  protected. The history selection button now deletes rather than only clearing
+  selection. See `docs/recycle-bin.md` for storage, API and CLI behavior.
+
 - Studio can uninstall one prepared Docker deployment (卸载 beside 部署/已部署):
   `DELETE /api/benchmarks/<integration>/<profile>/setup` removes that
   deployment's records and local runtime image while keeping runs and

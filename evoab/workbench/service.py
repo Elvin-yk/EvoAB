@@ -17,7 +17,7 @@ from typing import Any
 
 from evoab.agents.registry import agent_launch
 from evoab.provider.contracts import PresetCompatibilityError
-from evoab.workbench import benchmarks, direct_trace, jobs, trace
+from evoab.workbench import benchmarks, direct_trace, jobs, trace, trash
 from evoab.workbench.launcher import (
     DIRECT_OPTIONS, REASONING_EFFORTS, LaunchRequest, launch, method_identity, methods, resolve_selection, tool_groups, validate,
 )
@@ -216,30 +216,56 @@ class Workbench:
         return {**listing, "configured": setting, "default_directory": str(default_directory())}
 
     def system_check(self) -> dict[str, Any]:
-        """What a machine needs before one-click benchmark deployment, each with a fix."""
+        """Report native readiness separately from optional container prerequisites."""
         import shutil
         import subprocess
         from evoab.provider import catalog
         checks = []
 
-        def add(key, ok, detail, fix=""):
-            checks.append({"key": key, "ok": bool(ok), "detail": detail, "fix": "" if ok else fix})
+        launchable = {info.integration for info in benchmarks.REGISTRY if info.task_selector}
+        native = [runtime for runtime in benchmarks.prepared_runtimes()
+                  if runtime.kind == "native" and runtime.tasks
+                  and runtime.integration in launchable]
+
+        def add(key, ok, detail, fix="", *, required=True):
+            checks.append({"key": key, "ok": bool(ok), "required": required,
+                           "detail": detail, "fix": "" if ok or not required else fix})
+
+        add("native_runtimes", native,
+            ", ".join(sorted({runtime.integration for runtime in native})) or "No prepared native task runtimes",
+            required=False)
 
         docker = shutil.which("docker")
-        add("docker", docker, docker or "docker not found", "Install Docker Engine (docs.docker.com/engine/install).")
+        add("docker", docker, docker or "docker not found", "Install Docker Engine (docs.docker.com/engine/install).",
+            required=not native)
         info = None
         if docker:
             result = subprocess.run([docker, "info", "--format", "{{json .Runtimes}}"], capture_output=True, text=True,
                                     timeout=30)
             info = result.stdout if result.returncode == 0 else None
             add("docker_access", info is not None, "Docker daemon reachable" if info else (result.stderr.strip()[-200:]),
-                "Add this user to the docker group (sudo usermod -aG docker $USER), then log in again.")
+                "Add this user to the docker group (sudo usermod -aG docker $USER), then log in again.",
+                required=not native)
         toolkit = shutil.which("nvidia-ctk") or shutil.which("nvidia-container-runtime")
         add("gpu_containers", toolkit and info and "nvidia" in info,
             "NVIDIA Container Toolkit configured" if toolkit and info and "nvidia" in info else "GPU containers unavailable",
-            "Install nvidia-container-toolkit, run sudo nvidia-ctk runtime configure --runtime=docker, restart Docker.")
-        free = shutil.disk_usage(Path.home()).free / 2**30
-        add("disk", free >= 120, f"{free:.0f} GiB free", "Free at least 120 GiB (images and assets).")
+            "Install nvidia-container-toolkit, run sudo nvidia-ctk runtime configure --runtime=docker, restart Docker.",
+            required=not native)
+        if native:
+            driver = shutil.which("nvidia-smi")
+            try:
+                result = subprocess.run([driver, "--query-gpu=name", "--format=csv,noheader"],
+                                        capture_output=True, text=True, timeout=15) if driver else None
+                gpu_ok = result is not None and result.returncode == 0 and bool(result.stdout.strip())
+                detail = result.stdout.strip() if gpu_ok else "NVIDIA driver unavailable"
+            except (OSError, subprocess.TimeoutExpired):
+                gpu_ok, detail = False, "NVIDIA driver check failed"
+            add("native_gpu", gpu_ok, detail, "A working NVIDIA driver is required for GPU rendering.")
+        storage = benchmarks.cache_root()
+        while not storage.exists():
+            storage = storage.parent
+        free = shutil.disk_usage(storage).free / 2**30
+        add("disk", free >= 120, f"{free:.0f} GiB free at {storage}", "Free at least 120 GiB (images and assets).")
         try:
             presets = catalog.presets()
         except RuntimeError as error:
@@ -249,7 +275,8 @@ class Workbench:
             "Add a provider and a model preset under 设置 → 模型.")
         mirrors = build_mirrors()
         add("network", True, "mainland China mirrors (Tsinghua, hf-mirror)" if mirrors else "public package and model hubs")
-        return {"ok": all(c["ok"] for c in checks), "checks": checks}
+        return {"ok": all(c["ok"] for c in checks if c["required"]), "checks": checks,
+                "runtime_mode": "native" if native else "container"}
 
     # -- models: providers, presets and usage ---------------------------------
 
@@ -309,6 +336,89 @@ class Workbench:
 
     # -- runs -----------------------------------------------------------------
 
+    def research_campaigns(self) -> list[dict[str, Any]]:
+        from evoab.workbench.research import list_campaigns
+        return list_campaigns(self.runs_root)
+
+    def start_research(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from evoab.workbench.research import start
+        with _admission:
+            try:
+                return start(self.runs_root, payload)
+            except (ValueError, RuntimeError) as error:
+                raise Invalid(str(error)) from error
+
+    def research_action(self, ref: str, action: str) -> dict[str, Any]:
+        from evoab.workbench import research
+        with _admission, trash.locked(self.runs_root):
+            try:
+                return (research.stop if action == "stop" else research.resume)(self.runs_root, ref)
+            except (ValueError, OSError) as error:
+                raise Conflict(str(error)) from error
+
+    def recycle_research(self, refs: list[str]) -> dict[str, Any]:
+        from evoab.workbench.research import directory, summary
+        refs = self._selection(refs)
+        with _admission, trash.locked(self.runs_root):
+            try:
+                records = []
+                for ref in refs:
+                    campaign = summary(directory(self.runs_root, ref))
+                    config = campaign['config']
+                    records.append({'research_id': ref, 'id': None, 'launch_id': None,
+                        'short_id': ref.removeprefix('research-'), 'task': config.get('task'),
+                        'instruction': campaign.get('label') or config.get('task') or ref,
+                        'status': campaign['state'], 'model': config.get('model'),
+                        'integration': config.get('integration'),
+                        'completed_rounds': campaign['completed_rounds'], 'rounds': config.get('rounds'),
+                        'started_at': campaign.get('started_at')})
+                items = trash.recycle(self.runs_root, records, category='research')
+            except (ValueError, OSError) as error:
+                raise Conflict(str(error)) from error
+        return {'recycled': [e['trash_id'] for e in items]}
+
+    @staticmethod
+    def _selection(values: list[str]) -> list[str]:
+        if (not isinstance(values, list) or not values or len(values) > 500
+                or any(not isinstance(v, str) or not v for v in values)):
+            raise Invalid("Select between 1 and 500 task records")
+        return list(dict.fromkeys(values))
+
+    def recycle_runs(self, refs: list[str]) -> dict[str, Any]:
+        refs = self._selection(refs)
+        with _admission, trash.locked(self.runs_root):
+            runs = [self.find_run(ref) for ref in refs]
+            runs = list({r["key"]: r for r in runs}.values())
+            try:
+                items = trash.recycle(self.runs_root, runs)
+            except (trash.TrashError, OSError) as error:
+                raise Conflict(str(error)) from error
+        return {"recycled": [e["trash_id"] for e in items]}
+
+    def recycled_runs(self) -> list[dict[str, Any]]:
+        return [{**e["run"], "category": e.get("category", "run"),
+                 "required_research": trash.research_dependency(self.runs_root, e),
+                 "trash_id": e["trash_id"], "deleted_at": e["deleted_at"]}
+                for e in sorted(trash.entries(self.runs_root), key=lambda e: e["deleted_at"], reverse=True)]
+
+    def restore_runs(self, ids: list[str]) -> dict[str, Any]:
+        ids = self._selection(ids)
+        with _admission, trash.locked(self.runs_root):
+            try:
+                trash.restore(self.runs_root, ids)
+            except (trash.TrashError, OSError) as error:
+                raise Conflict(str(error)) from error
+        return {"restored": ids}
+
+    def purge_runs(self, ids: list[str]) -> dict[str, Any]:
+        ids = self._selection(ids)
+        with _admission, trash.locked(self.runs_root):
+            try:
+                trash.purge(self.runs_root, ids)
+            except (trash.TrashError, OSError) as error:
+                raise Conflict(str(error)) from error
+        return {"deleted": ids}
+
     def runs(self, live=None) -> list[dict[str, Any]]:
         """All runs, newest first. ``live(monitor_id)`` may add live progress to running ones."""
         items = scan_runs(self.runs_root)
@@ -350,6 +460,8 @@ class Workbench:
         return {"launch_id": launch_id, "short_id": launch_id.rsplit("_", 1)[-1], "request": asdict(request)}
 
     def _launch_record(self, launch_id: str) -> dict[str, Any]:
+        if launch_id in trash.hidden_ids(self.runs_root)[1]:
+            raise NotFound("task is in the recycle bin")
         record = next((r for r in load_launches(self.runs_root) if r.get("launch_id") == launch_id), None)
         if record is None:
             raise NotFound(f"unknown launch {launch_id!r}")
@@ -372,6 +484,8 @@ class Workbench:
     # -- trace ----------------------------------------------------------------
 
     def run_dir(self, run_id: str) -> Path:
+        if run_id in trash.hidden_ids(self.runs_root)[0]:
+            raise NotFound("task is in the recycle bin")
         if not re.fullmatch(r"[\w.\-]+", run_id) or run_id == STUDIO_DIR:
             raise NotFound("unknown run")
         path = self.runs_root / run_id

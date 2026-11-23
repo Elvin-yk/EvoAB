@@ -26,6 +26,7 @@ WORKBENCH_COMMANDS = {
     "usage": "Token usage by API and model",
     "settings": "Show or change Studio defaults",
     "studio": "Start the Studio web client",
+    "research": "Launch and inspect full PhysicalRSI self-improvement campaigns",
 }
 
 

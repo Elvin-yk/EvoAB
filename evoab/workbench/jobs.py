@@ -32,7 +32,16 @@ def _reap_forever() -> None:
                 continue
             with _lock:
                 _children.pop(pid, None)
-            update_record(record_path, exit_code=code, finished_at=time.time())
+            # A finished launch may be purged before this polling pass writes
+            # its exit code. Share recycling's lock and never recreate it.
+            studio = next((p for p in record_path.parents if p.name == ".studio"), None)
+            if studio is not None:
+                from evoab.workbench.trash import locked
+                with locked(studio.parent):
+                    if record_path.exists():
+                        update_record(record_path, exit_code=code, finished_at=time.time())
+            else:
+                update_record(record_path, exit_code=code, finished_at=time.time())
 
 
 def _ensure_reaper() -> None:

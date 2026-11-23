@@ -649,3 +649,6 @@ details.sys.inner { margin: 6px 0; }
 .system-check .check-row .mark { font-weight: 700; }
 .system-check .check-row.ok .mark { color: var(--ok); } .system-check .check-row.bad .mark { color: var(--bad); }
 .system-check .check-row .fix { grid-column: 3; color: var(--bad); }
+
+/* Destructive actions remain visible in the history selection toolbar. */
+.compare-bar .btn.danger { color: var(--bad); }

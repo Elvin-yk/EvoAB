@@ -16,7 +16,20 @@ import time
 from pathlib import Path
 from typing import Any
 
-COMMANDS = ("runs", "models", "benchmarks", "usage", "settings", "studio")
+COMMANDS = ("runs", "models", "benchmarks", "usage", "settings", "studio", "research")
+
+
+def _research(bench, args):
+    if args.action == "launch":
+        from evoab.research.physicalrsi.config import ResearchConfig
+        values = {key: getattr(args, key) for key in ResearchConfig.model_fields if hasattr(args, key)}
+        _print_json(bench.start_research(values))
+    elif args.action in ("stop", "resume"):
+        _print_json(bench.research_action(args.ref, args.action))
+    elif args.action == "recycle":
+        _print_json(bench.recycle_research(args.refs))
+    else:
+        _print_json(bench.research_campaigns())
 
 
 def _print_json(value: Any) -> None:
@@ -73,6 +86,20 @@ def _runs_show(bench, args) -> None:
     usage = run.get("usage") or {}
     print(f"{'usage':18} {usage.get('requests', 0)} requests, {_tokens(usage.get('input_tokens'))} in "
           f"({_tokens(usage.get('cached_input_tokens'))} cached), {_tokens(usage.get('output_tokens'))} out")
+
+
+def _runs_recycle(bench, args) -> None:
+    if args.action == "recycle":
+        result = bench.recycle_runs(args.refs)
+    elif args.action == "trash":
+        result = bench.recycled_runs()
+    elif args.action == "restore":
+        result = bench.restore_runs(args.ids)
+    else:
+        if not args.yes:
+            raise ValueError("Permanent deletion requires --yes; use runs recycle for recoverable deletion")
+        result = bench.purge_runs(args.ids)
+    _print_json(result)
 
 
 def _runs_trace(bench, args) -> None:
@@ -325,11 +352,41 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--json", action="store_true", help="Print the machine-readable payload")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    research = sub.add_parser("research", help="Full PhysicalRSI research campaigns").add_subparsers(dest="action", required=True)
+    for action in ("list", "launch", "stop", "resume", "recycle"):
+        p = research.add_parser(action, parents=[common])
+        if action == "recycle":
+            p.add_argument("refs", nargs="+", help="Completed research campaign IDs")
+        if action == "launch":
+            p.add_argument("--model", required=True)
+            p.add_argument("--integration", default="metaworld")
+            p.add_argument("--task", default="reach-v3")
+            p.add_argument("--reasoning-effort", default="low")
+            for field, default in (("rounds", 2), ("candidates", 1), ("development_cases", 1),
+                                   ("validation_cases", 3), ("test_cases", 1), ("max_turns", 8),
+                                   ("episode_seconds", 600), ("seed", 0), ("max_trials", 200)):
+                p.add_argument("--" + field.replace("_", "-"), type=int, default=default)
+        if action in ("stop", "resume"):
+            p.add_argument("ref")
+        p.set_defaults(handler=_research)
+
     runs = sub.add_parser("runs", help="List, launch, inspect and stop runs").add_subparsers(dest="action", required=True)
     p = runs.add_parser("list", parents=[common], help="List runs, newest first")
     p.add_argument("--status", choices=("running", "starting", "success", "failure", "error", "interrupted", "failed"))
     p.add_argument("--limit", type=int, default=0)
     p.set_defaults(handler=_runs_list)
+    for action, help_text in (("recycle", "Move finished runs to the recycle bin"),
+                              ("trash", "List recycled runs"),
+                              ("restore", "Restore recycle-bin IDs"),
+                              ("purge", "Permanently delete recycle-bin IDs")):
+        p = runs.add_parser(action, parents=[common], help=help_text)
+        if action == "recycle":
+            p.add_argument("refs", nargs="+")
+        elif action in ("restore", "purge"):
+            p.add_argument("ids", nargs="+")
+        if action == "purge":
+            p.add_argument("--yes", action="store_true", help="Confirm irreversible deletion")
+        p.set_defaults(handler=_runs_recycle)
     for name, handler, help_text in (("show", _runs_show, "Summary of one run"),
                                      ("stop", _runs_stop, "Stop a running run"),
                                      ("log", _runs_log, "Launcher log of a run")):

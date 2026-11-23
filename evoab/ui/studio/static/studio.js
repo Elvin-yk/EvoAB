@@ -195,7 +195,7 @@ function route() {
       S.modelSettings = null;
       S.agentModelSettings.clear();
     }
-    if (page === "history" || page === "run" || (page === "settings" && arg === "benchmarks")) {
+    if (page === "history" || page === "trash" || page === "research" || page === "run" || (page === "settings" && arg === "benchmarks")) {
       runRefreshTimer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
     }
   }
@@ -214,7 +214,7 @@ function route() {
   const main = $("main");
   if (!same) main.scrollTop = 0;
   if (page === "benchmarks") { location.replace("#settings/benchmarks"); return; }
-  const pages = { new: pageNew, history: pageHistory, run: pageRun, settings: pageSettings };
+  const pages = { new: pageNew, history: pageHistory, trash: pageTrash, research: pageResearch, run: pageRun, settings: pageSettings };
   (pages[page] || pageNew)(main, arg);
 }
 function pageHead(title, subtitle, ...actions) {
@@ -714,37 +714,48 @@ function pageHistory(main) {
   const renderTable = () => {
     const runs = filteredRuns();
     put(tableHolder, runs.length ? h("div", { class: "card table-wrap" }, h("table", { class: "table" },
-      h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "运行 ID"), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "评测集"), h("th", {}, "方法"),
+      h("thead", {}, h("tr", {}, h("th", {}, h("input", { type: "checkbox", "aria-label": "全选当前运行记录",
+        checked: runs.length > 0 && runs.every(r => f.selected.has(r.key)), disabled: !runs.length || historyDeleting,
+        onchange: e => { for (const r of runs) { if (e.target.checked) f.selected.add(r.key); else f.selected.delete(r.key); } renderTable(); } })), h("th", {}, "运行 ID"), h("th", {}, "状态"), h("th", {}, "任务"), h("th", {}, "评测集"), h("th", {}, "方法"),
         h("th", {}, "模型"), h("th", { class: "num" }, "第几次"), h("th", { class: "num" }, "步数"), h("th", { class: "num" }, "用时"),
         h("th", { class: "num" }, "词元"), h("th", {}, "开始时间"))),
       h("tbody", {}, runs.map((r) => h("tr", { class: "clickable", onclick: () => (location.hash = `#${r.key}`) },
         h("td", { onclick: (e) => e.stopPropagation() }, h("input", { type: "checkbox", checked: f.selected.has(r.key), onchange: (e) => {
           if (e.target.checked) f.selected.add(r.key); else f.selected.delete(r.key);
-          renderCompareBar();
+          renderTable();
         } })),
         h("td", { class: "mono" }, runTitle(r)),
         h("td", {}, pill(r.status)),
-        h("td", { class: "task-cell", title: runTask(r) }, runTask(r)),
+        h("td", { class: "task-cell", title: runTask(r) }, runTask(r),
+          r.research_id ? h("a", { class: "faint small", href: "#research", onclick: e => e.stopPropagation() }, "所属自我改进研究") : null),
         h("td", {}, runBenchmark(r), r.benchmark && h("div", { class: "faint small" }, suiteLabel(r.benchmark))),
         h("td", {}, methodLabel(r.method)),
         h("td", {}, r.model || "—", h("div", { class: "faint small" }, r.provider || "")),
         h("td", { class: "num" }, r.attempt ?? "—"),
         h("td", { class: "num" }, r.live?.steps ?? r.environment_steps ?? "—"),
         h("td", { class: "num" }, fmtDuration(r.elapsed_s)),
-        h("td", { class: "num" }, fmtTokens(r.usage.total_tokens)),
+        h("td", { class: "num" }, r.research_id
+          ? h("a", { href: "#research", onclick: e => e.stopPropagation() }, "见研究报告")
+          : fmtTokens(r.usage.total_tokens)),
         h("td", {}, fmtTime(r.started_at)))))))
       : h("div", { class: "card empty" }, h("b", {}, S.runs.length ? "没有匹配的运行" : "还没有运行记录"), S.runs.length ? "调整筛选条件试试。" : "在“发起任务”里开始第一次运行。"));
     renderCompareBar();
   };
   const renderCompareBar = () => {
     const keys = [...f.selected].filter((k) => findRun(k));
+    const selected = keys.map(findRun);
+    const active = selected.some(isLive);
     put(compareHolder, );
     if (keys.length >= 1) {
       compareHolder.append(h("div", { class: "compare-bar" },
         h("span", {}, `已选 ${keys.length} 个运行`),
         h("span", { class: "row" },
-          h("button", { class: "btn small", onclick: () => { f.selected.clear(); f.compare = false; renderTable(); } }, "清除"),
-          h("button", { class: "btn small", disabled: keys.length < 2, onclick: () => { f.compare = true; renderCompareBar(); } }, "对比"))));
+          h("button", { class: "btn small danger", disabled: active || historyDeleting,
+            title: active ? "运行中的任务不能删除，请先停止并等待结束" : "移入回收站，可恢复",
+            onclick: () => recycleSelected(selected) }, "删除"),
+          h("button", { class: "btn small", onclick: () => { f.selected.clear(); f.compare = false; renderTable(); } }, "取消选择"),
+          h("button", { class: "btn small", disabled: keys.length < 2, onclick: () => { f.compare = true; renderCompareBar(); } }, "对比")),
+        active ? h("span", { class: "small" }, "请先停止运行中的任务，再删除。") : null));
     }
     if (f.compare && keys.length >= 2) compareHolder.append(compareTable(keys.map(findRun)));
   };
@@ -754,10 +765,118 @@ function pageHistory(main) {
         oninput: (e) => { f.query = e.target.value; renderTable(); } }),
       select("status", "全部状态", ["success", "failure", "error", "interrupted", "starting", "running", "failed"], RUN_STATUS),
       select("bench", "全部环境", uniq((r) => r.integration && `${r.integration}/${r.profile}`)),
-      select("model", "全部模型", uniq((r) => r.model))),
+      select("model", "全部模型", uniq((r) => r.model)),
+      h("button", { class: "btn small", onclick: () => {
+        for (const r of filteredRuns()) f.selected.add(r.key); renderTable();
+      } }, "全选当前结果")),
     tableHolder, compareHolder));
   renderTable();
   pageHistory.refresh = renderTable;
+}
+
+let historyDeleting = false;
+async function recycleSelected(runs) {
+  if (historyDeleting || !runs.length || runs.some(isLive)) return;
+  if (!confirm(`将选中的 ${runs.length} 个任务移入回收站？之后可恢复，或在回收站彻底删除。`)) return;
+  historyDeleting = true;
+  if (current.page === "history") pageHistory.refresh?.();
+  try {
+    await api("/api/runs/trash", { method: "POST", json: { refs: runs.map(r => r.id || r.launch_id) } });
+    S.history.selected.clear();
+    S.history.compare = false;
+    await loadRuns();
+    toast(`已将 ${runs.length} 个任务移入回收站`);
+  } catch (error) {
+    toast(`删除失败：${error.message}`, true);
+  } finally {
+    historyDeleting = false;
+    if (current.page === "history") pageHistory.refresh?.();
+  }
+}
+
+const recycleState = { selected: new Set(), busy: false, category: "all" };
+async function pageTrash(main) {
+  put(main, h("div", { class: "page wide" }, pageHead("回收站", "按类型管理已删除的任务运行和自我改进记录。可恢复，彻底删除后无法恢复。"),
+    h("div", { id: "trashContent", class: "card card-pad" }, "正在读取回收站…")));
+  await loadTrash();
+}
+
+async function loadTrash() {
+  try {
+    const { runs: allItems } = await api("/api/trash");
+    if (current.page !== "trash" || !$("trashContent") || recycleState.busy) return;
+    const state = recycleState;
+    const runs = allItems.filter(r => state.category === "all" || (r.category || "run") === state.category);
+    state.selected = new Set([...state.selected].filter(id => runs.some(r => r.trash_id === id)));
+    const render = () => {
+      const ids = [...state.selected];
+      const blockers = values => {
+        const selectedResearch = new Set(allItems.filter(r => values.includes(r.trash_id) && r.category === "research").map(r => r.research_id));
+        return allItems.filter(r => values.includes(r.trash_id) && r.required_research && !selectedResearch.has(r.required_research));
+      };
+      const blocked = blockers(ids);
+      const blockedAll = blockers(runs.map(r => r.trash_id));
+      const protection = items => `${items.length} 条关联回合受研究证据保护。先在“自我改进”删除关联研究，再在回收站“全部”中选中研究与回合一起彻底删除；或点击“仅选可删除”。关联研究：${[...new Set(items.map(r => r.required_research))].join("、")}`;
+      const action = async (kind, values) => {
+        if (state.busy || !values.length) return;
+        if (kind === "delete" && blockers(values).length) { toast(protection(blockers(values)), true); return; }
+        const message = kind === "delete"
+          ? `彻底删除这 ${values.length} 条记录及其文件？此操作无法恢复。自我改进的关联运行记录单独管理。`
+          : `将这 ${values.length} 条记录恢复到各自的记录页面？`;
+        if (!confirm(message)) return;
+        state.busy = true; render();
+        try {
+          await api(`/api/trash/${kind}`, { method: "POST", json: { ids: values } });
+          state.selected.clear();
+          await loadRuns();
+          toast(kind === "delete" ? "已彻底删除" : "已恢复到原记录页面");
+        } catch (error) { toast(`操作失败：${error.message}`, true); }
+        finally { state.busy = false; if (current.page === "trash") await loadTrash(); }
+      };
+      put($("trashContent"),
+        h("div", { class: "segmented", style: "margin-bottom:16px", "aria-label": "回收站分类" },
+          [["all", "全部"], ["run", "任务运行"], ["research", "自我改进"]].map(([value, label]) =>
+            h("button", { class: state.category === value ? "active" : "", "aria-pressed": String(state.category === value), disabled: state.busy,
+              onclick: () => { state.category = value; state.selected.clear(); loadTrash(); } },
+              `${label}（${allItems.filter(r => value === "all" || (r.category || "run") === value).length}）`))),
+        h("div", { class: "toolbar", style: "margin-bottom:16px" },
+          h("span", { class: "muted" }, `当前分类 ${runs.length} 条，已选 ${ids.length} 条`),
+          h("button", { class: "btn small", disabled: !runs.length || state.busy,
+            onclick: () => { state.selected = new Set(runs.map(r => r.trash_id)); render(); } }, "全选"),
+          h("button", { class: "btn small", disabled: !runs.length || state.busy,
+            onclick: () => { const values = runs.map(r => r.trash_id); const protectedIds = new Set(blockers(values).map(r => r.trash_id));
+              state.selected = new Set(values.filter(id => !protectedIds.has(id))); render(); } }, "仅选可删除"),
+          h("button", { class: "btn small", disabled: !ids.length || state.busy,
+            onclick: () => { state.selected.clear(); render(); } }, "取消选择"),
+          h("button", { class: "btn small", disabled: !ids.length || state.busy,
+            onclick: () => action("restore", ids) }, "恢复"),
+          h("button", { class: "btn small danger", disabled: !ids.length || state.busy || blocked.length > 0,
+            title: blocked.length ? protection(blocked) : "永久删除所选记录",
+            onclick: () => action("delete", ids) }, "彻底删除"),
+          h("button", { class: "btn small danger", disabled: !runs.length || state.busy || blockedAll.length > 0,
+            title: blockedAll.length ? protection(blockedAll) : "永久删除当前分类中的全部记录",
+            onclick: () => action("delete", runs.map(r => r.trash_id)) }, state.category === "all" ? "清空回收站" : "清空当前分类")),
+        blockedAll.length ? h("div", { class: "notice", style: "margin-bottom:16px" }, protection(blockedAll),
+          h("a", { href: "#research", class: "btn small" }, "管理关联研究")) : null,
+        runs.length ? h("div", { class: "table-wrap" }, h("table", { class: "table" },
+          h("thead", {}, h("tr", {}, [h("input", { type: "checkbox", "aria-label": "全选当前回收站分类", checked: runs.length > 0 && ids.length === runs.length,
+            disabled: !runs.length || state.busy, onchange: e => { state.selected = new Set(e.target.checked ? runs.map(r => r.trash_id) : []); render(); } }), "类型", "记录 ID", "任务", "状态", "模型", "删除时间"].map(t => h("th", {}, t)))),
+          h("tbody", {}, runs.map(r => h("tr", {},
+            h("td", {}, h("input", { type: "checkbox", "aria-label": `选择 ${runTitle(r)}`,
+              checked: state.selected.has(r.trash_id), disabled: state.busy,
+              onchange: e => { if (e.target.checked) state.selected.add(r.trash_id); else state.selected.delete(r.trash_id); render(); } })),
+            h("td", {}, r.category === "research" ? "自我改进" : "任务运行"),
+            h("td", { class: "mono" }, r.research_id && r.category === "research" ? r.research_id : runTitle(r)),
+            h("td", { class: "task-cell" }, runTask(r), r.required_research
+              ? h("div", { class: "muted small" }, `研究证据：${r.required_research}`) : null),
+            h("td", {}, pill(r.status, { ...RUN_STATUS, completed: "已完成", budget_exhausted: "预算用完" })), h("td", {}, r.model || "—"), h("td", {}, fmtTime(r.deleted_at)))))))
+          : h("div", { class: "empty" }, state.category === "all" ? "回收站是空的" : "当前分类是空的"));
+    };
+    render();
+  } catch (error) {
+    if (current.page === "trash" && $("trashContent")) put($("trashContent"),
+      h("div", { class: "notice error" }, `读取回收站失败：${error.message}`));
+  }
 }
 
 function compareTable(runs) {
@@ -1077,6 +1196,7 @@ function settingsModels(body) {
 // -- benchmarks ----------------------------------------------------------------
 
 const CHECK_LABELS = { docker: "Docker", docker_access: "Docker 权限", gpu_containers: "GPU 容器", disk: "磁盘空间",
+  native_runtimes: "本机运行环境", native_gpu: "GPU 驱动",
   agent_runtime: "Agent 运行时", model_presets: "模型预设", network: "下载源" };
 
 function imageImportPanel() {
@@ -1204,9 +1324,10 @@ function imageImportPanel() {
 function settingsBenchmarks(body) {
   const checks = h("div", { class: "card card-pad system-check" }, h("div", { class: "muted small" }, "检查部署条件…"));
   api("/api/system/check").then((r) => put(checks,
-    h("div", { class: "section-title" }, r.ok ? "部署条件：全部满足" : "部署条件：还有未满足的项"),
-    r.checks.map((c) => h("div", { class: `check-row ${c.ok ? "ok" : "bad"}` },
-      h("span", { class: "mark" }, c.ok ? "✓" : "✗"), h("b", {}, CHECK_LABELS[c.key] || c.key), h("span", { class: "muted" }, c.detail),
+    h("div", { class: "section-title" }, r.ok ? (r.runtime_mode === "native" ? "本机运行条件已满足" : "部署条件：全部满足") : "部署条件：还有未满足的项"),
+    r.runtime_mode === "native" ? h("p", { class: "muted small" }, "已部署的本机环境可直接运行。Docker 条件仅用于容器部署。") : null,
+    r.checks.map((c) => h("div", { class: `check-row ${c.ok ? "ok" : c.required === false ? "optional" : "bad"}` },
+      h("span", { class: "mark" }, c.ok ? "✓" : c.required === false ? "—" : "✗"), h("b", {}, CHECK_LABELS[c.key] || c.key), h("span", { class: "muted" }, c.detail),
       c.fix ? h("div", { class: "fix mono small" }, c.fix) : null)))).catch((e) => put(checks, h("div", { class: "notice error" }, e.message)));
   put(body, h("div", { class: "page wide" },
     pageHead("评测环境"),
@@ -1277,6 +1398,14 @@ function applyDefaults(force = false) {
 // -- startup -----------------------------------------------------------------
 
 async function refresh() {
+  if (current.page === "research") {
+    await refreshResearch();
+    return;
+  }
+  if (current.page === "trash") {
+    if (!recycleState.busy) await loadTrash();
+    return;
+  }
   if (current.page === "settings" && current.arg === "benchmarks") {
     try {
       await loadBenchmarks();

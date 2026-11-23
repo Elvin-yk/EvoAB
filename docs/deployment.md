@@ -79,6 +79,13 @@ EGL/Vulkan, sufficient disk space and any required compiler or CUDA toolkit firs
 Setup does not use sudo or modify the system interpreter. For gated SAM3 assets,
 configure Hugging Face access in the process environment before setup.
 
+Studio's system check recognizes prepared native task runtimes. When one is
+available, Docker and NVIDIA Container Toolkit checks remain visible as optional
+container prerequisites; the native route checks the host NVIDIA driver instead.
+Disk capacity is measured on the runtime cache filesystem. This does not make
+unprepared benchmarks available: each environment still needs its own setup and
+launch check.
+
 On Linux, the MuJoCo profile's `robosuite` dependency pulls in `evdev`, which may
 need a C compiler, Python development headers, and matching Linux input headers.
 With a Conda compiler, align its header search path with the headers used by

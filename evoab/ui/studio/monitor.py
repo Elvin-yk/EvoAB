@@ -13,6 +13,9 @@ import threading
 import time
 from pathlib import Path
 
+from fastapi import HTTPException
+from evoab.workbench.trash import hidden_ids
+
 from evoab.ui.web.reader import RunReader
 from evoab.ui.web.server import Collection, discover
 
@@ -26,7 +29,7 @@ def monitor_id(run_dir: Path) -> str:
 
 class RescanningCollection(Collection):
     def __init__(self, runs_root: Path):
-        self.runs_root = Path(runs_root)
+        self.runs_root = Path(runs_root).expanduser().resolve()
         super().__init__([], archive_scopes=[self.runs_root])
         self._lock = threading.Lock()
         self._scanned_at = 0.0
@@ -36,12 +39,23 @@ class RescanningCollection(Collection):
             if not force and time.time() - self._scanned_at < RESCAN_INTERVAL_S:
                 return
             self._scanned_at = time.time()
+            hidden, _ = hidden_ids(self.runs_root)
+            for key, reader in list(self.readers.items()):
+                if not reader.root.is_dir() or reader.root.relative_to(self.runs_root).parts[0] in hidden:
+                    del self.readers[key]
             for root in discover([self.runs_root]):
+                if root.relative_to(self.runs_root).parts[0] in hidden | {".studio"}:
+                    continue
                 run_id = monitor_id(root)
                 if run_id not in self.readers:
                     self.readers[run_id] = RunReader(root, [self.runs_root])
 
     def reader(self, run_id):
+        existing = self.readers.get(run_id)
+        if existing and (not existing.root.is_dir() or
+                         existing.root.relative_to(self.runs_root).parts[0] in hidden_ids(self.runs_root)[0]):
+            self.readers.pop(run_id, None)
+            raise HTTPException(404, "Task is unavailable or in the recycle bin")
         if run_id not in self.readers:
             self.rescan(force=True)
         return super().reader(run_id)

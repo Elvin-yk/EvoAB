@@ -39,6 +39,7 @@ Documentation = "https://github.com/Elvin-yk/EvoAB/tree/main/docs"
 Homepage = "https://github.com/Elvin-yk/EvoAB"
 
 [project.optional-dependencies]
+physicalrsi = ["physicalrsi @ git+https://github.com/PhysicalRSI/PhysicalRSI.git@2574f72bebf9b357140ebe376db71e782575fe65"]
 antigravity = ["google-antigravity==0.1.23"]
 # Built-in agent runtime: model providers, presets and usage accounting (--agent native).
 agent = ["nanobot-ai==0.4.1", "scipy>=1.10"]
