@@ -50,6 +50,7 @@ class LaunchRequest:
     direct: dict | None = None
     agent: str | None = None
     agent_options: dict[str, int] | None = None
+    visible_tools: list[str] | None = None
 
 
 def methods() -> tuple[dict, ...]:
@@ -58,6 +59,7 @@ def methods() -> tuple[dict, ...]:
     return tuple({**method, "agents": [
         {"id": name, "label": agent.label, "description": agent.description,
          "integrations": agent.integrations, "cli_flags": agent.cli_flags,
+         "tool_selection_flags": agent.tool_selection_flags,
          "options": [asdict(option) for option in agent.options],
          "filters_presets": agent.validate_preset is not None, "model_help": agent.model_help}
         for name, agent in agents.items() if method["id"] in agent.modes
@@ -111,6 +113,29 @@ def resolve_selection(request: LaunchRequest) -> tuple[LaunchRequest, dict, Agen
     return replace(request, method=method["id"], agent=agent_id), method, agent
 
 
+def tool_groups(integration: str, method_id: str, agent_id: str) -> dict[str, list[str]]:
+    from evoab.integrations import load_integration
+    from evoab.tools.selection import TOOL_GROUPS
+
+    if integration not in {info.integration for info in benchmarks.REGISTRY}:
+        raise ValueError("Unknown benchmark")
+    request = LaunchRequest(integration, "", "", "", method=method_id, agent=agent_id)
+    _, method, agent = resolve_selection(request)
+    if method["interaction"] != "tool_calling":
+        raise ValueError("Tool selection requires a tool-calling method")
+    profile = method["tool_profile"]
+    if agent.tool_groups is not None:
+        groups = agent.tool_groups(integration, profile)
+    else:
+        modules = load_integration(integration).get_integration_spec().tool_profiles.get(profile)
+        if modules is None:
+            raise ValueError("This benchmark does not support the selected tool profile")
+        groups = {module.name: list(module.policies) for module in modules}
+        groups["jobs"] = list(TOOL_GROUPS["@jobs"])
+    # Studio starts runs with skill writing disabled.
+    return {group: [name for name in names if name != "write_skill"] for group, names in groups.items()}
+
+
 def _agent_option_flags(request: LaunchRequest, agent: AgentLaunch) -> list[str]:
     options = {option.name: option for option in agent.options}
     if request.agent_options is not None and not isinstance(request.agent_options, dict):
@@ -157,6 +182,8 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         *agent.cli_flags,
         *_agent_option_flags(request, agent),
     ]
+    if request.visible_tools is not None:
+        command.extend((*agent.tool_selection_flags, *request.visible_tools))
     runtime = benchmarks.runtime_for_launch(request.integration, request.profile)
     if runtime is not None and runtime.container:
         command.append("--container")
@@ -190,6 +217,13 @@ def validate(request: LaunchRequest) -> dict:
     elif request.model not in {p["name"] for p in catalog.presets()}:
         raise ValueError(f"unknown model preset {request.model!r}")
     _agent_option_flags(request, agent)
+    if request.visible_tools is not None:
+        if not isinstance(request.visible_tools, list) or not all(isinstance(name, str) for name in request.visible_tools):
+            raise ValueError("visible_tools must be a list of tool names")
+        groups = tool_groups(request.integration, request.method, request.agent)
+        allowed = {name for names in groups.values() for name in names}
+        if set(request.visible_tools) - allowed:
+            raise ValueError("Selection contains tools not available for this benchmark and Agent")
     if request.direct is not None and not isinstance(request.direct, dict):
         raise ValueError("direct must be an object")
     if request.direct and method["interaction"] != "direct_policy":
@@ -238,5 +272,6 @@ def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
         method=request.method,
         direct=request.direct,
         agent_options=request.agent_options,
+        visible_tools=request.visible_tools,
     )
     return launch_id

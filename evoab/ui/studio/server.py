@@ -70,6 +70,10 @@ def create_app(runs_root: Path) -> FastAPI:
     def benchmark_list() -> list[dict[str, Any]]:
         return bench.benchmarks()
 
+    @app.get("/api/benchmarks/{integration}/tools")
+    def benchmark_tools(integration: str, method: str, agent: str) -> dict[str, list[str]]:
+        return bench.tool_groups(integration, method, agent)
+
     @app.get("/api/benchmarks/{integration}/{profile}/tasks")
     def benchmark_tasks(integration: str, profile: str) -> list[dict[str, Any]]:
         return bench.tasks(integration, profile)

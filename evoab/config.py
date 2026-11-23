@@ -48,6 +48,9 @@ def resolve_config(args, parser, integration_spec, argv=()):
 def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True):
     """Resolve one runtime configuration without parsing arguments or exiting."""
     explicit = set(explicit)
+    if getattr(args, "visible_tools", None) is not None:
+        if args.tool_debug or args.interaction_mode != "tool_calling" or args.agent_backend == "rua":
+            raise ValueError("--visible-tools requires session tool calling without --tool-debug")
     from evoab.agents.registry import get_agent_backend
     if agent_enabled:
         get_agent_backend(args.agent_backend).resolve_defaults(args)
@@ -302,6 +305,7 @@ class SessionConfig(BaseModel):
     observation_profile: str = "none"
     skill_writing: bool = False
     tool_profile: str | None = None
+    visible_tools: list[str] | None = None
     tool_debug: bool = False
     tools: list[str] = Field(default_factory=list)
     save_exchanges: bool = True

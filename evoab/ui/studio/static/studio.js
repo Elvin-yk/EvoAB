@@ -151,7 +151,7 @@ const S = {
   models: {}, // provider id -> {models, capabilities, recommended}
   agentModelSettings: new Map(),
   wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: "direct_policy", agent: null,
-            agentOptions: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
+            agentOptions: new Map(), visibleTools: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
   history: { query: "", status: "all", bench: "all", model: "all", selected: new Set(), compare: false },
   replay: null,
 };
@@ -395,6 +395,7 @@ function stepMethod(body) {
   body.append(h("h1", { class: "wizard-title" }, "选择运行方法"));
   for (const [profile, label, note] of groups) {
     const methods = availableMethods().filter((m) => m.action_profile === profile);
+    if (profile === "hybrid" && !methods.length) continue;
     const section = h("section", { class: "method-group" },
       h("h2", { class: "section-title" }, label),
       h("p", { class: "muted small", style: "margin:0 0 10px" }, note),
@@ -405,9 +406,7 @@ function stepMethod(body) {
           onclick: () => { selectMethod(m, m.id === w.method ? w.agent : null); route(); },
         }, h("span", { class: "title" }, copy.title), h("span", { class: "desc" }, copy.desc));
       }))
-        : h("p", { class: "muted small" }, profile === "hybrid"
-          ? "暂无可用的策略协作 Agent。该模式需要评测集接入动作模型（VLA）；此处为空只说明当前没有 Agent 提供该模式。"
-          : "当前评测集没有可用的直接控制 Agent，可在上一步换一个评测集。"));
+        : h("p", { class: "muted small" }, "当前评测集没有可用的直接控制 Agent，可在上一步换一个评测集。"));
     if (method?.action_profile === profile && method.interaction !== "direct_policy") {
       section.append(h("section", { class: "agent-picker", "aria-label": "选择 Agent 实现" },
         h("h3", { class: "section-title" }, "选择 Agent 实现"),
@@ -420,6 +419,52 @@ function stepMethod(body) {
     body.append(section);
   }
   if (method?.interaction === "direct_policy") body.append(directOptions());
+  if (method?.interaction === "tool_calling" && selectedAgent()) renderToolPicker(body);
+}
+
+const TOOL_GROUP_LABELS = { gripper: "机械臂", scene: "场景观测", skills: "技能", episode: "任务", jobs: "后台作业", hybrid: "动作模型" };
+const TOOL_LABELS = {
+  move: "移动机械臂", grasp: "闭合夹爪", release: "打开夹爪", hold: "保持姿态",
+  view_env_state: "读取场景状态", capture_scene: "拍摄场景", locate: "定位物体（视相机能力而定）",
+  list_skills: "列出技能", read_skill: "读取技能", finish: "提交任务结果", actor_act: "调用动作模型",
+  get_tool_result: "查询作业结果", wait_for_tool: "等待一个作业", wait_for_tools: "等待多个作业",
+  list_tool_jobs: "列出作业", cancel_tool: "取消作业", queue_status: "查看队列", flush_queue: "清空队列",
+};
+const toolCatalogs = new Map();
+
+function toolSelectionKey() {
+  const w = S.wizard;
+  return JSON.stringify([w.bench.integration, w.bench.profile, w.method, w.agent]);
+}
+
+async function renderToolPicker(body) {
+  const w = S.wizard;
+  const key = toolSelectionKey();
+  const grid = h("div", { class: "tool-picker-grid" }, "正在读取工具…");
+  body.append(h("section", { class: "method-group tool-picker" },
+    h("h2", { class: "section-title" }, "向 Agent 开放的工具"),
+    h("p", { class: "muted small" }, "默认开放全部工具。取消勾选后，本次运行的 Agent 将无法调用该工具。"),
+    grid));
+  try {
+    if (!toolCatalogs.has(key)) {
+      const query = new URLSearchParams({ method: w.method, agent: w.agent });
+      toolCatalogs.set(key, await api(`/api/benchmarks/${encodeURIComponent(w.bench.integration)}/tools?${query}`));
+    }
+    const groups = toolCatalogs.get(key);
+    const all = Object.values(groups).flat();
+    const selected = new Set(w.visibleTools.get(key) ?? all);
+    put(grid, ...Object.entries(groups).filter(([, names]) => names.length).map(([group, names]) =>
+      h("fieldset", {}, h("legend", {}, TOOL_GROUP_LABELS[group] || group),
+        names.map((name) => h("label", { class: "check" },
+          h("input", { type: "checkbox", checked: selected.has(name), onchange: (e) => {
+            if (e.target.checked) selected.add(name); else selected.delete(name);
+            if (selected.size === all.length) w.visibleTools.delete(key);
+            else w.visibleTools.set(key, all.filter((tool) => selected.has(tool)));
+          } }), h("span", {}, TOOL_LABELS[name] || name, TOOL_LABELS[name] && h("code", {}, name)))))));
+  } catch (error) {
+    put(grid, h("p", { class: "muted small" }, error.message),
+      h("button", { class: "btn small", onclick: route }, "重新加载"));
+  }
 }
 
 const DIRECT_DEFAULTS = { representation: "abs_eef", horizon: "3:15", history: "15:7", blocks: ["gripper", "camera"] };
@@ -573,6 +618,8 @@ function commandPreview() {
       `--direct-prompt-blocks ${d.prompt_blocks}`);
     if (d.custom_prompt) parts.push("--direct-custom-prompt='" + d.custom_prompt.replaceAll("'", "'\"'\"'") + "'");
   }
+  const tools = w.visibleTools.get(toolSelectionKey());
+  if (tools) parts.push([...agent.tool_selection_flags, ...tools].join(" "));
   if (w.bench.container) parts.push("--container");
   return [...parts, "--monitor"].join(" \\\n  ");
 }
@@ -592,6 +639,7 @@ function stepConfirm(body) {
     ["方法", methodLabel(method.label)], ["推理强度", effortLabel(w.effort)],
     ["模型预设", w.model],
     ...(method.interaction === "direct_policy" ? [] : [["Agent", agent.label]]),
+    ...(w.visibleTools.has(toolSelectionKey()) ? [["开放工具", w.visibleTools.get(toolSelectionKey()).join("、") || "无"]] : []),
     ...agent.options.filter((option) => option.name in options).map((option) => [option.label, options[option.name]]),
     ...(method.interaction === "direct_policy" ? [["直接策略设置", Object.entries(directPayload()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
   ];
@@ -615,6 +663,7 @@ async function launchRun(event) {
       method: "POST",
       json: { integration: w.bench.integration, profile: w.bench.profile, task: w.task.task,
               model: w.model, reasoning_effort: w.effort, method: w.method, agent: agent.id,
+              ...(w.visibleTools.has(toolSelectionKey()) ? { visible_tools: w.visibleTools.get(toolSelectionKey()) } : {}),
               ...(options && Object.keys(options).length ? { agent_options: options } : {}),
               ...(selectedMethod()?.interaction === "direct_policy" ? { direct: directPayload() } : {}) },
     });

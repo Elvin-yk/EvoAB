@@ -19,7 +19,7 @@ from evoab.agents.registry import agent_launch
 from evoab.provider.contracts import PresetCompatibilityError
 from evoab.workbench import benchmarks, direct_trace, jobs, trace
 from evoab.workbench.launcher import (
-    DIRECT_OPTIONS, REASONING_EFFORTS, LaunchRequest, launch, method_identity, methods, resolve_selection, validate,
+    DIRECT_OPTIONS, REASONING_EFFORTS, LaunchRequest, launch, method_identity, methods, resolve_selection, tool_groups, validate,
 )
 from evoab.workbench.runs import STUDIO_DIR, load_launches, scan_runs, usage_totals
 
@@ -148,6 +148,14 @@ class Workbench:
         }
 
     # -- benchmarks -----------------------------------------------------------
+
+    def tool_groups(self, integration: str, method: str, agent: str) -> dict[str, list[str]]:
+        try:
+            return tool_groups(integration, method, agent)
+        except ValueError as error:
+            raise Invalid(str(error)) from error
+        except RuntimeError as error:
+            raise Unavailable(str(error)) from error
 
     def benchmarks(self) -> list[dict[str, Any]]:
         return benchmarks.overview(self.runs_root)

@@ -117,6 +117,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     common.add_argument("--tool-profile", type=canonical_tool_profile,
         choices=tuple(integration_spec.tool_profiles) if integration_spec else None,
         help="Integration tool composition; minimal is an alias for clean; defaults to its declared default profile")
+    common.add_argument("--visible-tools", nargs="*", metavar="NAME",
+        help="Expose only these enabled session tools; an empty list exposes none")
     visibility = common.add_argument_group("Tool visibility debugging")
     visibility.add_argument(
         "--tool-debug", action="store_true",

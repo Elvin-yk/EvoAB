@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 
 from evoab.agents.contracts import AgentLaunch, EvaluatorPlan, LaunchIntegerOption
 from evoab.provider.http_presets import resolve_http_preset, validate_http_provider_url
@@ -34,6 +35,24 @@ def preset_connection(name: str) -> tuple[str, str, str, str]:
     return connection.model, connection.base_url, connection.profile, connection.api_key
 
 
+def _runtime_python():
+    configured = os.environ.get("EVOAB_RUA_PYTHON")
+    venv = Path(__file__).resolve().parents[3] / "rua" / "venv"
+    if not configured and not venv.is_symlink() and (venv / ".evoab-rua-ready").is_file():
+        return str(venv / "bin" / "python")
+    return configured or sys.executable
+
+
+def _tool_groups(integration, profile):
+    worker = Path(__file__).with_name("worker.py")
+    try:
+        output = subprocess.run([_runtime_python(), "-I", str(worker), "--studio-tool-groups", integration, profile],
+                                capture_output=True, text=True, check=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError("无法读取 RUA 工具清单，请检查 RUA 运行环境。") from exc
+    return json.loads(output.stdout)
+
+
 class RuaAgent:
     """RUA owns model calls, tool execution and episode finalization in its process."""
 
@@ -42,6 +61,7 @@ class RuaAgent:
     workbench_launch = AgentLaunch(
         label="RUA", modes=("agentic",), integrations=("robodojo",),
         description="Uni Robot Agent 连接 EvoAB 管理的 RoboDojo 环境。",
+        tool_groups=_tool_groups, tool_selection_flags=("--tool-debug", "--tools"),
         cli_flags=("--rua-model-preset",), validate_preset=preset_connection,
         model_help="支持使用 API Key 的标准 Responses 或 Chat Completions 预设。",
         options=(LaunchIntegerOption("max_turns", "--max-turns", "Agent 轮次上限", "留空或填 0 表示不限制轮次。"),),
@@ -56,13 +76,7 @@ class RuaAgent:
 
     @classmethod
     def resolve_defaults(cls, args) -> None:
-        python = getattr(args, "rua_python", None) or os.environ.get("EVOAB_RUA_PYTHON")
-        if not python:
-            resources = Path(__file__).resolve().parents[3] / "rua"
-            venv = resources / "venv"
-            if not venv.is_symlink() and (venv / ".evoab-rua-ready").is_file():
-                python = str(venv / "bin" / "python")
-        args.rua_python = python or sys.executable
+        args.rua_python = getattr(args, "rua_python", None) or _runtime_python()
         if args.reasoning_effort is None:
             args.reasoning_effort = "max"
 

@@ -276,6 +276,16 @@ and applies each tool's return policy. Resource scheduling is unchanged.
 For Direct/Hybrid, workspace helpers remain available in TUI and absent from ordinary `run`.
 Observation profiles and skill-writing permissions retain their existing options.
 
+### Choose tools for a run
+
+In Studio, choose a tool-calling method and check the tools the Agent may use.
+All tools for the selected method are checked initially. Clearing every box
+exposes zero robot and job tools. Camera-dependent tools such as `locate`
+also require support from the connected episode. SDK built-ins are separate.
+For the native Agent, the corresponding CLI option is
+`--visible-tools move capture_scene`. The recorded `tool_selection.json`
+includes the requested names and the schemas actually exposed for an explicit selection.
+
 ### Tool visibility debugging
 
 `--tool-debug` makes `--tools` the complete agent-visible evoab tool set for
