@@ -309,7 +309,7 @@ function stepBench(body) {
           w.step = 2; route();
         } },
         benchmarkIdentity(bench, "span"),
-        h("span", { class: "meta" }, [p.profile !== "default" && p.profile, `${p.task_count} 个评测条目`].filter(Boolean).join(" · "))));
+        p.profile !== "default" ? h("span", { class: "meta" }, p.profile) : null));
     }
   }
   body.append(
