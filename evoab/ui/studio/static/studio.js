@@ -363,7 +363,7 @@ function episodeChoice(tasks) {
     h("div", { class: "episode-row" }, h("b", {}, "评测场景"), seeds, h("label", { class: "episode-layout" }, "布局编号", layout,
       h("span", { class: "faint small" }, "泛化任务 0–24，其他 0–49"))),
     h("p", { class: "muted small" }, "种子是官方的 3 组固定评测场景（0、1、2）；布局编号是该组里的第几个场景，"
-      + "一个布局就是一个回合的初始摆放。官方每组每个任务跑全部布局：泛化任务的标准和随机版本各 25 个，其余任务 50 个。"));
+      + "一个布局就是一个回合的初始摆放。官方评测每组每个任务跑前 25 个（泛化任务的标准、随机版本各 25 个）或 50 个布局；素材里多出的几个是备用布局。"));
 }
 
 function chooseTask(task) {

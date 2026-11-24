@@ -9,7 +9,9 @@ of their base task"), so there are 54 runnable configs.
 A *seed* is one of three evaluation sets, ``Assets/Eval_Layout/RoboDojo/arx_x5/<seed>/``.
 A *layout* is one frozen initial scene in that set, ``<task>_<layout>.json``; the
 official evaluation runs one episode per layout (50 per seed, 25 for each
-Generalization base and random config).
+Generalization base and random config). The assets ship a few more layouts per
+task (e.g. 55 and 30) as spares the native evaluator moves to when it abandons a
+layout; ``layouts_per_seed`` is the official count.
 """
 
 from __future__ import annotations
