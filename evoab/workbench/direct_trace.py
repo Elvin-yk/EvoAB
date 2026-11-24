@@ -45,7 +45,7 @@ def _ending(run_dir: Path, result: dict | None, calls: list[dict], policy: dict,
         return None
     native = base._read_json(run_dir / "native_outcome.json") or {}
     budget = policy.get("max_episode_steps")
-    steps = native.get("native_steps", steps)
+    steps = next((v for v in (native.get("native_steps"), native.get("steps"), steps) if v is not None), None)
     chain = []
     if result.get("error"):
         chain.append(f"运行出错或被中断：{result['error']}")

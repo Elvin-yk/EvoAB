@@ -107,7 +107,12 @@ class RecipeValidation(unittest.TestCase):
             self.assertTrue((root / "program_002.py").is_file())
 
     def test_upstream_q0_selection_preserves_the_policy(self):
-        from evoab.workbench.launcher import LaunchRequest, resolve_run_recipe, resolve_selection
+        from evoab.agents.q0_preview.runtime import _owns_listener
+        from evoab.cli import build_parser
+        from evoab.composition.components import components
+        from evoab.config import resolve_settings
+        from evoab.workbench.launcher import LaunchRequest, resolve_run_recipe, resolve_selection, tool_groups
+        from evoab.workbench.runs import summarize_run
 
         request = LaunchRequest("robodojo", "default", "stack_bowls", "fixture-opus",
                                 method="q0_preview_upstream")
@@ -119,6 +124,44 @@ class RecipeValidation(unittest.TestCase):
         self.assertFalse(recipe.entry.capabilities)
         with self.assertRaisesRegex(ValueError, "external evaluator"):
             resolve_run_recipe(replace(resolved, team=[]), method)
+        with self.assertRaisesRegex(ValueError, "tool selection"):
+            tool_groups("robodojo", "q0_preview_upstream", "q0_preview")
+        brain = next(c for c in components("brain") if c.id == "q0_preview")
+        self.assertEqual(brain.label, "Q0-Preview")
+        self.assertFalse(_owns_listener(99999999, 18760))
+        spec = load_integration("robodojo").get_integration_spec()
+        parser = build_parser(spec)
+        cli_args = parser.parse_args([
+            "run", "--integration", "robodojo", "--recipe", "q0_preview_upstream",
+            "--task", "stack_bowls", "--env-url", "http://127.0.0.1:18760",
+            "--provider-url", "https://example.test", "--no-sam3",
+        ])
+        with patch.dict(os.environ, {"Q0_PREVIEW_API_KEY": "q0-fixture-key"}, clear=False):
+            os.environ.pop("EVOAB_API_KEY", None)
+            settings = resolve_settings(cli_args, spec, explicit={"--provider-url"})
+            self.assertEqual(settings._q0_base, "https://example.test")
+            self.assertEqual(settings._q0_key, "q0-fixture-key")
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory) / "robodojo_1_abcd1234"
+            meta_dir = run_dir / "q0/sessions/s1/api/00001_plan_obs_00000/attempt_0"
+            meta_dir.mkdir(parents=True)
+            (run_dir / "result.json").write_text(json.dumps({
+                "agent_backend": "q0_preview", "integration": "robodojo", "task_id": "stack_bowls",
+                "model": "claude-opus-5-5", "recipe": "q0_preview_upstream", "channel": "tools",
+                "roles": ["main"], "reasoning_effort": "xhigh", "task_success": True, "steps": 320, "elapsed_s": 12.5,
+            }))
+            (run_dir / "native_outcome.json").write_text(json.dumps({"steps": 320, "step_limit": 800, "task_success": True}))
+            (meta_dir / "meta.json").write_text(json.dumps({
+                "http_status": 200,
+                "usage": {"input_tokens": 1000, "output_tokens": 200, "cache_read_input_tokens": 400, "total_tokens": 1200},
+            }))
+            summary = summarize_run(run_dir)
+            self.assertEqual(summary["environment_steps"], 320)
+            self.assertEqual(summary["max_steps"], 800)
+            self.assertEqual(summary["usage"], {
+                "requests": 1, "input_tokens": 1000, "cached_input_tokens": 400,
+                "output_tokens": 200, "reasoning_tokens": 0, "total_tokens": 1200,
+            })
 
     def test_method_library(self):
         ids = {method.id for method in list_methods()}

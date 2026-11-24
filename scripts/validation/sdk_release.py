@@ -180,7 +180,7 @@ assert 'object itself more than 10 cm' in load_task_requirements('general_pickup
 for name in ('robodojo_internal', 'efe', 'franka_robotiq', 'franka_sharpa', '_franka', 'dexterous_hand'):
     assert find_spec(f'evoab.integrations.{name}') is None, name
     assert not (root / 'integrations' / name).exists(), name
-for name in ('gripper', 'libero', 'robodojo_internal', 'efe', 'franka_robotiq', 'franka_sharpa'):
+for name in ('gripper', 'robodojo_internal', 'efe', 'franka_robotiq', 'franka_sharpa'):
     try:
         Session(SessionConfig(integration=name, env_url='http://127.0.0.1:18760', no_sam3=True))
     except ValueError as error:

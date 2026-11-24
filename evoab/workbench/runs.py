@@ -74,6 +74,37 @@ def collect_usage(run_dir: Path) -> dict[str, int]:
                 totals["cached_input_tokens"] += int(usage.get("cached_input_tokens") or 0)
                 totals["total_tokens"] += int(usage.get("total_tokens") or 0)
         return totals
+    q0_metas = sorted(run_dir.glob("q0/sessions/*/api/*/attempt_*/meta.json"))
+    if q0_metas:
+        for meta_path in q0_metas:
+            meta = _read_json(meta_path)
+            usage = (meta or {}).get("usage")
+            if not isinstance(usage, dict) or not usage:
+                continue
+            totals["requests"] += 1
+            prompt = usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0
+            completion = usage.get("output_tokens", usage.get("completion_tokens", 0)) or 0
+            prompt_details = usage.get("input_tokens_details") or usage.get("prompt_tokens_details") or {}
+            completion_details = usage.get("output_tokens_details") or usage.get("completion_tokens_details") or {}
+            cached = (
+                prompt_details.get("cached_tokens")
+                or usage.get("cached_input_tokens")
+                or usage.get("cache_read_input_tokens")
+                or usage.get("cache_read_tokens")
+                or 0
+            )
+            reasoning = (
+                completion_details.get("reasoning_tokens")
+                or usage.get("reasoning_tokens")
+                or usage.get("thinking_tokens")
+                or 0
+            )
+            totals["input_tokens"] += int(prompt)
+            totals["output_tokens"] += int(completion)
+            totals["cached_input_tokens"] += int(cached)
+            totals["reasoning_tokens"] += int(reasoning)
+            totals["total_tokens"] += int(usage.get("total_tokens") or int(prompt) + int(completion))
+        return totals
     for body in sorted(run_dir.glob("*_responses/exchange_*/response.body.gz")):
         totals["requests"] += 1
         try:
@@ -193,10 +224,14 @@ def summarize_run(
         "roles": (result or {}).get("roles") or [],
         "reasoning_effort": (result or {}).get("reasoning_effort") or launch.get("reasoning_effort"),
         "seed": (result or {}).get("seed"),
-        "max_steps": config.get("max_steps") or launch.get("max_steps"),
+        "max_steps": config.get("max_steps") or launch.get("max_steps") or outcome.get("step_limit"),
         "started_at": started,
         "elapsed_s": round(float(elapsed), 1),
-        "environment_steps": outcome.get("native_steps"),
+        "environment_steps": next(
+            (v for v in (outcome.get("native_steps"), outcome.get("steps"), (result or {}).get("steps"))
+             if v is not None),
+            None,
+        ),
         "task_success": (result or {}).get("task_success"),
         "agent_message": (result or {}).get("agent_message"),
         "error": (result or {}).get("error") or (

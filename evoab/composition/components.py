@@ -121,6 +121,7 @@ def _brains() -> list[Component]:
         "gemini_cli": ("Gemini CLI", "Gemini CLI adapter."),
         "antigravity": ("Antigravity", "Antigravity SDK adapter."),
         "rua": ("RUA", "External evaluator running the original uni-robot-agent package (rua_upstream)."),
+        "q0_preview": ("Q0-Preview", "External evaluator running the upstream Q0-Preview policy (q0_preview_upstream)."),
     }
     return [Component(name, "brain", *labels.get(name, (name, "Registered agent adapter.")),
                       channels=agent_channels(name), owner="agent")

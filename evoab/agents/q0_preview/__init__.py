@@ -117,7 +117,7 @@ class Q0PreviewAgent:
             key = os.environ.get(config.get("api_key_env", "Q0_PREVIEW_API_KEY"))
             if "--provider-url" in explicit or (args._api_key and not key):
                 args._q0_base = _base_url(args.provider_url or default, protocol)
-                args._q0_key = args._api_key
+                args._q0_key = args._api_key or key
             else:
                 base = os.environ.get("Q0_PREVIEW_API_BASE_URL") or config.get("base_url") or default
                 args._q0_base = _base_url(base, protocol)

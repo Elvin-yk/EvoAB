@@ -176,6 +176,8 @@ def tool_groups(integration: str, method_id: str, agent_id: str) -> dict[str, li
     if agent.tool_groups is not None:
         # External evaluators list their own tools (RUA's harness still uses its direct profile).
         groups = agent.tool_groups(integration, "direct")
+    elif method.get("external_evaluator"):
+        raise ValueError(f"Agent {agent.label!r} owns its own tools and does not support tool selection")
     else:
         entry = get_method(method_id)
         compiled = compile_recipe(entry.recipe, load_integration(integration).get_integration_spec(),

@@ -739,7 +739,10 @@ def _ending(run_dir: Path, result: dict[str, Any] | None, rounds: list[dict[str,
                         or any(n["name"] == "finish" for n in c["nested"])), None)
     last = rounds[-1] if rounds else None
     last_calls = last["calls"] if last else []
-    steps = native.get("native_steps", result.get("steps"))
+    steps = next(
+        (v for v in (native.get("native_steps"), native.get("steps"), result.get("steps")) if v is not None),
+        None,
+    )
     budget = native.get("step_limit") or step_limit
     chain = []
     if result.get("error"):

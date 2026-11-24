@@ -25,13 +25,17 @@ def _owns_listener(pid, port):
         if path.exists():
             for line in path.read_text().splitlines()[1:]:
                 fields = line.split()
-                if fields[3] == "0A" and int(fields[1].split(":")[1], 16) == port:
+                if fields[3] == "0A" and int(fields[1].rsplit(":", 1)[1], 16) == port:
                     inodes.add(f"socket:[{fields[9]}]")
-    for descriptor in (proc / "fd").iterdir():
+    try:
+        descriptors = list((proc / "fd").iterdir())
+    except OSError:
+        return False
+    for descriptor in descriptors:
         try:
             if os.readlink(descriptor) in inodes:
                 return True
-        except FileNotFoundError:
+        except OSError:
             continue
     return False
 
@@ -110,6 +114,10 @@ def policy_session(config, info, output):
                 status = server.wait(timeout=25)
             except subprocess.TimeoutExpired:
                 server.terminate()
-                status = server.wait(timeout=25)
+                try:
+                    status = server.wait(timeout=25)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    status = server.wait()
             if status and sys.exc_info()[0] is None:
                 raise RuntimeError(f"Q0 policy service exited with code {status}. See q0-service.log.")
