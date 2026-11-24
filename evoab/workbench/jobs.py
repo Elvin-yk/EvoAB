@@ -53,14 +53,18 @@ def _ensure_reaper() -> None:
     threading.Thread(target=_reap_forever, name="evoab-studio-reaper", daemon=True).start()
 
 
-def _start_ticks(pid: int) -> str | None:
-    """Kernel start time of a process, to tell it apart from a later process reusing its PID."""
+def _process_stat(pid: int) -> list[str]:
     try:
         stat = Path(f"/proc/{pid}/stat").read_text()
     except OSError:
-        return None
-    # Field 22 (starttime); the command name in field 2 may contain spaces, so split after ')'.
-    return stat.rsplit(")", 1)[-1].split()[19]
+        return []
+    return stat.rsplit(")", 1)[-1].split()
+
+
+def _start_ticks(pid: int) -> str | None:
+    """Read the kernel start time to distinguish a process from a reused PID."""
+    fields = _process_stat(pid)
+    return fields[19] if fields else None
 
 
 def read_record(path: Path) -> dict[str, Any] | None:
@@ -107,9 +111,12 @@ def is_running(record: dict[str, Any]) -> bool:
         os.kill(pid, 0)
     except (OSError, KeyError, TypeError, ValueError):
         return False
-    # After a restart the PID may belong to an unrelated process.
+    # A job can exit before the reaper can acquire the recycle lock.
+    fields = _process_stat(pid)
+    if fields and fields[0] in {"Z", "X"}:
+        return False
     expected = record.get("pid_start")
-    return expected is None or _start_ticks(pid) == expected
+    return expected is None or (bool(fields) and fields[19] == expected)
 
 
 def interrupt(record: dict[str, Any]) -> None:
@@ -117,6 +124,23 @@ def interrupt(record: dict[str, Any]) -> None:
     if not is_running(record):
         raise ProcessLookupError("job is no longer running")
     os.killpg(int(record["pid"]), signal.SIGINT)
+
+
+def stop_for_recycling(records: list[dict[str, Any]], *, timeout: float = 75) -> None:
+    """Stop selected Workbench jobs and allow their normal cleanup to finish."""
+    pending = {int(record["pid"]): record for record in records if is_running(record)}
+    for pid, record in pending.items():
+        try:
+            if os.getpgid(pid) != pid:
+                raise OSError("The selected job does not own its process group")
+            interrupt(record)
+        except ProcessLookupError:
+            continue
+    deadline = time.monotonic() + timeout
+    while any(is_running(record) for record in pending.values()):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("The selected task is still stopping. Retry after cleanup finishes.")
+        time.sleep(0.05)
 
 
 def log_tail(record_path: Path, lines: int = 40) -> str:

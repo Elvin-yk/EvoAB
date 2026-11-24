@@ -745,18 +745,16 @@ function pageHistory(main) {
   const renderCompareBar = () => {
     const keys = [...f.selected].filter((k) => findRun(k));
     const selected = keys.map(findRun);
-    const active = selected.some(isLive);
     put(compareHolder, );
     if (keys.length >= 1) {
       compareHolder.append(h("div", { class: "compare-bar" },
         h("span", {}, `已选 ${keys.length} 个运行`),
         h("span", { class: "row" },
-          h("button", { class: "btn small danger", disabled: active || historyDeleting,
-            title: active ? "运行中的任务不能删除，请先停止并等待结束" : "移入回收站，可恢复",
+          h("button", { class: "btn small danger", disabled: historyDeleting,
+            title: "移入回收站，可恢复",
             onclick: () => recycleSelected(selected) }, "删除"),
           h("button", { class: "btn small", onclick: () => { f.selected.clear(); f.compare = false; renderTable(); } }, "取消选择"),
-          h("button", { class: "btn small", disabled: keys.length < 2, onclick: () => { f.compare = true; renderCompareBar(); } }, "对比")),
-        active ? h("span", { class: "small" }, "请先停止运行中的任务，再删除。") : null));
+          h("button", { class: "btn small", disabled: keys.length < 2, onclick: () => { f.compare = true; renderCompareBar(); } }, "对比"))));
     }
     if (f.compare && keys.length >= 2) compareHolder.append(compareTable(keys.map(findRun)));
   };
@@ -777,8 +775,9 @@ function pageHistory(main) {
 
 let historyDeleting = false;
 async function recycleSelected(runs) {
-  if (historyDeleting || !runs.length || runs.some(isLive)) return;
-  if (!confirm(`将选中的 ${runs.length} 个任务移入回收站？之后可恢复，或在回收站彻底删除。`)) return;
+  if (historyDeleting || !runs.length) return;
+  const stopping = runs.some(isLive) ? "工作台会先停止选中的运行任务。" : "";
+  if (!confirm(`将选中的 ${runs.length} 个任务移入回收站？${stopping}`)) return;
   historyDeleting = true;
   if (current.page === "history") pageHistory.refresh?.();
   try {
@@ -811,18 +810,10 @@ async function loadTrash() {
     state.selected = new Set([...state.selected].filter(id => runs.some(r => r.trash_id === id)));
     const render = () => {
       const ids = [...state.selected];
-      const blockers = values => {
-        const selectedResearch = new Set(allItems.filter(r => values.includes(r.trash_id) && r.category === "research").map(r => r.research_id));
-        return allItems.filter(r => values.includes(r.trash_id) && r.required_research && !selectedResearch.has(r.required_research));
-      };
-      const blocked = blockers(ids);
-      const blockedAll = blockers(runs.map(r => r.trash_id));
-      const protection = items => `${items.length} 条关联回合受研究证据保护。可点击“仅选可删除”，或通过 CLI 将关联研究移入回收站后一起处理。关联研究：${[...new Set(items.map(r => r.required_research))].join("、")}`;
       const action = async (kind, values) => {
         if (state.busy || !values.length) return;
-        if (kind === "delete" && blockers(values).length) { toast(protection(blockers(values)), true); return; }
         const message = kind === "delete"
-          ? `彻底删除这 ${values.length} 条记录及其文件？此操作无法恢复。自我改进的关联运行记录单独管理。`
+          ? `彻底删除这 ${values.length} 条记录及其文件？此操作无法恢复。`
           : `将这 ${values.length} 条记录恢复到各自的记录页面？`;
         if (!confirm(message)) return;
         state.busy = true; render();
@@ -844,20 +835,16 @@ async function loadTrash() {
           h("span", { class: "muted" }, `当前分类 ${runs.length} 条，已选 ${ids.length} 条`),
           h("button", { class: "btn small", disabled: !runs.length || state.busy,
             onclick: () => { state.selected = new Set(runs.map(r => r.trash_id)); render(); } }, "全选"),
-          h("button", { class: "btn small", disabled: !runs.length || state.busy,
-            onclick: () => { const values = runs.map(r => r.trash_id); const protectedIds = new Set(blockers(values).map(r => r.trash_id));
-              state.selected = new Set(values.filter(id => !protectedIds.has(id))); render(); } }, "仅选可删除"),
           h("button", { class: "btn small", disabled: !ids.length || state.busy,
             onclick: () => { state.selected.clear(); render(); } }, "取消选择"),
           h("button", { class: "btn small", disabled: !ids.length || state.busy,
             onclick: () => action("restore", ids) }, "恢复"),
-          h("button", { class: "btn small danger", disabled: !ids.length || state.busy || blocked.length > 0,
-            title: blocked.length ? protection(blocked) : "永久删除所选记录",
+          h("button", { class: "btn small danger", disabled: !ids.length || state.busy,
+            title: "永久删除所选记录",
             onclick: () => action("delete", ids) }, "彻底删除"),
-          h("button", { class: "btn small danger", disabled: !runs.length || state.busy || blockedAll.length > 0,
-            title: blockedAll.length ? protection(blockedAll) : "永久删除当前分类中的全部记录",
+          h("button", { class: "btn small danger", disabled: !runs.length || state.busy,
+            title: "永久删除当前分类中的全部记录",
             onclick: () => action("delete", runs.map(r => r.trash_id)) }, state.category === "all" ? "清空回收站" : "清空当前分类")),
-        blockedAll.length ? h("div", { class: "notice", style: "margin-bottom:16px" }, protection(blockedAll)) : null,
         runs.length ? h("div", { class: "table-wrap" }, h("table", { class: "table" },
           h("thead", {}, h("tr", {}, [h("input", { type: "checkbox", "aria-label": "全选当前回收站分类", checked: runs.length > 0 && ids.length === runs.length,
             disabled: !runs.length || state.busy, onchange: e => { state.selected = new Set(e.target.checked ? runs.map(r => r.trash_id) : []); render(); } }), "类型", "记录 ID", "任务", "状态", "模型", "删除时间"].map(t => h("th", {}, t)))),
@@ -867,8 +854,7 @@ async function loadTrash() {
               onchange: e => { if (e.target.checked) state.selected.add(r.trash_id); else state.selected.delete(r.trash_id); render(); } })),
             h("td", {}, r.category === "research" ? "历史研究" : "任务运行"),
             h("td", { class: "mono" }, r.research_id && r.category === "research" ? r.research_id : runTitle(r)),
-            h("td", { class: "task-cell" }, runTask(r), r.required_research
-              ? h("div", { class: "muted small" }, `研究证据：${r.required_research}`) : null),
+            h("td", { class: "task-cell" }, runTask(r)),
             h("td", {}, pill(r.status, { ...RUN_STATUS, completed: "已完成", budget_exhausted: "预算用完" })), h("td", {}, r.model || "—"), h("td", {}, fmtTime(r.deleted_at)))))))
           : h("div", { class: "empty" }, state.category === "all" ? "回收站是空的" : "当前分类是空的"));
     };

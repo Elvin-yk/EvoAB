@@ -356,7 +356,7 @@ def build_parser() -> argparse.ArgumentParser:
     for action in ("list", "launch", "stop", "resume", "recycle"):
         p = research.add_parser(action, parents=[common])
         if action == "recycle":
-            p.add_argument("refs", nargs="+", help="Completed research campaign IDs")
+            p.add_argument("refs", nargs="+", help="Research campaign IDs")
         if action == "launch":
             p.add_argument("--model", required=True)
             p.add_argument("--integration", default="metaworld")
@@ -375,7 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--status", choices=("running", "starting", "success", "failure", "error", "interrupted", "failed"))
     p.add_argument("--limit", type=int, default=0)
     p.set_defaults(handler=_runs_list)
-    for action, help_text in (("recycle", "Move finished runs to the recycle bin"),
+    for action, help_text in (("recycle", "Move runs to the recycle bin"),
                               ("trash", "List recycled runs"),
                               ("restore", "Restore recycle-bin IDs"),
                               ("purge", "Permanently delete recycle-bin IDs")):

@@ -119,7 +119,7 @@ run-history rows link to the research report rather than displaying a misleading
 zero from the SDK's tool-only trace format. The model settings overview retains
 global API accounting, including proposal and reflection calls.
 
-Use `evoab research recycle ID...` to move a finished campaign to the recycle
+Use `evoab research recycle ID...` to move a campaign to the recycle
 bin. Existing campaign entries appear under **历史研究**. Restore and permanent
-deletion operate on the campaign record, and referenced trial evidence stays
-protected while its campaign is retained. See [recycle-bin behavior](recycle-bin.md).
+deletion operate on the campaign record. Trials can be deleted independently.
+A campaign audit or resume can fail after its trial evidence is removed. See [recycle-bin behavior](recycle-bin.md).

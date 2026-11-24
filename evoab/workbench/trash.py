@@ -55,17 +55,6 @@ def hidden_research_ids(root: Path) -> set[str]:
             if e.get('category') == 'research'}
 
 
-def research_dependency(root: Path, entry: dict) -> str | None:
-    """Identify retained campaign evidence, including interrupted setup records."""
-    if entry.get('category', 'run') != 'run' or not entry['run'].get('id'):
-        return None
-    trial = jobs.read_record(root / _name(entry['run']['id']) / 'research_trial.json') or {}
-    ref = trial.get('research_id', '')
-    if re.fullmatch(r'research-[a-f0-9]{12}', ref) and (_studio(root) / 'research' / ref).exists():
-        return ref
-    return None
-
-
 @contextmanager
 def locked(root: Path):
     directory = _studio(root)
@@ -115,36 +104,9 @@ def _paths(root: Path, run: dict, category: str = 'run') -> list[Path]:
     return paths
 
 
-def _inactive(root: Path, run: dict, category: str = 'run') -> None:
-    from evoab.workbench.runs import load_launches, summarize_run
-    if category == 'research':
-        job = jobs.read_record(_paths(root, run, category)[0] / 'job.json') or {}
-        if jobs.is_running(job):
-            raise TrashError('A running research campaign cannot be deleted or restored; stop it first')
-        return
-    launches = load_launches(root)
-    if run.get('id'):
-        trial = jobs.read_record(root / run['id'] / 'research_trial.json') or {}
-        research_id = trial.get('research_id', '')
-        if re.fullmatch(r'research-[a-f0-9]{12}', research_id):
-            job = jobs.read_record(_studio(root) / 'research' / research_id / 'job.json') or {}
-            if jobs.is_running(job):
-                raise TrashError('This episode belongs to an active research campaign; stop the campaign first')
-    matching = [l for l in launches if
-                (run.get('launch_id') and l.get('launch_id') == run['launch_id']) or
-                (run.get('id') and l.get('run_dir') == run['id'])]
-    if any(jobs.is_running(l) for l in matching):
-        raise TrashError('A running task cannot be deleted or restored; stop it and wait for it to finish')
-    if run.get('id') and (root / run['id']).is_dir():
-        current = summarize_run(root / run['id'], launch=matching[0] if matching else None)
-        if current and current['status'] in {'running', 'starting'}:
-            raise TrashError('A running task cannot be deleted or restored; wait for it to finish')
-
-
 def _identity(root: Path, entry: dict, *, require_files: bool = False) -> None:
     category = entry.get('category', 'run')
     paths = _paths(root, entry['run'], category)
-    _inactive(root, entry['run'], category)
     for path in paths:
         expected = entry['identities'].get(str(path.relative_to(root)))
         if not path.exists():
@@ -161,15 +123,43 @@ def recycle(root: Path, runs: list[dict], *, category: str = 'run') -> list[dict
     items = entries(root)
     hidden_runs, hidden_launches = hidden_ids(root)
     hidden_research = hidden_research_ids(root)
-    new = []
+    records = []
     for run in runs:
         if (category == 'research' and run.get('research_id') in hidden_research
                 or run.get('id') in hidden_runs or run.get('launch_id') in hidden_launches):
             raise TrashError('The task is already in the recycle bin')
         paths = _paths(root, run, category)
-        _inactive(root, run, category)
-        identities = {str(p.relative_to(root)): [p.stat().st_dev, p.stat().st_ino]
-                      for p in paths if p.exists()}
+        if category == 'research':
+            records.append(jobs.read_record(paths[0] / 'job.json') or {})
+        elif run.get('launch_id'):
+            records.append(jobs.read_record(_studio(root) / (_name(run['launch_id']) + '.json')) or {})
+        elif run.get('id') and not (paths[0] / 'result.json').exists():
+            trial = jobs.read_record(paths[0] / 'research_trial.json') or {}
+            ref = trial.get('research_id', '')
+            if isinstance(ref, str) and re.fullmatch(r'research-[a-f0-9]{12}', ref):
+                research_path = _paths(root, {'research_id': ref}, 'research')[0]
+                records.append(jobs.read_record(research_path / 'job.json') or {})
+    jobs.stop_for_recycling(records)
+
+    # A task selected while starting can create its run directory during shutdown.
+    pending = {run['launch_id'] for run in runs if run.get('launch_id') and not run.get('id')}
+    late_runs = {}
+    if pending:
+        from evoab.workbench.runs import load_launches
+        late_runs = {launch['launch_id']: launch['run_dir'] for launch in load_launches(root)
+                     if launch.get('launch_id') in pending and launch.get('run_dir')}
+    new = []
+    for run in runs:
+        if run.get('launch_id') in late_runs:
+            run = {**run, 'id': late_runs[run['launch_id']]}
+        if run.get('status') in {'starting', 'running'}:
+            run = {**run, 'status': 'interrupted'}
+        paths = _paths(root, run, category)
+        identities = {}
+        for path in paths:
+            if path.exists():
+                stat = path.stat()
+                identities[str(path.relative_to(root))] = [stat.st_dev, stat.st_ino]
         new.append({'trash_id': uuid4().hex, 'deleted_at': time.time(), 'category': category,
                     'run': run, 'identities': identities})
     _save(root, items + new)
@@ -191,15 +181,8 @@ def restore(root: Path, ids: list[str]) -> None:
 
 def purge(root: Path, ids: list[str]) -> None:
     chosen = selected(root, ids)
-    purging_research = {e['run']['research_id'] for e in chosen if e.get('category') == 'research'}
     for entry in chosen:
         _identity(root, entry)
-    blocked = [(e['run'].get('short_id') or e['run'].get('id'), research_dependency(root, e))
-               for e in chosen if research_dependency(root, e) not in (None, *purging_research)]
-    if blocked:
-        parents = ', '.join(sorted({ref for _, ref in blocked}))
-        raise TrashError(f'本次未删除任何记录：所选记录中有 {len(blocked)} 条仍是研究证据。'
-                         f'关联研究：{parents}。请先在“自我改进”删除这些研究，再到回收站“全部”中将研究和关联回合一起彻底删除；也可取消选择受保护的回合')
     for entry in chosen:
         for path in _paths(root, entry['run'], entry.get('category', 'run')):
             if path.is_dir():

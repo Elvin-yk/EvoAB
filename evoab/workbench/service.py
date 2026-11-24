@@ -379,15 +379,16 @@ class Workbench:
 
     @staticmethod
     def _selection(values: list[str]) -> list[str]:
-        if (not isinstance(values, list) or not values or len(values) > 500
+        if (not isinstance(values, list) or not values
                 or any(not isinstance(v, str) or not v for v in values)):
-            raise Invalid("Select between 1 and 500 task records")
+            raise Invalid("Select at least one task record")
         return list(dict.fromkeys(values))
 
     def recycle_runs(self, refs: list[str]) -> dict[str, Any]:
         refs = self._selection(refs)
         with _admission, trash.locked(self.runs_root):
-            runs = [self.find_run(ref) for ref in refs]
+            visible = self.runs()
+            runs = [self._find_run(ref, visible) for ref in refs]
             runs = list({r["key"]: r for r in runs}.values())
             try:
                 items = trash.recycle(self.runs_root, runs)
@@ -397,7 +398,6 @@ class Workbench:
 
     def recycled_runs(self) -> list[dict[str, Any]]:
         return [{**e["run"], "category": e.get("category", "run"),
-                 "required_research": trash.research_dependency(self.runs_root, e),
                  "trash_id": e["trash_id"], "deleted_at": e["deleted_at"]}
                 for e in sorted(trash.entries(self.runs_root), key=lambda e: e["deleted_at"], reverse=True)]
 
@@ -436,8 +436,12 @@ class Workbench:
 
     def find_run(self, ref: str) -> dict[str, Any]:
         """A run by directory name, short ID or launch ID (also as ``#short``)."""
+        return self._find_run(ref, self.runs())
+
+    @staticmethod
+    def _find_run(ref: str, runs: list[dict[str, Any]]) -> dict[str, Any]:
         ref = ref.lstrip("#")
-        matches = [r for r in self.runs() if ref in (r.get("id"), r.get("short_id"), r.get("launch_id"))]
+        matches = [r for r in runs if ref in (r.get("id"), r.get("short_id"), r.get("launch_id"))]
         if not matches:
             raise NotFound(f"unknown run {ref!r}")
         if len(matches) > 1:
