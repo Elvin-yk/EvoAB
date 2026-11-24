@@ -309,13 +309,7 @@ async function stepMethod(body) {
     const groups = teamCatalogs.get(integration);
     if (!w.team) w.team = [newAgentCard("planner", groups)];
     const method = selectedMethod();
-    if (!method) throw new Error("当前环境没有可用的 Agent 运行时");
-    body.append(h("section", { class: "team-runtime", "aria-label": "Agent 运行时" },
-      h("h2", { class: "section-title" }, "Agent 运行时"),
-      h("div", { class: "choice-grid" }, method.agents.map((agent) => h("button", {
-        class: `choice${w.agent === agent.id ? " selected" : ""}`, "aria-pressed": String(w.agent === agent.id),
-        onclick: () => { w.agent = agent.id; w.touched = true; route(); },
-      }, h("span", { class: "title" }, agent.label), h("span", { class: "desc" }, agent.description))))));
+    if (!method) throw new Error("当前环境没有可用的方法");
     const diagram = harnessPreview(w, selectedAgent().label);
     body.append(h("p", {class: "muted small"}, "委托关系可以从任一端勾选。子任务结束后，结果回给本次发起委托的 Agent。"));
     body.append(...w.team.map((card, index) => roleCard(card, index, groups, w.team, diagram.update)),

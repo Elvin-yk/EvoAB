@@ -67,7 +67,7 @@ An adapter can declare `workbench_launch = AgentLaunch(...)` on its registered
 class. The declaration lists its label, supported integrations, model preset
 validator, and any integer options exposed in Studio. Leave `integrations`
 unset when the adapter works with every benchmark. Which methods an adapter can
-run is not its concern: methods are agent-independent and every agent runs every channel (see [composition](composition.md)). Set `runs_programs = True` when the agent runs code-channel programs in its own terminal; otherwise the harness gives it `run_program`. Flags and option mappings refer to existing `evoab run`
+run is not its concern: methods are agent-independent and every agent runs every channel. Studio launches every method on the built-in `native` agent (external evaluators excepted); other adapters are reached with `--agent` on the CLI (see [composition](composition.md)). Set `runs_programs = True` when the agent runs code-channel programs in its own terminal; otherwise the harness gives it `run_program`. Flags and option mappings refer to existing `evoab run`
 arguments and are supplied by the adapter. The registry provides both the
 Studio picker metadata and the server-side launch mapping. Adapters without a
 launch declaration remain available through their existing entry points.

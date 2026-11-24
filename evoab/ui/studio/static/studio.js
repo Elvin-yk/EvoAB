@@ -600,7 +600,7 @@ function stepConfirm(body) {
     ...(w.task.seeds ? [["评测场景", `种子 ${w.seed} · 布局 ${w.layoutId}（该任务每组 ${w.task.layouts_per_seed} 个布局）`]] : []),
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(method.fixed_effort || w.effort)],
-    ["Agent 运行时", agent.label],
+    ...(method.external_evaluator ? [["评测器", agent.label]] : []),
     ...(method.external_evaluator ? [["模型", w.model]] : w.team.map((card, i) => [`Agent ${i + 1} · ${TEAM_ROLE[card.role]}`, [`模型 · ${card.model_preset || w.model}`, card.tools.map((name) => name === DIRECT_TOOL ? "Direct" : name).join("、") || "无工具", card.delegate_to.length ? "可委托给 " + card.delegate_to.map((n) => "Agent " + n).join("、") : "", card.instructions].filter(Boolean).join(" · ")])),
     ...agent.options.filter((option) => option.name in options).map((option) => [option.label, options[option.name]]),
   ];

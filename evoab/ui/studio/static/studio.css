@@ -670,8 +670,6 @@ details.sys.inner { margin: 6px 0; }
 .recipe-graph .node-label { fill: var(--text); font-weight: 600; font-family: var(--mono); font-size: 12px; }
 .recipe-graph .node-calls { fill: var(--accent); font-size: 11px; font-weight: 600; }
 
-.team-runtime { margin-bottom: 20px; }
-.team-runtime .choice-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr)); }
 .harness-panel { min-width: 0; margin-top: 24px; }
 .harness-panel .graph-wrap { margin-top: 12px; }
 .harness-panel .graph-wrap + p { margin-bottom: 0; }

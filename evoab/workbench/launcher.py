@@ -78,10 +78,11 @@ def methods(integration: str | None = None) -> tuple[dict, ...]:
         def usable(name, launch):
             if integration is not None and launch.integrations is not None and integration not in launch.integrations:
                 return False
-            # Methods are agent-independent; only external evaluators (RUA) are tied to their own method.
+            # External evaluators (RUA, Q0-Preview) run only their own method. Everything else Studio
+            # launches runs on the built-in agent; other runtimes stay available from the CLI (--agent).
             if is_evaluator(name) or entry.brain.agent and is_evaluator(entry.brain.agent):
                 return name == entry.brain.agent
-            return True
+            return name == "native"
 
         agents = [_agent_choice(name, launch) for name, launch in launches.items() if usable(name, launch)]
         default_agent = entry.brain.agent or "native"
