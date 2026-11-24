@@ -86,6 +86,14 @@ def create_app(runs_root: Path) -> FastAPI:
     def benchmark_list() -> list[dict[str, Any]]:
         return bench.benchmarks()
 
+    @app.get("/api/benchmarks/{integration}/team-tools")
+    def team_tools(integration: str) -> dict:
+        return bench.team_tools(integration)
+
+    @app.post("/api/benchmarks/{integration}/team-preview")
+    def team_preview(integration: str, payload: dict = Body(...), graph: bool = False) -> dict:
+        return bench.team_preview(integration, payload, graph=graph)
+
     @app.get("/api/benchmarks/{integration}/tools")
     def benchmark_tools(integration: str, method: str, agent: str) -> dict[str, list[str]]:
         return bench.tool_groups(integration, method, agent)

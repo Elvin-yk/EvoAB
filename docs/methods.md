@@ -18,6 +18,7 @@ A recipe file or method directory can also be passed directly:
 
 | Id | Paradigms | Channel | Roles | Notes |
 |---|---|---|---|---|
+| `tool_team` | orchestrate | tools, optional action delegate | configurable | Studio role cards and per-role tool selection |
 | `agentic` | orchestrate | tools | 1 | Default; skills, scene, gripper, episode |
 | `clean` | orchestrate | tools | 1 | Four tools, compact results, initial RGB observation |
 | `direct_policy` | direct | action | 1 | Astranomy-style Direct; `abs_eef`, `delta_eef` or `joint_abs` |
@@ -35,8 +36,7 @@ Any agent runs any method (except the `rua_upstream` evaluator).
 
 1. Pick the closest built-in method and copy its directory.
 2. Edit `method.yaml`: roles, channels, capabilities, loop, execution. Declare
-   `parameters` for the values a launcher should expose (Studio renders them as a
-   form; the CLI takes `--set name=value`).
+   `parameters` for values a launcher should expose. The CLI takes `--set name=value`.
 3. Put method instructions in `prompt.append` or `prompts/*.md`, not in an
    integration. Prompts describe the method; environments describe facts.
 4. Write `CARD.md`: the paper and code links, the paper's setting and numbers,

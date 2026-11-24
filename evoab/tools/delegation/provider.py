@@ -78,8 +78,8 @@ class DelegationTools(ToolProvider):
                 # The sub-run stepped the environment itself; report what it executed for replanning.
                 steps = report.get("steps")
                 executed = "unknown" if steps is None else ("some" if steps > 0 else "none")
-                action = ActionOutcome(complete=not report.get("error"), executed=executed,
-                                       stopped=True if executed == "none" else None)
+                action = ActionOutcome(complete=bool(report.get("success")) and not report.get("error"),
+                                       executed=executed)
             return ToolOutput(success=not report.get("error"), error=report.get("error"),
                               extra={"role": role, "report": report}, action=action)
         return delegate

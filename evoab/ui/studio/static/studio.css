@@ -669,3 +669,19 @@ details.sys.inner { margin: 6px 0; }
 .recipe-graph .node-kind { fill: var(--muted); font-size: 10px; letter-spacing: 0.04em; }
 .recipe-graph .node-label { fill: var(--text); font-weight: 600; font-family: var(--mono); font-size: 12px; }
 .recipe-graph .node-calls { fill: var(--accent); font-size: 11px; font-weight: 600; }
+
+.team-runtime { margin-bottom: 20px; }
+.team-runtime .choice-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr)); }
+.harness-panel { min-width: 0; margin-top: 24px; }
+.harness-panel .graph-wrap { margin-top: 12px; }
+.harness-panel .graph-wrap + p { margin-bottom: 0; }
+.team-card { display: grid; gap: 14px; margin-bottom: 16px; }
+.team-card > .toolbar { flex-wrap: wrap; margin: 0; }
+.team-card .toolbar .section-title, .team-card > p, .team-card > .field { margin: 0; }
+.team-card select { width: auto; }
+
+.team-relations { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 10px; }
+.team-relations fieldset { min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px 10px; }
+.team-relations legend { font-weight: 600; }
+.team-card .tool-picker-grid fieldset:disabled { background: var(--sunk); color: var(--muted); }
+.team-card .tool-picker-grid fieldset:disabled label { opacity: .65; cursor: not-allowed; }

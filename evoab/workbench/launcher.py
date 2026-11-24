@@ -10,11 +10,15 @@ import time
 import json
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from evoab.agents.contracts import AgentLaunch
 from evoab.agents.registry import agent_launch, get_agent_backend, list_agent_launches
 from evoab.workbench import benchmarks, jobs
 from evoab.workbench.runs import STUDIO_DIR
+
+if TYPE_CHECKING:
+    from evoab.composition.recipe import Recipe
 
 REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh")
 
@@ -33,6 +37,7 @@ class LaunchRequest:
     agent: str | None = None
     agent_options: dict[str, int] | None = None
     visible_tools: list[str] | None = None
+    team: list[dict] | None = None
 
 
 def _agent_choice(name: str, launch: AgentLaunch) -> dict:
@@ -197,7 +202,8 @@ def free_port() -> int:
         return sock.getsockname()[1]
 
 
-def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, output_root: Path) -> list[str]:
+def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, output_root: Path,
+                   recipe_path: Path | None = None) -> list[str]:
     profile, task = benchmarks.launch_target(request.integration, request.profile, request.task)
     command = [
         sys.executable, "-m", "evoab", "run",
@@ -206,7 +212,7 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         "--env-port", str(free_port()),
         *(["--runtime-profile", profile] if profile is not None else []),
         "--task", task,
-        "--recipe", method["id"],
+        "--recipe", str(recipe_path) if recipe_path else method["id"],
         "--no-sam3",
         *(["--agent", request.agent] if request.agent else []),
         "--model", request.model,
@@ -239,10 +245,6 @@ def validate(request: LaunchRequest) -> dict:
 
     if not isinstance(request.model, str) or not request.model:
         raise ValueError("A model preset is required")
-    if agent.validate_preset is not None:
-        agent.validate_preset(request.model)
-    elif request.model not in {p["name"] for p in catalog.presets()}:
-        raise ValueError(f"unknown model preset {request.model!r}")
     _agent_option_flags(request, agent)
     if request.visible_tools is not None:
         if not isinstance(request.visible_tools, list) or not all(isinstance(name, str) for name in request.visible_tools):
@@ -252,11 +254,23 @@ def validate(request: LaunchRequest) -> dict:
         if set(request.visible_tools) - allowed:
             raise ValueError("Selection contains tools not available for this benchmark and Agent")
     _parameter_flags(request, method)
-    _check_recipe(request, method)
+    recipe = resolve_run_recipe(request, method)
+    if request.team and recipe.entry.brain.model_preset not in (None, request.model):
+        raise ValueError("The entry Agent preset must match the launch model")
+    presets = {request.model}
+    if request.team:
+        presets.update(role.brain.model_preset for role in recipe.roles.values() if role.brain.model_preset)
+    if agent.validate_preset is not None:
+        for preset in presets:
+            agent.validate_preset(preset)
+    else:
+        unknown = presets - {p["name"] for p in catalog.presets()}
+        if unknown:
+            raise ValueError(f"unknown model preset {sorted(unknown)[0]!r}")
     return task
 
 
-def _check_recipe(request: LaunchRequest, method: dict) -> None:
+def resolve_run_recipe(request: LaunchRequest, method: dict) -> Recipe:
     """Compile the method with the requested parameters before starting a process."""
     from evoab.composition.compiler import compile_recipe
     from evoab.composition.methods import get_method
@@ -265,9 +279,19 @@ def _check_recipe(request: LaunchRequest, method: dict) -> None:
 
     entry = get_method(method["id"])
     recipe = with_overrides(entry.recipe, dict(request.params or {}))
+    if request.team is not None:
+        from evoab.workbench.team import team_roles
+        if request.params or request.visible_tools is not None:
+            raise ValueError("Agent cards already define the tools and role parameters")
+        if recipe.entry.channel != "tools" or recipe.execution.return_mode != "immediate" or len(recipe.roles) != 1:
+            raise ValueError("Agent cards require a single tool-calling role with immediate results")
+        roles = team_roles(request.integration, request.team)
+        return_mode = "background" if any(role.get("job_tools") for role in roles.values()) else "immediate"
+        recipe = with_overrides(recipe, {"roles": roles, "execution.return_mode": return_mode})
     if request.agent:
         recipe = with_overrides(recipe, {f"roles.{recipe.loop.entry}.brain.agent": request.agent})
     compile_recipe(recipe, load_integration(request.integration).get_integration_spec(), base_dir=entry.root)
+    return recipe
 
 
 def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
@@ -278,8 +302,14 @@ def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
     """
     launch_id = f"{time.strftime('%Y%m%d-%H%M%S')}_{secrets.token_hex(3)}"
     request, method, agent = resolve_selection(request)
+    recipe_path = None
+    if request.team is not None:
+        recipe = resolve_run_recipe(request, method)
+        recipe_path = (runs_root / STUDIO_DIR / "recipes" / f"{launch_id}.json").resolve()
+        recipe_path.parent.mkdir(parents=True, exist_ok=True)
+        recipe_path.write_text(recipe.model_dump_json(indent=2), encoding="utf-8")
     jobs.start(
-        _build_command(request, method, agent, runs_root),
+        _build_command(request, method, agent, runs_root, recipe_path),
         runs_root / STUDIO_DIR / f"{launch_id}.json",
         env=dict(os.environ),
         launch_id=launch_id,

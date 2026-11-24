@@ -9,6 +9,7 @@ Run traces annotate nodes with call counts (``annotate_with_trace``).
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,7 @@ def recipe_graph(recipe: Recipe) -> dict[str, Any]:
         brain = role.brain
         label = "model" if role.channel == "action" else brain.agent or "selected agent"
         edges.append({"from": node(f"{name}:brain", "brain", label,
-                                   detail=" · ".join(filter(None, [brain.model, brain.reasoning_effort]))),
+                                   detail=" · ".join(filter(None, [brain.model_preset or brain.model, brain.reasoning_effort]))),
                       "to": role_id, "kind": "drives"})
         channel_detail = ""
         if role.channel == "action" and role.action is not None:
@@ -42,6 +43,10 @@ def recipe_graph(recipe: Recipe) -> dict[str, Any]:
         edges.append({"from": node(f"{name}:context", "context", context), "to": role_id, "kind": "context"})
         if role.channel == "action":
             edges.append({"from": channel, "to": body, "kind": "action chunks"})
+        if role.job_tools:
+            jobs = node(f"{name}:cap:jobs", "capability", "jobs", tools=role.job_tools,
+                        detail=", ".join(role.job_tools))
+            edges.append({"from": channel, "to": jobs, "kind": "calls"})
         for capability in role.capabilities:
             if capability.id == "delegate":
                 for target in capability.options.get("roles", []):
@@ -64,7 +69,9 @@ def recipe_graph(recipe: Recipe) -> dict[str, Any]:
 
 def annotate_with_trace(graph: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     """Count executed tool calls per capability from a run's trajectory (read-only)."""
-    tools: dict[str, int] = {}
+    tools = Counter()
+    role_calls = Counter()
+    has_role_records = False
     trajectory = Path(run_dir) / "trajectory.jsonl"
     if trajectory.is_file():
         for line in trajectory.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -73,13 +80,25 @@ def annotate_with_trace(graph: dict[str, Any], run_dir: Path) -> dict[str, Any]:
             except ValueError:
                 continue
             if event.get("type") == "ToolExecution" and event.get("phase") == "started" and event.get("tool_name"):
-                tools[event["tool_name"]] = tools.get(event["tool_name"], 0) + 1
+                has_role_records |= "role" in event
+                name = event["tool_name"]
+                tools[name] += 1
+                role_calls[event.get("role") or "", name] += 1
+
+    capabilities = {item["id"]: item["tools"] if item.get("tools") is not None else
+                    [name for name in tools if _owner(name) == item["label"]]
+                    for item in graph["nodes"] if item["kind"] == "capability"}
+    owners = Counter(name for names in capabilities.values() for name in names)
     for item in graph["nodes"]:
         if item["kind"] == "role" and not item.get("entry"):
             item["calls"] = tools.get(f"delegate_{item['label']}", 0)
         if item["kind"] == "capability":
-            names = item.get("tools") or [name for name in tools if _owner(name) == item["label"]]
-            item["calls"] = sum(tools.get(name, 0) for name in names)
+            names = capabilities[item["id"]]
+            role = item["id"].split(":", 1)[0]
+            ambiguous = any(role_calls["", name] and owners[name] > 1 for name in names)
+            if item["label"] == "jobs" and not has_role_records and not any(tools[name] for name in names):
+                ambiguous = True
+            item["calls"] = None if ambiguous else sum(role_calls[role, name] + role_calls["", name] for name in names)
     graph["tool_calls"] = tools
     return graph
 

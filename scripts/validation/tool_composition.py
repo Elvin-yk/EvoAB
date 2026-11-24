@@ -247,8 +247,9 @@ class CompositionChecks(unittest.TestCase):
                 "integration_options": {**cfg.integration_options, missing: None}}
             with self.assertRaisesRegex(ValueError, "Hybrid requires"):
                 cfg.model_copy(update=changes).resolve()
-        with self.assertRaisesRegex(ValueError, "cannot be narrowed"):
-            config(overrides={"roles.main.capabilities.skills.tools": ["read_skill"]}).resolve()
+        read_only = config(overrides={"roles.main.capabilities.skills.tools": ["read_skill"]})
+        with assembled(read_only, self.directory) as (assembly, *_):
+            self.assertEqual(surface(assembly) & {"list_skills", "read_skill", "write_skill"}, {"read_skill"})
         with self.assertRaisesRegex(ValueError, "has no tools"):
             config(overrides={"roles.main.capabilities.gripper.tools": ["teleport"]}).resolve()
         with self.assertRaisesRegex(ValueError, "compact tool style requires execution.return_mode"):

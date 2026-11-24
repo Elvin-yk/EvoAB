@@ -2,21 +2,9 @@
 // Loaded before studio.js; uses its h()/put()/api() helpers at call time.
 "use strict";
 
-const PARADIGM_LABEL = { orchestrate: "编排", direct: "直接控制", code: "代码", policy: "策略模型" };
 const CHANNEL_LABEL = { tools: "工具调用", code: "代码", action: "直接动作" };
-const STATUS_LABEL = { builtin: "内置", reproduction: "复现", experimental: "实验" };
 const KIND_LABEL = { brain: "大脑", role: "角色", channel: "通道", context: "上下文", capability: "能力",
   body: "环境", loop: "回合循环" };
-const METHOD_GROUPS = [
-  ["single", "单一范式", "一个智能体，用一种方式控制机器人。"],
-  ["composed", "组合方案", "多个角色或多种范式拼在一起：例如规划者调用直接控制器，或跨回合积累程序。"],
-];
-
-function methodGroup(method) {
-  return method.roles.length > 1 || method.paradigms.length > 1 || (method.episodes?.repeat || 1) > 1
-    ? "composed" : "single";
-}
-
 // -- recipe graph ---------------------------------------------------------------
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -82,13 +70,14 @@ function recipeGraphView(graph, { calls = false } = {}) {
     const p = pos.get(node.id);
     if (!p) continue;
     const counted = node.kind === "capability" || (node.kind === "role" && node.calls != null);
-    const used = calls && counted ? node.calls || 0 : null;
+    const used = calls && counted ? node.calls : null;
     const group = svg("g", { class: `node node-${node.kind}${node.entry ? " entry" : ""}${used === 0 ? " idle" : ""}`,
       transform: `translate(${p.x},${p.y})` });
     group.append(svg("rect", { width: W, height: H, rx: 9 }));
     const label = node.kind === "channel" ? (CHANNEL_LABEL[node.label] || node.label) : node.label;
-    group.append(svg("text", { x: 10, y: 18, class: "node-kind" }, KIND_LABEL[node.kind] || node.kind));
+    group.append(svg("text", { x: 10, y: 18, class: "node-kind" }, node.kindLabel || KIND_LABEL[node.kind] || node.kind));
     group.append(svg("text", { x: 10, y: 35, class: "node-label" }, label.length > 22 ? `${label.slice(0, 21)}…` : label));
+    if (calls && counted && used == null) group.append(svg("text", { x: W - 10, y: 18, class: "node-calls", "text-anchor": "end" }, "无法归属"));
     if (used != null) group.append(svg("text", { x: W - 10, y: 18, class: "node-calls", "text-anchor": "end" }, `${used} 次`));
     group.append(svg("title", {}, [label, node.detail].filter(Boolean).join("\n")));
     root.append(group);
@@ -106,92 +95,235 @@ async function loadMethods(integration) {
   return METHODS_BY_INTEGRATION.get(integration);
 }
 
-function methodCard(method, selected, onSelect) {
-  const disabled = !method.agents.length;
-  const reason = method.unavailable || "当前没有能驱动该通道的 Agent 实现。";
-  return h("button", {
-    class: `choice${selected ? " selected" : ""}${disabled ? " disabled" : ""}`, "aria-pressed": String(selected),
-    "aria-disabled": String(disabled), onclick: disabled ? null : onSelect, title: disabled ? reason : null,
-  },
-  h("span", { class: "title" }, method.label,
-    h("span", { class: "tag" }, STATUS_LABEL[method.status] || method.status)),
-  h("span", { class: "desc" }, method.summary),
-  h("span", { class: "method-tags" },
-    method.paradigms.map((p) => h("span", { class: `tag paradigm-${p}` }, PARADIGM_LABEL[p] || p)),
-    h("span", { class: "tag" }, CHANNEL_LABEL[method.channel] || method.channel),
-    method.roles.length > 1 ? h("span", { class: "tag" }, `${method.roles.length} 个角色`) : null),
-  disabled ? h("span", { class: "muted small" }, reason) : null);
-}
+const TEAM_METHOD = "tool_team";
+const DIRECT_TOOL = "delegate_direct_controller";
+const TEAM_ROLE = { planner: "Planner（规划）", actor: "Actor（执行）" };
+const teamCatalogs = new Map();
 
-function parameterField(parameter, values) {
-  const value = parameter.name in values ? values[parameter.name] : parameter.default;
-  const set = (v) => {
-    if (v === "" || v === parameter.default || String(v) === String(parameter.default)) delete values[parameter.name];
-    else values[parameter.name] = v;
+function teamPresets(role, groups) {
+  const available = Object.values(groups).flat();
+  const ordinary = (names) => names.filter((name) => name !== DIRECT_TOOL);
+  const presets = role === "planner" ? {
+    "常用工具": available.filter((name) => !groups.gripper?.includes(name) && !groups.action_policy?.includes(name)),
+    "观察与规划": [...(groups.skills || []), ...(groups.scene || []), "finish"],
+  } : {
+    "常用工具": ordinary([...(groups.scene || []), ...(groups.gripper || []), ...groups.jobs]),
+    "基础执行": ["capture_scene", "move", "grasp", "release", "hold"],
+    "Direct 执行": ["capture_scene", DIRECT_TOOL],
   };
-  let control;
-  if (parameter.choices) {
-    control = h("div", { class: "segmented" }, parameter.choices.map((choice) => h("button", {
-      class: String(value) === String(choice) ? "active" : "", "aria-pressed": String(String(value) === String(choice)),
-      onclick: () => { set(choice); route(); } }, String(choice))));
-  } else if (parameter.type === "text") {
-    control = h("textarea", { class: "input", rows: 3, maxlength: 8192, oninput: (e) => set(e.target.value) }, value || "");
-  } else if (parameter.type === "boolean") {
-    control = h("input", { type: "checkbox", checked: !!value, onchange: (e) => set(e.target.checked) });
-  } else {
-    control = h("input", { class: "input", value: value ?? "", inputmode: parameter.type === "integer" ? "numeric" : null,
-      placeholder: parameter.type === "pair" ? "A:B" : null, oninput: (e) => set(e.target.value) });
+  return Object.fromEntries(Object.entries(presets)
+    .filter(([, names]) => !names.includes(DIRECT_TOOL) || available.includes(DIRECT_TOOL))
+    .map(([label, names]) => [label, names.filter((name) => available.includes(name))]));
+}
+
+function newAgentCard(role, groups) {
+  return { role, delegate_to: [], instructions: "", tools: teamPresets(role, groups)["常用工具"] };
+}
+
+function configuredTeam(w) {
+  return w.team.map((card, i) => i === 0 && w.model ? {...card, model_preset: w.model} : card);
+}
+
+function addActor(team, caller, groups) {
+  team.push(newAgentCard("actor", groups));
+  caller.delegate_to.push(team.length);
+  route();
+}
+
+function reachableAgents(team, start) {
+  const reachable = new Set([start]);
+  for (const number of reachable) {
+    for (const target of team[number - 1].delegate_to) reachable.add(target);
   }
-  return h("label", { class: "field" }, h("span", { class: "section-title" }, parameter.label), control,
-    parameter.help ? h("span", { class: "muted small" }, parameter.help) : null);
+  return reachable;
 }
 
-function methodDetails(method, w) {
-  const values = (w.params[method.id] ||= {});
-  const agents = method.agents.length > 1 ? h("section", { class: "agent-picker", "aria-label": "选择 Agent 实现" },
-    h("h3", { class: "section-title" }, "入口角色的 Agent 运行时"),
-    h("div", { class: "choice-grid" }, method.agents.map((agent) => h("button", {
-      class: `choice${w.agent === agent.id ? " selected" : ""}`, "aria-pressed": String(w.agent === agent.id),
-      onclick: () => { w.agent = agent.id; route(); },
-    }, h("span", { class: "title" }, agent.label), h("span", { class: "desc" }, agent.description))))) : null;
-  const references = method.references?.length ? h("p", { class: "muted small method-refs" }, "参考：",
-    method.references.map((ref, i) => [i ? "；" : "", h("a", { href: ref.url, target: "_blank", rel: "noopener noreferrer" }, ref.title)])) : null;
-  return h("section", { class: "method-group" },
-    h("h2", { class: "section-title" }, `${method.label} 的组成`),
-    recipeGraphView(method.graph),
-    references,
-    agents,
-    method.parameters.length ? h("div", { class: "card direct-options" }, method.parameters.map((p) => parameterField(p, values))) : null);
+function collaborationFields(team, number) {
+  function choices(outgoing) {
+    const title = outgoing ? "可委托给" : "接受谁委托（向其汇报）";
+    const peers = team.flatMap((peer, i) => {
+      const source = outgoing ? number : i + 1, target = outgoing ? i + 1 : number;
+      if (target === 1 || source === target) return [];
+      const caller = team[source - 1];
+      const cycle = reachableAgents(team, target).has(source);
+      return [h("label", {class: "check", title: cycle ? "这条委托会形成循环" : null}, h("input", {type: "checkbox", disabled: cycle,
+        checked: caller.delegate_to.includes(target), onchange: (e) => {
+          caller.delegate_to = e.target.checked ? [...caller.delegate_to, target] : caller.delegate_to.filter((n) => n !== target);
+          route();
+        }}), `Agent ${i + 1} · ${TEAM_ROLE[peer.role].split("（")[0]}`)];
+    });
+    return h("fieldset", {}, h("legend", {}, title), peers.length ? peers :
+      h("small", {class: "muted"}, outgoing ? "暂无可委托的其他 Agent" : "入口 Agent 提交整个任务的结果"));
+  }
+  return h("div", {class: "team-relations"}, choices(true), choices(false));
 }
 
-async function stepMethodLibrary(body) {
-  const w = S.wizard;
-  const integration = w.bench?.integration;
-  body.append(h("h1", { class: "wizard-title" }, "选择方法"));
-  if (!integration) return;
-  const holder = h("div", {});
-  body.append(holder);
-  let methods = METHODS_BY_INTEGRATION.get(integration);
-  if (!methods) {
-    put(holder, h("div", { class: "muted" }, "读取方法库…"));
-    try { methods = await loadMethods(integration); } catch (error) {
-      put(holder, h("div", { class: "notice error" }, `读取失败：${error.message}`));
+function roleCard(card, index, groups, team, updateGraph) {
+  const presets = teamPresets(card.role, groups);
+  const select = h("select", { class: "input", "aria-label": "角色", onchange: (e) => {
+    card.role = e.target.value;
+    card.tools = teamPresets(card.role, groups)["常用工具"];
+    route();
+  } }, Object.entries(TEAM_ROLE).map(([value, label]) => h("option", { value, selected: value === card.role }, label)));
+  const toolGroup = (key, names) => h("fieldset", {disabled: card.role === "planner" && ["gripper", "action_policy"].includes(key)}, h("legend", {}, TOOL_GROUP_LABELS[key] || key),
+    key === "gripper" && card.role === "planner" ? h("small", { class: "muted" }, "机械臂由 Actor 执行") : null,
+    key === "action_policy" ? h("small", { class: "muted" }, card.role === "planner" ? "委托给 Actor 执行。" :
+      names.length ? "Direct 使用此 Actor 的模型，根据画面和子目标生成动作。" : "当前评测集暂无可用的动作策略。") : null,
+    key === "jobs" ? h("small", { class: "muted" }, "勾选查询结果或等待工具后，动作可在后台执行。") : null,
+    names.map((name) => h("label", { class: "check" }, h("input", { type: "checkbox", checked: card.tools.includes(name),
+      onchange: (e) => {
+        card.tools = e.target.checked ? [...card.tools, name] : card.tools.filter((n) => n !== name);
+        updateGraph();
+      } }), h("span", {}, TOOL_LABELS[name] || name, name !== DIRECT_TOOL ? h("code", {}, name) : null))),
+    key === "action_policy" ? h("small", { class: "muted" }, "VLA · 暂未接入") : null);
+  return h("section", { class: "card card-pad team-card", "aria-label": `Agent ${index + 1}` },
+    h("div", { class: "toolbar" }, h("h2", { class: "section-title" }, `Agent ${index + 1}`), select,
+      h("span", { class: "spacer" }), index ? h("button", { class: "btn small", onclick: () => {
+        team.splice(index, 1);
+        for (const peer of team) peer.delegate_to = peer.delegate_to.filter((n) => n !== index + 1)
+          .map((n) => n > index + 1 ? n - 1 : n);
+        route();
+      } }, "移除") : null),
+    collaborationFields(team, index + 1),
+    !reachableAgents(team, 1).has(index + 1) ? h("small", {class: "notice error"}, "尚未接入任务，请从入口直接或间接委托给此 Agent。") : null,
+    card.role === "planner" && !card.delegate_to.length ? h("div", {class: "toolbar"},
+      h("small", {class: "muted"}, "此 Planner 可规划与观察。需要执行动作时，可委托给 Actor。"),
+      h("button", {class: "btn small", onclick: () => addActor(team, card, groups)}, "添加执行 Actor")) : null,
+    h("label", { class: "field" }, "角色指令（可选）", h("textarea", { class: "input", rows: 2, maxlength: 8192,
+      placeholder: index ? "例如：根据腕部画面调整抓取位置。" : "例如：每次移动前先观察目标。",
+      oninput: (e) => { card.instructions = e.target.value; updateGraph(); } }, card.instructions)),
+    h("div", { class: "toolbar" }, h("b", {}, card.role === "planner" ? "Planner 工具预设" : "Actor 工具预设"),
+      Object.entries(presets).map(([label, tools]) => h("button", { class: "btn small", onclick: () => {
+        card.tools = tools; route();
+      } }, label))),
+    h("div", { class: "tool-picker-grid" }, Object.entries(groups).map(([key, names]) => toolGroup(key, names))));
+}
+
+// Studio teams expose each generated action role as an execution policy of its caller.
+function showActionPolicies(graph) {
+  const actions = graph.nodes.filter((n) => n.kind === "channel" && n.label === "action");
+  for (const channel of actions) {
+    const role = channel.id.slice(0, -":channel".length);
+    const target = graph.nodes.find((n) => n.id === `role:${role}`);
+    const callers = graph.edges.filter((e) => e.kind === "delegates" && e.to === target.id);
+    // Keep standalone and shared action roles as independent nodes.
+    if (target.entry || callers.length !== 1) continue;
+    const model = graph.nodes.find((n) => n.id === `${role}:brain`)?.detail;
+    const kept = graph.nodes.filter((n) => n !== target && !n.id.startsWith(`${role}:`));
+    const ids = new Set(kept.map((n) => n.id));
+    graph.nodes = kept;
+    graph.edges = graph.edges.filter((e) => ids.has(e.from) && ids.has(e.to));
+    const {from} = callers[0];
+    const id = from.replace(/:channel$/, `:action:${role}`);
+    graph.nodes.push({ id, kind: "capability", kindLabel: "动作策略", label: "Direct", calls: target.calls,
+      detail: model || "沿用运行的模型预设" });
+    graph.edges.push({ from, to: id, kind: "calls" }, { from: id, to: "body", kind: "action chunks" },
+      { from: "body", to: id, kind: "observations" });
+  }
+}
+
+function studioHarnessGraph(graph, view) {
+  showActionPolicies(graph);
+  const roleLabels = new Map();
+  const agents = graph.nodes.filter((node) => node.kind === "role");
+  agents.forEach((node, i) => roleLabels.set(node.id, `Agent ${i + 1} · ${TEAM_ROLE[view.team[i].role].split("（")[0]}`));
+  for (const n of graph.nodes) {
+    if (n.kind === "role") n.label = roleLabels.get(n.id);
+    if (n.kind === "brain") {
+      n.kindLabel = "运行时";
+      n.label = view.runtime;
+    }
+    if (n.kind === "context" && n.label === "identity") n.label = "会话历史";
+    if (n.kind === "context" && n.label === "stateless_window") n.label = "观测窗口";
+    if (n.kind === "body") n.label = view.benchmark;
+    if (n.kind === "capability" && !n.kindLabel) n.label = `${TOOL_GROUP_LABELS[n.label] || n.label} · ${n.tools?.length ?? 0}`;
+  }
+  return recipeGraphView(graph);
+}
+
+function harnessPreview(w, runtime) {
+  const assembly = h("div", {});
+  const root = h("section", { class: "card card-pad harness-panel", "aria-label": "当前 Harness 架构" },
+    h("h2", { class: "section-title" }, "当前 Harness 架构"),
+    h("p", { class: "muted small" }, w.model ? `入口 Agent 模型 · ${w.model}` : "模型预设在下一步选择"), assembly);
+  let timer, revision = 0;
+  function update() {
+    const current = ++revision;
+    clearTimeout(timer);
+    const view = { team: w.team, runtime, benchmark: benchmarkName(w.bench, w.bench.profile) };
+    const reachable = reachableAgents(w.team, 1);
+    const missing = w.team.flatMap((_, i) => reachable.has(i + 1) ? [] : [i + 1]);
+    if (missing.length) {
+      put(assembly, h("p", {class: "notice"}, `${missing.map((n) => "Agent " + n).join("、")} 还没有从 Agent 1 通往它的委托路径。请勾选委托关系后继续。`));
+      assembly.removeAttribute("aria-busy");
       return;
     }
-    if (holder.isConnected) route();
-    return;
+    assembly.setAttribute("aria-busy", "true");
+    timer = setTimeout(async () => {
+      if (!root.isConnected) return;
+      try {
+        const graph = await api(`/api/benchmarks/${encodeURIComponent(w.bench.integration)}/team-preview?graph=true`, {
+          method: "POST", json: { method: w.method, agent: w.agent, team: configuredTeam(w) },
+        });
+        if (current !== revision || !root.isConnected) return;
+        put(assembly, studioHarnessGraph(graph, view),
+          h("p", { class: "muted small" }, "虚线从委托方指向执行方，结果沿原路返回。工具组旁是勾选数量，悬停查看具体工具。"));
+      } catch (error) {
+        if (current === revision) put(assembly, h("p", { class: "notice error" }, error.message));
+      } finally {
+        if (current === revision) assembly.removeAttribute("aria-busy");
+      }
+    }, 120);
   }
-  const selected = methods.find((m) => m.id === w.method);
-  const sections = METHOD_GROUPS.map(([key, label, note]) => {
-    const items = methods.filter((m) => methodGroup(m) === key);
-    if (!items.length) return null;
-    return h("section", { class: "method-group" }, h("h2", { class: "section-title" }, label),
-      h("p", { class: "muted small", style: "margin:0 0 10px" }, note),
-      h("div", { class: "choice-grid" }, items.map((m) => methodCard(m, m.id === w.method, () => {
-        selectMethod(m, m.id === w.method ? w.agent : null); w.touched = true; route();
-      }))));
-  });
-  put(holder, sections, selected && selected.agents.length ? methodDetails(selected, w) : null);
+  return { root, update };
+}
+
+async function stepMethod(body) {
+  const w = S.wizard;
+  const integration = w.bench.integration;
+  body.append(h("h1", { class: "wizard-title" }, "配置 Agent"));
+  try {
+    if (!teamCatalogs.has(integration) || !METHODS_BY_INTEGRATION.has(integration)) {
+      body.append(h("p", { class: "muted" }, "正在读取可用工具…"));
+      const [groups] = await Promise.all([
+        api(`/api/benchmarks/${encodeURIComponent(integration)}/team-tools`), loadMethods(integration),
+      ]);
+      teamCatalogs.set(integration, groups);
+      if (body.isConnected) route();
+      return;
+    }
+    const groups = teamCatalogs.get(integration);
+    if (!w.team) w.team = [newAgentCard("planner", groups)];
+    const method = selectedMethod();
+    if (!method) throw new Error("当前环境没有可用的 Agent 运行时");
+    body.append(h("section", { class: "team-runtime", "aria-label": "Agent 运行时" },
+      h("h2", { class: "section-title" }, "Agent 运行时"),
+      h("div", { class: "choice-grid" }, method.agents.map((agent) => h("button", {
+        class: `choice${w.agent === agent.id ? " selected" : ""}`, "aria-pressed": String(w.agent === agent.id),
+        onclick: () => { w.agent = agent.id; w.touched = true; route(); },
+      }, h("span", { class: "title" }, agent.label), h("span", { class: "desc" }, agent.description))))));
+    const diagram = harnessPreview(w, selectedAgent().label);
+    body.append(h("p", {class: "muted small"}, "委托关系可以从任一端勾选。子任务结束后，结果回给本次发起委托的 Agent。"));
+    body.append(...w.team.map((card, index) => roleCard(card, index, groups, w.team, diagram.update)),
+      h("button", { class: "btn", onclick: () => addActor(w.team, w.team[0], groups) }, "＋ 添加 Agent"), diagram.root);
+    diagram.update();
+  } catch (error) {
+    body.append(h("div", { class: "notice error" }, error.message), h("button", { class: "btn", onclick: route }, "重试"));
+  }
+}
+
+async function downloadTeamRecipe(button) {
+  const w = S.wizard;
+  button.disabled = true;
+  try {
+    const recipe = await api(`/api/benchmarks/${encodeURIComponent(w.bench.integration)}/team-preview`, {
+      method: "POST", json: { method: w.method, agent: w.agent, team: configuredTeam(w) },
+    });
+    const url = URL.createObjectURL(new Blob([JSON.stringify(recipe, null, 2)], { type: "application/json" }));
+    h("a", { href: url, download: "team.recipe.json" }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { toast(error.message, true); }
+  finally { button.disabled = false; }
 }
 
 // -- run detail graph -----------------------------------------------------------------
@@ -202,6 +334,7 @@ async function renderRunGraph(run) {
   holder.dataset.run = run.id;
   let graph;
   try { graph = await api(`/api/trace/${encodeURIComponent(run.id)}/graph`); } catch { put(holder); return; }
+  showActionPolicies(graph);
   const overrides = Object.entries(graph.overrides || {});
   put(holder, h("details", { class: "card", style: "margin-top:14px" },
     h("summary", { class: "card-pad", style: "cursor:pointer;font-weight:600" }, "方案组成与调用次数"),

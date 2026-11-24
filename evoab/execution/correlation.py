@@ -5,6 +5,18 @@ from contextvars import ContextVar
 _call = ContextVar("tool_call_identity", default=None)
 
 
+current_role: ContextVar[str] = ContextVar("execution_role", default="")
+
+
+@contextmanager
+def execution_role(role: str):
+    token = current_role.set(role or current_role.get())
+    try:
+        yield
+    finally:
+        current_role.reset(token)
+
+
 def current_call():
     return dict(_call.get() or {})
 

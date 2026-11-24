@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from contextvars import copy_context
+from contextlib import nullcontext
 import threading
 import uuid
 from collections.abc import Iterable
@@ -128,10 +129,17 @@ class ParallelToolExecutor(ToolExecutor):
 
     def _call(self, name: str, arguments: dict[str, Any], *, background=False, defer_wait=False) -> ExecutionResult:
         if name in self._control_names:
-            if not self._tracer.enabled:
-                return self._controls.call(name, arguments)
-            with self._tracer.span("tool.control", tool=name):
-                return self._controls.call(name, arguments)
+            execution_id = uuid.uuid4().hex[:12]
+            self.emit_execution("started", execution_id, name, arguments, "jobs")
+            try:
+                with self._tracer.span("tool.control", tool=name) if self._tracer.enabled else nullcontext():
+                    result = self._controls.call(name, arguments)
+            except Exception as error:
+                self.emit_execution("finished", execution_id, name, arguments, "jobs", success=False, error=str(error))
+                raise
+            self.emit_execution("finished", execution_id, name, arguments, "jobs",
+                                success=result.output.success if result.output is not None else True)
+            return result
 
         # Reject hidden names before scheduling or notifying observation listeners.
         if name not in self._toolkit.get_tool_names():
@@ -155,9 +163,9 @@ class ParallelToolExecutor(ToolExecutor):
         parent_context = self._tracer.capture()
         submitted = self._on_submit(policy)
         call_context = copy_context()
-        from evoab.execution.correlation import current_call
+        from evoab.execution.correlation import current_call, current_role
         with self._queue_lock:
-            self._job_calls[job.job_id] = current_call()
+            self._job_calls[job.job_id] = {**current_call(), "role": current_role.get()}
         self.emit_execution("queued", job.job_id, name, arguments, policy.resource_key, job_id=job.job_id)
         try:
             self._scheduler.submit(
@@ -308,10 +316,10 @@ class ParallelToolExecutor(ToolExecutor):
             cancelled = [job for job in self._registry.list()
                          if job.status == "cancelled" and job.job_id not in self._reported_cancellations]
             self._reported_cancellations.update(job.job_id for job in cancelled)
-        from evoab.execution.correlation import call_context
+        from evoab.execution.correlation import call_context, execution_role
         for job in cancelled:
             identity = self._job_calls.get(job.job_id, {})
-            with call_context(identity.get("call_id", ""), identity.get("batch_id", "")):
+            with execution_role(identity.get("role", "")), call_context(identity.get("call_id", ""), identity.get("batch_id", "")):
                 self.emit_execution("cancelled", job.job_id, job.tool_name, job.arguments,
                                     job.resource_key, job_id=job.job_id)
         for listener in listeners:

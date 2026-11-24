@@ -153,9 +153,10 @@ promotes after every episode. The experience directory defaults to
 `evoab methods components --integration X` lists every building block: brains
 (agent runtimes and the channels they drive), channels, action representations,
 context policies, harness capabilities and the integration's tool modules.
-`evoab methods graph ID` prints a recipe as nodes and edges; Studio renders it in
-the method step and, on a run's page, annotates it with executed tool calls and
-delegations.
+`evoab methods graph ID` prints a recipe as nodes and edges; Studio annotates it on the run page with executed tool calls and delegations.
+A role may set `job_tools` to list the background controls it exposes. A selection without a result-reading control
+makes ordinary tool calls wait for completed results. Omitting the field
+preserves the executor defaults.
 
 ## Methods and agents are independent
 

@@ -278,13 +278,29 @@ available in TUI and absent from ordinary `run`.
 
 ### Choose tools for a run
 
-In Studio, choose a one-role tools or code method and check the tools the Agent may use.
-All tools for the selected method are checked initially. Clearing every box
-exposes zero robot and job tools. Camera-dependent tools such as `locate`
-also require support from the connected episode. SDK built-ins are separate.
-For the native Agent, the corresponding CLI option is
-`--visible-tools move capture_scene`. The recorded `tool_selection.json`
-includes the requested names and the schemas actually exposed for an explicit selection.
+In Studio, the first agent receives the task. Choose its role and tools, or apply
+a preset and adjust the checkboxes. Set which agents may delegate to each card or edit the
+same links from the caller. Reports return to the caller of each sub-goal.
+Planner cards handle planning and observation. Actor cards can select Direct under Action policies
+alongside arm tools such as `move`. Direct uses its Actor's model preset to turn
+observations and a sub-goal into action chunks. VLA is reserved for future integration.
+At the bottom of the method step, the component graph shows the compiled team and updates
+as you edit each agent’s tools and delegation targets.
+
+Selecting a result-reading control (`get_tool_result`, `wait_for_tool`, or
+`wait_for_tools`) lets the role receive job handles from background tools.
+Otherwise it receives the completed result, even if queue inspection is enabled.
+All roles share the episode queue; queue inspection, cancellation and flushing
+apply to that queue, including jobs started by another role. The confirmation page
+exports the recipe used by the CLI command. In the model step, each additional
+Agent follows Agent 1's model by default. Select a different preset to pin that
+role's model and provider connection in the exported recipe (`brain.model_preset`). Each run records its resolved
+recipe in `recipe.json`. See [Agent team](../evoab/methods/tool_team/CARD.md).
+
+For existing one-role tool or code CLI recipes, `--visible-tools move capture_scene`
+narrows the session tools. The recorded `tool_selection.json` includes the
+requested names and actual schemas. Tools such as `locate` also require support
+from the connected episode. SDK built-ins are separate.
 
 ### Tool visibility debugging
 

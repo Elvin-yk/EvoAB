@@ -210,8 +210,10 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
     if entry.channel == "action":
         # One stateless model request per chunk: the direct runner, whatever agent was chosen.
         args.agent_backend = "native"
-    if ("--model" not in explicit or not getattr(args, "model", None)) and brain.model:
-        args.model = brain.model
+    if ("--model" not in explicit or not getattr(args, "model", None)) and (brain.model or brain.model_preset):
+        args.model = brain.model or brain.model_preset
+        if brain.model_preset:
+            args.model_preset = True
     if "--reasoning-effort" not in explicit and brain.reasoning_effort is not None:
         args.reasoning_effort = brain.reasoning_effort
     if "--max-turns" not in explicit:

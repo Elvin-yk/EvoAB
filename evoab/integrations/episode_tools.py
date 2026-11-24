@@ -26,11 +26,11 @@ def configure_scene(session, selection: ModuleSelection):
 
 
 def configure_skills(session, selection: ModuleSelection):
-    return SkillTools(session.episode, writing=selection.options.write,
+    return SkillTools(session.episode, writing=selection.options.write, names=selection.tools,
                       root=getattr(session.args, "skills_root", None))
 
 
-SKILLS_MODULE = ToolModule("skills", configure_skills, skills.tool_policies(), options=SkillOptions,
+SKILLS_MODULE = ToolModule("skills", configure_skills, skills.tool_policies(), tools=(*skills.NAMES, "write_skill"), options=SkillOptions,
     label="Skill library", description="List and read Markdown skills; optionally write environment-local experience.")
 SCENE_MODULE = ToolModule("scene", configure_scene, scene.tool_policies(), tools=scene.NAMES,
     label="Scene perception", description="Measured state, calibrated multi-view capture and 2D segmentation.")

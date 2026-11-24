@@ -156,6 +156,7 @@ class ToolExecution(Event):
     phase: str = ""
     success: bool | None = None
     error: str = ""
+    role: str = ""
 
 
 @dataclass

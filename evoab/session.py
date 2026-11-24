@@ -44,6 +44,7 @@ from evoab.execution import (
 from evoab.telemetry import TelemetrySession, create_telemetry
 from evoab.telemetry.logging import get_logger
 from evoab.tools.toolkit import Toolkit
+from evoab.execution.views import ToolView, waits_for_output
 from evoab.tools.observation import ObservationTools
 from evoab.tools.selection import select_tools
 from evoab.tools.workspace import WorkspaceProvider
@@ -198,6 +199,7 @@ def assemble_session(args) -> SessionAssembly:
                 provided = module_tools.get(item.name, set())
                 names |= provided if item.selection.tools is None else provided & set(item.selection.tools)
             names |= {tool_name(target) for target in role.delegates}
+            names.update(role.role.job_tools or ())
             return frozenset(names)
 
         role_tools = {name: visible(role) for name, role in compiled.roles.items()}
@@ -239,10 +241,10 @@ def assemble_session(args) -> SessionAssembly:
             control_tool_names=None if selection is None else selection.control_names,
         )
         entry_executor = executor
-        if multi_role and selection is None:
-            from evoab.execution.views import ToolView
-            entry_executor = ToolView(executor, role_tools[entry_name], registered=toolkit.get_tool_names())
-        schemas = entry_executor.get_tool_schemas() if selection is None else executor.get_tool_schemas()
+        if (multi_role or compiled.entry.role.job_tools is not None) and not getattr(args, "tool_debug", False):
+            entry_executor = ToolView(executor, role_tools[entry_name],
+                                      registered=toolkit.get_tool_names(), job_tools=compiled.entry.role.job_tools, role=entry_name)
+        schemas = entry_executor.get_tool_schemas()
         (session_dir / "tools.json").write_text(
             json.dumps(schemas, indent=2, allow_nan=False) + "\n"
         )
@@ -266,7 +268,7 @@ def assemble_session(args) -> SessionAssembly:
             observation_profile=profile_name,
             style=args.tool_style,
             initial_observation=args.initial_observation,
-            tool_return_mode=args.tool_return_mode,
+            tool_return_mode="immediate" if waits_for_output(compiled.entry.role.job_tools) else args.tool_return_mode,
             resource_scheduling=args.resource_scheduling,
             tool_names=prompt_tool_names,
             tool_prompt_resources=tuple(path for item in compiled.entry.modules
@@ -302,6 +304,7 @@ def assemble_session(args) -> SessionAssembly:
                 context = replace(
                     prompt_context, task=task, channel=compiled_role.channel, style=compiled_role.role.style,
                     initial_observation=False, session_dir=None, observation_profile="none",
+                    tool_return_mode="immediate" if waits_for_output(compiled_role.role.job_tools) else args.tool_return_mode,
                     tool_names=tuple(sorted(role_tools[compiled_role.name])),
                     tool_prompt_resources=tuple(path for item in compiled_role.modules
                                                 for path in item.module.runtime_prompts),
@@ -418,6 +421,7 @@ class Session:
         self._tools = None
         # Agents of delegated roles currently running; cancel() reaches them too.
         self._role_agents: set = set()
+        self._role_runs = 0
         self._role_lock = threading.Lock()
         self.result: RunResult | None = None
         self.events = EventBus()
@@ -536,13 +540,13 @@ class Session:
     def _run_role(self, role: str, instruction: str) -> dict:
         """Run another recipe role against this episode; called by its delegate tool."""
         from evoab.composition.roles import role_namespace
-        from evoab.execution.views import ToolView
 
         args, assembly = self._args, self._assembly
         compiled = args.compiled_recipe.roles[role]
         role_args = role_namespace(args, compiled)
-        self._role_runs = getattr(self, "_role_runs", 0) + 1
-        run_dir = assembly.session_dir / "roles" / f"{self._role_runs:03d}_{role}"
+        with self._role_lock:
+            self._role_runs += 1
+            run_dir = assembly.session_dir / "roles" / f"{self._role_runs:03d}_{role}"
         (run_dir / "scratch").mkdir(parents=True, exist_ok=True)
         timeout_s = None if self._deadline is None else max(0.001, self._deadline - time.monotonic())
         started = time.time()
@@ -563,7 +567,7 @@ class Session:
                         agent.close()
                 else:
                     view = ToolView(assembly.executor, assembly.role_tools[role],
-                                    registered=assembly.toolkit.get_tool_names())
+                                    registered=assembly.toolkit.get_tool_names(), job_tools=compiled.role.job_tools, role=role)
                     result = _run_agent(agent,
                         model_config=resolve_agent_model_config(role_args),
                         context_config={"context_policy": role_args.context_policy,
@@ -852,7 +856,7 @@ def run_tui(args) -> None:
             model=args.model,
             agent_options=agent_options,
             toolkit=assembly.toolkit,
-            executor=assembly.executor,
+            executor=assembly.entry_executor,
             prompt_builder=assembly.build_prompt,
             bus=bus,
             session_dir=assembly.session_dir,
@@ -1033,7 +1037,6 @@ def _run_agent(
         if channel == "code":
             from evoab.context.code_as_policy import prepare_code_policy
             from evoab.execution.code_as_policy.bridge import CodePolicyBridge
-            from evoab.execution.views import ToolView
 
             code_bridge = CodePolicyBridge(request["executor"], event_bus=event_bus)
             code_url = code_bridge.start()

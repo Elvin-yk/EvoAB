@@ -129,8 +129,8 @@ const S = {
   tasks: {}, // "integration/profile" -> task list
   models: {}, // provider id -> {models, capabilities, recommended}
   agentModelSettings: new Map(),
-  wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: "agentic", agent: null,
-            params: {}, agentOptions: new Map(), visibleTools: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
+  wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: TEAM_METHOD, agent: null,
+            team: null, agentOptions: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
   history: { query: "", status: "all", bench: "all", model: "all", selected: new Set(), compare: false },
   replay: null,
 };
@@ -210,9 +210,10 @@ const STEPS = ["类型", "评测集", "任务", "方法", "模型", "确认"];
 function wizardReady(upTo) {
   const w = S.wizard;
   const agent = selectedAgent();
-  const compatiblePreset = !agent?.filters_presets ||
-    S.agentModelSettings.get(agent.id)?.presets.some((p) => p.name === w.model);
-  const checks = [!!w.kind, !!w.bench, !!w.task, !!agent, !!w.model && compatiblePreset];
+  const settings = agent?.filters_presets ? S.agentModelSettings.get(agent.id) : S.modelSettings;
+  const compatiblePreset = w.team?.every((card) =>
+    settings?.presets.some((p) => p.name === (card.model_preset || w.model)));
+  const checks = [!!w.kind, !!w.bench, !!w.task, !!agent && !!w.team?.length && reachableAgents(w.team, 1).size === w.team.length, !!w.model && compatiblePreset];
   return checks.slice(0, upTo + 1).every(Boolean);
 }
 function availableMethods() {
@@ -366,63 +367,14 @@ async function stepTask(body) {
   renderList();
 }
 
-function stepMethod(body) {
-  stepMethodLibrary(body);
-  const method = selectedMethod();
-  // Per-run tool allowlist for one-role tools/code methods (--visible-tools).
-  if (method && method.channel !== "action" && method.roles.length === 1 && selectedAgent()) renderToolPicker(body);
-}
-
-const TOOL_GROUP_LABELS = { gripper: "机械臂", scene: "场景观测", skills: "技能", episode: "任务", jobs: "后台作业", hybrid: "动作模型" };
+const TOOL_GROUP_LABELS = { gripper: "机械臂", action_policy: "动作策略", scene: "场景观测", skills: "技能", episode: "任务", jobs: "后台作业", hybrid: "动作模型" };
 const TOOL_LABELS = {
-  move: "移动机械臂", grasp: "闭合夹爪", release: "打开夹爪", hold: "保持姿态",
+  [DIRECT_TOOL]: "Direct 控制（按子目标生成动作）", move: "移动机械臂", grasp: "闭合夹爪", release: "打开夹爪", hold: "保持姿态",
   view_env_state: "读取场景状态", capture_scene: "拍摄场景", locate: "定位物体（视相机能力而定）",
-  list_skills: "列出技能", read_skill: "读取技能", finish: "提交任务结果", actor_act: "调用动作模型",
+  list_skills: "列出技能", read_skill: "读取技能", finish: "提交整个任务的结果", actor_act: "调用动作模型",
   get_tool_result: "查询作业结果", wait_for_tool: "等待一个作业", wait_for_tools: "等待多个作业",
   list_tool_jobs: "列出作业", cancel_tool: "取消作业", queue_status: "查看队列", flush_queue: "清空队列",
 };
-const toolCatalogs = new Map();
-
-function toolSelectionKey() {
-  const w = S.wizard;
-  return JSON.stringify([w.bench.integration, w.bench.profile, w.method, w.agent]);
-}
-
-async function renderToolPicker(body) {
-  const w = S.wizard;
-  const key = toolSelectionKey();
-  const grid = h("div", { class: "tool-picker-grid" }, "正在读取工具…");
-  body.append(h("section", { class: "method-group tool-picker" },
-    h("h2", { class: "section-title" }, "向 Agent 开放的工具"),
-    h("p", { class: "muted small" }, "默认开放全部工具。取消勾选后，本次运行的 Agent 将无法调用该工具。"),
-    grid));
-  try {
-    if (!toolCatalogs.has(key)) {
-      const query = new URLSearchParams({ method: w.method, agent: w.agent });
-      toolCatalogs.set(key, await api(`/api/benchmarks/${encodeURIComponent(w.bench.integration)}/tools?${query}`));
-    }
-    const groups = toolCatalogs.get(key);
-    const all = Object.values(groups).flat();
-    const selected = new Set(w.visibleTools.get(key) ?? all);
-    put(grid, ...Object.entries(groups).filter(([, names]) => names.length).map(([group, names]) =>
-      h("fieldset", {}, h("legend", {}, TOOL_GROUP_LABELS[group] || group),
-        names.map((name) => h("label", { class: "check" },
-          h("input", { type: "checkbox", checked: selected.has(name), onchange: (e) => {
-            if (e.target.checked) selected.add(name); else selected.delete(name);
-            if (selected.size === all.length) w.visibleTools.delete(key);
-            else w.visibleTools.set(key, all.filter((tool) => selected.has(tool)));
-          } }), h("span", {}, TOOL_LABELS[name] || name, TOOL_LABELS[name] && h("code", {}, name)))))));
-  } catch (error) {
-    put(grid, h("p", { class: "muted small" }, error.message),
-      h("button", { class: "btn small", onclick: route }, "重新加载"));
-  }
-}
-
-function methodParams() {
-  const values = S.wizard.params[S.wizard.method] || {};
-  return Object.keys(values).length ? values : null;
-}
-
 function agentOptions(agent) {
   if (!agent.options.length) return null;
   const values = S.wizard.agentOptions.get(agent.id) || {};
@@ -478,7 +430,7 @@ async function stepModel(body) {
   for (const p of m.presets) (groups[p.resolved_provider || p.provider] ||= []).push(p);
   put(holder,
     h("div", { class: "toolbar" },
-      h("span", { class: "section-title", style: "margin:0" }, "模型预设"),
+      h("span", { class: "section-title", style: "margin:0" }, `Agent 1 · ${TEAM_ROLE[w.team[0].role]} 的模型预设`),
       !w.model ? h("span", { class: "muted small" }, "请点击下方预设以选中") : null,
       h("span", { class: "spacer" }), manage),
     agent.model_help ? h("p", { class: "muted small" }, agent.model_help) : null,
@@ -492,6 +444,18 @@ async function stepModel(body) {
         } },
         h("div", { class: "t mono" }, p.name),
         h("span", { class: "muted small" }, `${p.model} · 最多输出 ${fmtInt(p.max_tokens)} · ${fmtTokens(p.context_window_tokens)} 上下文${p.reasoning_effort ? ` · 预设推理 ${effortLabel(p.reasoning_effort)}` : ""}`)))])),
+    ...w.team.slice(1).map((card, index) => {
+      const unavailable = card.model_preset && !m.presets.some((p) => p.name === card.model_preset);
+      return h("label", { class: "field model-effort" },
+        h("span", { class: "section-title" }, `Agent ${index + 2} · ${TEAM_ROLE[card.role]} 的模型预设`),
+        h("select", { class: "input", onchange: (e) => {
+          card.model_preset = e.target.value || null;
+          route();
+        } }, h("option", { value: "", selected: !card.model_preset }, `跟随 Agent 1${w.model ? " · " + w.model : ""}`),
+        unavailable ? h("option", { disabled: true, selected: true }, `${card.model_preset}（不可用，请重新选择）`) : null,
+        Object.entries(groups).map(([provider, items]) => h("optgroup", { label: label(provider) },
+          items.map((p) => h("option", { value: p.name, selected: p.name === card.model_preset }, p.name))))));
+    }),
     incompatible,
     h("div", { class: "model-effort" },
       h("div", { class: "section-title", id: "effort-label" }, "推理强度"),
@@ -513,18 +477,15 @@ function commandPreview() {
   const {runtime_profile: profile, native_task: task} = w.task;
   const parts = [
     "evoab run", `--integration ${w.bench.integration}`, "--deploy local", ...(profile ? [`--runtime-profile ${profile}`] : []),
-    `--task ${task}`, `--recipe ${method.id}`, "--no-sam3",
+    `--task ${shellQuote(task)}`, "--recipe team.recipe.json", "--no-sam3",
     ...(agent.id !== method.agent ? [`--agent ${agent.id}`] : []),
-    `--model ${w.model}`, `--reasoning-effort ${w.effort}`,
+    `--model ${shellQuote(w.model)}`, `--reasoning-effort ${w.effort}`,
     ...agent.cli_flags,
   ];
   const options = w.agentOptions.get(agent.id) || {};
   for (const option of agent.options) {
     if (option.name in options) parts.push(`${option.flag} ${options[option.name]}`);
   }
-  for (const [name, value] of Object.entries(methodParams() || {})) parts.push(`--set ${shellQuote(`${name}=${value}`)}`);
-  const tools = w.visibleTools.get(toolSelectionKey());
-  if (tools) parts.push([...agent.tool_selection_flags, ...tools].join(" "));
   if (w.bench.container) parts.push("--container");
   return [...parts, "--monitor"].join(" \\\n  ");
 }
@@ -542,16 +503,16 @@ function stepConfirm(body) {
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`], ["任务", taskName(w.task.task)],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(w.effort)],
-    ["模型预设", w.model], ["Agent", agent.label],
-    ...(w.visibleTools.has(toolSelectionKey()) ? [["开放工具", w.visibleTools.get(toolSelectionKey()).join("、") || "无"]] : []),
+    ["Agent 运行时", agent.label],
+    ...w.team.map((card, i) => [`Agent ${i + 1} · ${TEAM_ROLE[card.role]}`, [`模型 · ${card.model_preset || w.model}`, card.tools.map((name) => name === DIRECT_TOOL ? "Direct" : name).join("、") || "无工具", card.delegate_to.length ? "可委托给 " + card.delegate_to.map((n) => "Agent " + n).join("、") : "", card.instructions].filter(Boolean).join(" · ")]),
     ...agent.options.filter((option) => option.name in options).map((option) => [option.label, options[option.name]]),
-    ...(methodParams() ? [["方法参数", Object.entries(methodParams()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
   ];
   body.append(
     h("div", { class: "card" }, h("table", { class: "table confirm-table" }, h("tbody", {}, rows.map(([k, v]) =>
       h("tr", {}, h("td", { class: "muted" }, k), h("td", {}, v)))))),
     h("div", { class: "section-title", style: "margin-top:20px" }, "等价命令"),
     h("div", { class: "command" }, commandPreview()),
+    h("button", { class: "btn small", onclick: (e) => downloadTeamRecipe(e.currentTarget) }, "下载命令使用的 team.recipe.json"),
     h("p", { class: "muted small" }, "API 密钥保存在服务器上，不会出现在页面或命令中。"),
     h("button", { class: "btn primary", style: "margin-top:8px", onclick: launchRun }, "启动运行"));
 }
@@ -568,9 +529,8 @@ async function launchRun(event) {
       json: { integration: w.bench.integration, profile: w.bench.profile, task: w.task.task,
               model: w.model, reasoning_effort: w.effort, method: w.method,
               ...(agent.id !== selectedMethod().agent ? { agent: agent.id } : {}),
-              ...(w.visibleTools.has(toolSelectionKey()) ? { visible_tools: w.visibleTools.get(toolSelectionKey()) } : {}),
-              ...(options && Object.keys(options).length ? { agent_options: options } : {}),
-              ...(methodParams() ? { params: methodParams() } : {}) },
+              team: configuredTeam(w),
+              ...(options && Object.keys(options).length ? { agent_options: options } : {}) },
     });
   } catch (error) {
     toast(`启动失败：${error.message}`, true);
@@ -716,10 +676,11 @@ function projectLinks(bench) {
 
 function selectBenchmark(bench, p) {
   Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile,
-    title: bench.title, container: !!p.image }, task: null, suite: "all", query: "" });
-  selectMethod(selectedMethod() || availableMethods()[0], S.wizard.agent);
+    title: bench.title, container: !!p.image }, team: null, task: null, suite: "all", query: "" });
+  selectMethod(availableMethods().find((m) => m.id === TEAM_METHOD), S.wizard.agent);
   loadMethods(bench.integration).then(() => {
-    selectMethod(selectedMethod() || availableMethods()[0], S.wizard.agent);
+    if (S.wizard.bench?.integration !== bench.integration) return;
+    selectMethod(availableMethods().find((m) => m.id === TEAM_METHOD), S.wizard.agent);
   }).catch(() => {});
 }
 
@@ -1175,7 +1136,7 @@ function applyDefaults(force = false) {
   const s = S.config.settings || {};
   const w = S.wizard;
   if (force || !w.touched) {
-    const method = S.config.methods.find((m) => m.id === s.default_method) || S.config.methods[0];
+    const method = S.config.methods.find((m) => m.id === TEAM_METHOD);
     selectMethod(method, s.default_agent);
   }
   if (s.default_effort && (force || !w.touched)) w.effort = s.default_effort;

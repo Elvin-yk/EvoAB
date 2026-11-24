@@ -11,21 +11,31 @@ from collections.abc import Iterable
 from typing import Any
 
 from evoab.execution import ExecutionResult, ToolExecutor
+from evoab.execution.correlation import execution_role
 from evoab.tools.toolkit import ToolOutput
+
+
+def waits_for_output(job_tools: list[str] | None) -> bool:
+    """A role needs a way to read the output before a receipt alone is useful."""
+    return job_tools is not None and not {"get_tool_result", "wait_for_tool", "wait_for_tools"}.intersection(job_tools)
 
 
 class ToolView(ToolExecutor):
     """Expose a subset of an executor's tools; every admitted call runs on the shared executor."""
 
     def __init__(self, executor: ToolExecutor, names: Iterable[str], *, registered: Iterable[str] | None = None,
-                 denial: str | None = None):
-        """``registered`` lists toolkit tools; any other executor tool is a job control and stays visible."""
+                 denial: str | None = None, job_tools: list[str] | None = None, role: str = ""):
+        """Inherit job controls unless the role explicitly selects its own."""
         self._executor = executor
         allowed = set(names)
-        if registered is not None:
+        if job_tools is not None:
+            allowed.update(job_tools)
+        elif registered is not None:
             allowed |= {spec["name"] for spec in executor.get_tool_schemas()} - set(registered)
         self._names = frozenset(allowed)
         self._denial = denial
+        self._wait_for_result = waits_for_output(job_tools)
+        self._role = role
 
     @property
     def names(self) -> frozenset[str]:
@@ -41,10 +51,15 @@ class ToolView(ToolExecutor):
         return ExecutionResult.completed(ToolOutput(success=False, error=message, extra={"no_execution": True}))
 
     def call(self, name: str, arguments: dict[str, Any]) -> ExecutionResult:
-        return self._admit(name) or self._executor.call(name, arguments)
+        with execution_role(self._role):
+            result = self._admit(name) or self._executor.call(name, arguments)
+        if self._wait_for_result and result.job_id and result.output is None:
+            return self._executor.job_result(result.job_id, timeout=None)
+        return result
 
     def submit(self, name: str, arguments: dict[str, Any]) -> ExecutionResult:
-        return self._admit(name) or self._executor.submit(name, arguments)
+        with execution_role(self._role):
+            return self._admit(name) or self._executor.submit(name, arguments)
 
     def job_result(self, job_id: str, timeout: float | None = 0) -> ExecutionResult:
         return self._executor.job_result(job_id, timeout)

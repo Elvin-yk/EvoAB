@@ -96,7 +96,8 @@ class NativeAgent:
         finally:
             client.close()
         return AgentResult(
-            success=outcome.error is None, message=f"{outcome.calls} inferences, {outcome.steps} control steps",
+            success=outcome.error is None and outcome.stop_reason not in {"timeout", "cancelled"},
+            message=f"{outcome.calls} inferences, {outcome.steps} control steps",
             error=outcome.error, stop_reason=outcome.stop_reason, turns_used=outcome.calls,
             provider_error=outcome.error if outcome.stop_reason == "provider_error" else None,
             tool_calls=outcome.calls, steps_used=outcome.steps, elapsed_s=time.time() - started,

@@ -49,7 +49,14 @@ class Brain(Spec):
 
     agent: str | None = None
     model: str | None = None
+    model_preset: str | None = Field(default=None, min_length=1)
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
+
+    @model_validator(mode="after")
+    def exclusive_model_source(self):
+        if self.model is not None and self.model_preset is not None:
+            raise ValueError("Choose either brain.model or brain.model_preset")
+        return self
 
 
 class Capability(Spec):
@@ -122,6 +129,8 @@ class Role(Spec):
     brain: Brain = Field(default_factory=Brain)
     channel: Channel = "tools"
     capabilities: list[Capability] = Field(default_factory=list)
+    # None inherits the executor's controls. An empty list requests completed results.
+    job_tools: list[str] | None = None
     style: Style = "full"
     initial_observation: bool = False
     action: ActionSpec | None = None
@@ -137,6 +146,10 @@ class Role(Spec):
 
     @model_validator(mode="after")
     def channel_requirements(self):
+        if self.job_tools is not None:
+            from evoab.tools.selection import TOOL_GROUPS
+            if self.channel == "action" or set(self.job_tools) - set(TOOL_GROUPS["@jobs"]):
+                raise ValueError("job_tools must select executor controls for a tools or code role")
         ids = [capability.id for capability in self.capabilities]
         if len(set(ids)) != len(ids):
             raise ValueError("a role selects each capability at most once")
@@ -219,6 +232,8 @@ class Recipe(Spec):
                 raise ValueError(f"invalid role name {name!r}")
         if self.loop.entry not in self.roles:
             raise ValueError(f"loop.entry names an unknown role {self.loop.entry!r}")
+        if self.execution.return_mode != "background" and any(role.job_tools for role in self.roles.values()):
+            raise ValueError("job tools require execution.return_mode: background")
         entry = self.roles[self.loop.entry]
         if "programs" in self.loop.episodes.carry and entry.channel != "code":
             raise ValueError("carrying programs requires a code entry role")

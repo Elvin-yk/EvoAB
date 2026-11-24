@@ -22,19 +22,24 @@ def role_namespace(args: Any, role: CompiledRole) -> Any:
     namespace = copy.copy(args)
     namespace.agent_backend = agent
     backend = get_agent_backend(agent)
-    inherited = None
-    if brain.model or agent == args.agent_backend:
-        namespace.model = brain.model or args.model
-    elif (inherited := getattr(args, "model_preset_name", None)) is None:
-        raise ValueError(f"role {role.name!r} runs {agent} while the entry role runs {args.agent_backend} "
-                         f"without a model preset; pin roles.{role.name}.brain.model")
-    elif getattr(backend, "owns_provider", False):
-        namespace.model = inherited
+    preset = brain.model_preset
+    if not preset and not brain.model and agent != args.agent_backend:
+        preset = getattr(args, "model_preset_name", None)
+        if not preset:
+            raise ValueError(f"role {role.name!r} runs {agent} while the entry role runs {args.agent_backend} "
+                             f"without a model preset; pin roles.{role.name}.brain.model")
+    if preset:
+        namespace.model_preset_name = preset
+        if getattr(backend, "owns_provider", False):
+            namespace.model = preset
+            namespace.provider_url = namespace.provider_profile = namespace._api_key = None
+        else:
+            from evoab.provider.http_presets import preset_for_protocol
+            connection = preset_for_protocol(preset, backend.model_protocol)
+            namespace.model, namespace.provider_url = connection.model, connection.base_url
+            namespace.provider_profile, namespace._api_key = connection.profile, connection.api_key
     else:
-        from evoab.provider.http_presets import preset_for_protocol
-        connection = preset_for_protocol(inherited, backend.model_protocol)
-        namespace.model, namespace.provider_url = connection.model, connection.base_url
-        namespace.provider_profile, namespace._api_key = connection.profile, connection.api_key
+        namespace.model = brain.model or args.model
     if brain.reasoning_effort is not None:
         namespace.reasoning_effort = brain.reasoning_effort
     namespace.channel = role.channel
@@ -44,7 +49,7 @@ def role_namespace(args: Any, role: CompiledRole) -> Any:
     namespace.max_turns = role.role.max_turns
     namespace.skill_writing = role.skill_writing
     namespace.tool_style = role.role.style
-    if agent != args.agent_backend and not getattr(backend, "owns_provider", False) and not inherited:
+    if agent != args.agent_backend and not getattr(backend, "owns_provider", False) and not preset:
         namespace.provider_profile = f"passthrough.{backend.model_protocol}"
     return namespace
 
@@ -63,7 +68,7 @@ def validate_roles(args: Any) -> None:
         if hasattr(backend, "evaluator_plan"):
             raise ValueError(f"role {name!r}: {namespace.agent_backend} owns its own episode client "
                              "and can only be an entry role")
-        if role.context["context_policy"] != "identity" and not args.provider_url:
+        if role.context["context_policy"] != "identity" and not namespace.provider_url:
             raise ValueError(f"role {name!r}: context policy {role.context['context_policy']} "
                              "requires --provider-url or EVOAB_PROVIDER_URL")
         if not getattr(backend, "owns_provider", False):

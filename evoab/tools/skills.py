@@ -54,14 +54,16 @@ def tool_specs(skill_namespace, *, skill_writing=False):
 class SkillTools(ToolProvider):
     provider_id = "skills"
 
-    def __init__(self, episode, *, writing=False, root=None):
+    def __init__(self, episode, *, writing=False, root=None, names=None):
         self.episode = episode
+        self.names = names
         self.skill_writing = writing
         self.namespace = episode.description.metadata.get("skill_namespace", episode.description.integration)
         self.root = skill_root(writing=writing, configured=root)
 
     def get_tools(self):
-        return self._bind_tools(skill_writing=self.skill_writing)
+        tools = self._bind_tools(skill_writing=self.skill_writing)
+        return tools if self.names is None else [tool for tool in tools if tool.name in self.names]
 
     def get_declared_tools(self):
         return self._bind_tools(skill_writing=True)

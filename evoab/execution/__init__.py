@@ -110,10 +110,10 @@ class ToolExecutor(ABC):
 
     def emit_execution(self, phase, execution_id, name, arguments, resource, *, job_id=None, success=None, error=None):
         from evoab.events import ToolExecution
-        from evoab.execution.correlation import current_call
+        from evoab.execution.correlation import current_call, current_role
         bus = getattr(self, "_event_bus", None)
         if bus is not None:
-            bus.emit(ToolExecution(phase=phase, execution_id=execution_id,
+            bus.emit(ToolExecution(phase=phase, execution_id=execution_id, role=current_role.get(),
                 tool_name=name, arguments=dict(arguments), resource=resource,
                 job_id=job_id or "", success=success, error=error or "", **current_call()))
 

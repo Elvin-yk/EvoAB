@@ -12,7 +12,7 @@ from nanobot.agent.hook import AgentHook
 from nanobot.agent.tools.base import Tool, ToolResult
 from nanobot.utils.helpers import build_image_content_blocks
 
-from evoab.tools.client import ToolClient
+from evoab.execution import ToolExecutor
 
 
 class ImageInbox:
@@ -41,8 +41,8 @@ class ImageInbox:
 class RobotTool(Tool):
     """One EvoAB tool; calls go through the session executor (scheduling, resources, events)."""
 
-    def __init__(self, spec: dict[str, Any], client: ToolClient, inbox: ImageInbox):
-        self._spec, self._client, self._inbox = spec, client, inbox
+    def __init__(self, spec: dict[str, Any], executor: ToolExecutor, inbox: ImageInbox):
+        self._spec, self._executor, self._inbox = spec, executor, inbox
 
     @property
     def name(self) -> str:
@@ -57,7 +57,10 @@ class RobotTool(Tool):
         return self._spec.get("input_schema") or self._spec.get("parameters") or {"type": "object", "properties": {}}
 
     async def execute(self, **kwargs: Any) -> Any:
-        output = await asyncio.to_thread(self._client.call, self.name, kwargs)
+        result = await asyncio.to_thread(self._executor.call, self.name, kwargs)
+        output = result.output
+        if output is None:
+            return json.dumps(result.to_dict(), ensure_ascii=False)
         text = output.model_json()
         if output.images:
             text += "\n" + self._inbox.add(self.name, output.images)
@@ -65,8 +68,7 @@ class RobotTool(Tool):
 
 
 def robot_tools(executor, inbox: ImageInbox) -> list[RobotTool]:
-    client = ToolClient(executor, lambda: None)
-    return [RobotTool(spec, client, inbox) for spec in client.list()]
+    return [RobotTool(spec, executor, inbox) for spec in executor.get_tool_schemas()]
 
 
 def _scrub(content: Any) -> Any:

@@ -184,6 +184,25 @@ class Workbench:
 
     # -- benchmarks -----------------------------------------------------------
 
+    def team_tools(self, integration: str) -> dict[str, list[str]]:
+        from evoab.workbench.team import team_catalog
+        try:
+            return team_catalog(integration)
+        except ValueError as error:
+            raise Invalid(str(error)) from error
+
+    def team_preview(self, integration: str, payload: dict, *, graph: bool = False) -> dict:
+        from evoab.composition.graph import recipe_graph
+        from evoab.workbench.launcher import resolve_run_recipe
+        try:
+            request = LaunchRequest(integration, "", "", "", method=payload["method"],
+                                    agent=payload.get("agent"), team=payload["team"])
+            request, method, _ = resolve_selection(request)
+            recipe = resolve_run_recipe(request, method)
+            return recipe_graph(recipe) if graph else recipe.model_dump(mode="json", exclude_defaults=True)
+        except (KeyError, ValueError, TypeError) as error:
+            raise Invalid(str(error)) from error
+
     def tool_groups(self, integration: str, method: str, agent: str) -> dict[str, list[str]]:
         try:
             return tool_groups(integration, method, agent)
