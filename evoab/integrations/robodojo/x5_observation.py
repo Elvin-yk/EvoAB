@@ -9,6 +9,7 @@ from PIL import Image
 from evoab.services.environment.contracts import JointCommand, JointTarget
 
 from .actor_profiles import X5_CAMERAS
+from .environment.camera_projection import PIXEL_COORDINATES
 from .environment.kinematics import native_pose
 
 
@@ -34,6 +35,10 @@ def x5_observation(snapshot, artifact_bytes):
         if (k.shape != (3, 3) or optical.shape != (4, 4) or not np.isfinite(k).all()
                 or not np.isfinite(optical).all() or k[0, 0] <= 0 or k[1, 1] <= 0):
             raise ValueError(f"Missing same-frame camera calibration for {name}")
+        if (frame.get("calibration") or {}).get("pixel_coordinates") == PIXEL_COORDINATES:
+            # Native CameraManager centers the image at (width/2, height/2).
+            k = k.copy()
+            k[:2, 2] += 0.5
         ref = frame["rgb"]
         data = artifact_bytes(ref["artifact_id"])
         if sha256(data).hexdigest() != ref["sha256"]:

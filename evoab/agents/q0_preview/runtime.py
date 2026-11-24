@@ -1,6 +1,6 @@
 """One owned upstream policy server per trial, in its separate GPU environment."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import json
 import os
 from pathlib import Path
@@ -10,6 +10,7 @@ import sys
 import time
 
 from evoab.services.deployment.process import gpu_environment
+from evoab.artifacts.run import write_json_atomic
 
 from . import REVISION
 
@@ -40,7 +41,7 @@ def policy_session(config, info, output):
     if not config["root"] or not config["python"]:
         raise ValueError("Configure EVOAB_Q0_ROOT and EVOAB_Q0_PYTHON for the upstream policy.")
     if not config.get("api_key"):
-        raise ValueError("Q0-Preview needs a Messages API key in the preset or Q0_PREVIEW_API_KEY.")
+        raise ValueError("Q0-Preview needs an API key for the selected upstream provider.")
     root = Path(config["root"]).expanduser().resolve()
     python = Path(config["python"]).expanduser().absolute()
     if root.name != "XPolicyLab" or not (root.parent / "env_cfg/arx_x5.yml").is_file():
@@ -68,8 +69,14 @@ def policy_session(config, info, output):
                "--root", str(archive), "--host", "127.0.0.1", "--port", str(port),
                "--task", info.task, "--seed", str(info.metadata["seed"]), "--gpu", gpu,
                "--python-prefix", os.environ.get("Q0_PREVIEW_AGENT_PREFIX", str(python.parent.parent))]
-    environment = dict(os.environ, Q0_PREVIEW_API_KEY=config["api_key"], Q0_PREVIEW_XPL_ROOT=str(root.parent),
+    agent_config = config.get("agent_config") or {}
+    if agent_config:
+        config_path = output / "q0-agent-config.json"
+        write_json_atomic(config_path, agent_config)
+        command.extend(["--config", str(config_path.resolve())])
+    environment = dict(os.environ, Q0_PREVIEW_XPL_ROOT=str(root.parent),
                        Q0_PREVIEW_API_BASE_URL=config["api_base"], PYTHONDONTWRITEBYTECODE="1")
+    environment[agent_config.get("api_key_env", "Q0_PREVIEW_API_KEY")] = config["api_key"]
     # A debug policy only echoes measured joints. Always load the actual planner.
     environment.pop("EVAL_ENV_TYPE", None)
     with (output / "q0-service.log").open("w") as log:
@@ -86,8 +93,15 @@ def policy_session(config, info, output):
             with WsModelClient(url=f"ws://127.0.0.1:{port}", evaluation_id="evoab", trial_id=info.episode_id,
                                max_connect_attempts=1, request_timeout_s=10800) as client:
                 client.call("reset")
-                yield client
-                client.call("trial_end", obs={})
+                try:
+                    yield client
+                except BaseException:
+                    # Match upstream deploy.py: close the trial without hiding the control failure.
+                    with suppress(Exception):
+                        client.call("trial_end", obs={})
+                    raise
+                else:
+                    client.call("trial_end", obs={})
         finally:
             # The upstream supervisor owns the WS server and each per-episode agent.
             if archive.is_dir():

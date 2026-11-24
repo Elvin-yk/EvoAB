@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Add the experimental Q0-Preview upstream reference recipe for simulated RoboDojo X5 episodes, with synchronized RGB calibration, single-step receipts and native outcome recording.
+- Add the Q0-Preview reproduction for simulated RoboDojo X5 episodes, with calibrated RGB observations, single-step receipts and native outcome recording. On an RTX 4090 D, GPT-6.2 Astra through Codex CLI completed the frozen `stack_bowls` task in 483 steps.
 
 - **Recipes replace interaction modes and tool profiles (breaking).** A run's
   method is a recipe (`evoab/composition/`): roles with a brain, a channel

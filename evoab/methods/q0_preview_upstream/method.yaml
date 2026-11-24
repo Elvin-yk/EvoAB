@@ -2,7 +2,7 @@ id: q0_preview_upstream
 label: Q0-Preview (upstream)
 summary: Original Qoo Tech planning harness and CuRobo controller on one simulated RoboDojo X5 episode.
 paradigms: [orchestrate]
-status: experimental
+status: reproduction
 integrations: [robodojo]
 references:
   - {title: Q0-Preview, kind: code, url: "https://github.com/XPolicyLab/XPolicyLab/tree/4a9e3afd73b86a48c5db076f5cf9dbfbef1a180e/policy/Q0_Preview"}
