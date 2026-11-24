@@ -32,11 +32,13 @@ class LaunchRequest:
     # Overrides the entry role's agent runtime; None keeps the recipe's.
     agent: str | None = None
     agent_options: dict[str, int] | None = None
+    visible_tools: list[str] | None = None
 
 
 def _agent_choice(name: str, launch: AgentLaunch) -> dict:
     return {"id": name, "label": launch.label, "description": launch.description,
             "integrations": launch.integrations, "cli_flags": launch.cli_flags,
+            "tool_selection_flags": launch.tool_selection_flags,
             "options": [asdict(option) for option in launch.options],
             "filters_presets": launch.validate_preset is not None, "model_help": launch.model_help}
 
@@ -146,6 +148,33 @@ def _parameter_flags(request: LaunchRequest, method: dict) -> list[str]:
     return flags
 
 
+def tool_groups(integration: str, method_id: str, agent_id: str) -> dict[str, list[str]]:
+    """The entry role's tools by capability, for Studio's per-run tool picker (``--visible-tools``)."""
+    from evoab.composition.compiler import compile_recipe
+    from evoab.composition.methods import get_method
+    from evoab.integrations import load_integration
+    from evoab.tools.selection import TOOL_GROUPS
+
+    if integration not in {info.integration for info in benchmarks.REGISTRY}:
+        raise ValueError("Unknown benchmark")
+    request = LaunchRequest(integration, "", "", "", method=method_id, agent=agent_id)
+    _, method, agent = resolve_selection(request)
+    if method["channel"] == "action" or len(method["roles"]) > 1:
+        raise ValueError("Tool selection applies to one-role tools or code methods")
+    if agent.tool_groups is not None:
+        # External evaluators list their own tools (RUA's harness still uses its direct profile).
+        groups = agent.tool_groups(integration, "direct")
+    else:
+        entry = get_method(method_id)
+        compiled = compile_recipe(entry.recipe, load_integration(integration).get_integration_spec(),
+                                  base_dir=entry.root).entry
+        groups = {item.name: list(item.policies) for item in compiled.modules}
+        if entry.recipe.execution.return_mode == "background":
+            groups["jobs"] = list(TOOL_GROUPS["@jobs"])
+    # Studio starts runs with skill writing disabled.
+    return {group: [name for name in names if name != "write_skill"] for group, names in groups.items()}
+
+
 def _agent_option_flags(request: LaunchRequest, agent: AgentLaunch) -> list[str]:
     options = {option.name: option for option in agent.options}
     if request.agent_options is not None and not isinstance(request.agent_options, dict):
@@ -186,6 +215,8 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         *_agent_option_flags(request, agent),
         *_parameter_flags(request, method),
     ]
+    if request.visible_tools is not None:
+        command.extend((*agent.tool_selection_flags, *request.visible_tools))
     runtime = benchmarks.runtime_for_launch(request.integration, request.profile)
     if runtime is not None and runtime.container:
         command.append("--container")
@@ -213,6 +244,13 @@ def validate(request: LaunchRequest) -> dict:
     elif request.model not in {p["name"] for p in catalog.presets()}:
         raise ValueError(f"unknown model preset {request.model!r}")
     _agent_option_flags(request, agent)
+    if request.visible_tools is not None:
+        if not isinstance(request.visible_tools, list) or not all(isinstance(name, str) for name in request.visible_tools):
+            raise ValueError("visible_tools must be a list of tool names")
+        groups = tool_groups(request.integration, request.method, request.agent)
+        allowed = {name for names in groups.values() for name in names}
+        if set(request.visible_tools) - allowed:
+            raise ValueError("Selection contains tools not available for this benchmark and Agent")
     _parameter_flags(request, method)
     _check_recipe(request, method)
     return task
@@ -261,5 +299,6 @@ def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
         channel=method["channel"],
         params=request.params,
         agent_options=request.agent_options,
+        visible_tools=request.visible_tools,
     )
     return launch_id

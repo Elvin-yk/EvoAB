@@ -122,6 +122,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         default=0,
         help="Agent turn limit; 0 disables (use --episode-timeout-s for wall time)",
     )
+    common.add_argument("--visible-tools", nargs="*", metavar="NAME",
+        help="Expose only these of the entry role's tools for this run; an empty list exposes none")
     visibility = common.add_argument_group("Tool visibility debugging")
     visibility.add_argument(
         "--tool-debug", action="store_true",

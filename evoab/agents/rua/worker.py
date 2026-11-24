@@ -73,6 +73,14 @@ def main() -> None:
     except ImportError as error:
         raise SystemExit(f"RUA runtime import failed: {error}. Install the reference uni-robot-agent in --rua-python.") from error
 
+    if sys.argv[1:2] == ["--studio-tool-groups"]:
+        from uni_robot_agent.tools.selection import TOOL_GROUPS
+        integration, profile = sys.argv[2:]
+        modules = load_integration(integration).get_integration_spec().tool_profiles[profile]
+        groups = {module.name: list(module.policies) for module in modules}
+        print(json.dumps({**groups, "jobs": list(TOOL_GROUPS["@jobs"])}))
+        return
+
     if sys.argv[1:] == ["--check-runtime"]:
         import openai_codex
         import uni_robot_agent

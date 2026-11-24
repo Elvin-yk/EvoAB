@@ -272,6 +272,10 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .task-selection span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
 .task-selection button { flex: none; }
 .method-group + .method-group { margin-top: 20px; }
+.tool-picker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 225px), 1fr)); gap: 12px; }
+.tool-picker-grid fieldset { min-width: 0; height: 225px; overflow-y: auto; margin: 0; padding: 8px 12px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.tool-picker-grid legend { padding: 0 5px; font-weight: 600; }
+.tool-picker-grid code { display: block; color: var(--muted); font-size: .8em; }
 .agent-picker { margin-top: 16px; padding-inline-start: 12px; border-inline-start: 1px solid var(--line); }
 .expert-demo summary { padding: 4px 0; font-weight: normal; color: var(--accent); }
 .expert-demo[open] { flex-basis: 100%; }

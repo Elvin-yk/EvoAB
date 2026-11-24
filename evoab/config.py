@@ -51,6 +51,13 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     explicit = set(explicit)
     from evoab.agents.registry import get_agent_backend
     resolve_recipe(args, integration_spec, explicit=explicit)
+    if getattr(args, "visible_tools", None) is not None:
+        from evoab.composition.components import is_evaluator
+        if args.tool_debug or args.channel == "action" or len(args.compiled_recipe.roles) > 1 \
+                or (args.agent_backend and is_evaluator(args.agent_backend)):
+            raise ValueError("--visible-tools narrows the session tools of a one-role tools or code method "
+                             "without --tool-debug; narrow multi-role methods with "
+                             "--set roles.<role>.capabilities.<id>.tools=[...]")
     if not agent_enabled:
         args.agent_backend, args.model = None, None
     if agent_enabled:
@@ -297,6 +304,7 @@ class SessionConfig(BaseModel):
     # Dotted recipe paths or declared parameter names, e.g. {"horizon": "3:10"}.
     recipe_overrides: dict[str, Any] = Field(default_factory=dict)
     experience_dir: Path | None = None
+    visible_tools: list[str] | None = None
     tool_debug: bool = False
     tools: list[str] = Field(default_factory=list)
     save_exchanges: bool = True

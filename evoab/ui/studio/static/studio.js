@@ -130,7 +130,7 @@ const S = {
   models: {}, // provider id -> {models, capabilities, recommended}
   agentModelSettings: new Map(),
   wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: "agentic", agent: null,
-            params: {}, agentOptions: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
+            params: {}, agentOptions: new Map(), visibleTools: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
   history: { query: "", status: "all", bench: "all", model: "all", selected: new Set(), compare: false },
   replay: null,
 };
@@ -367,7 +367,55 @@ async function stepTask(body) {
 }
 
 function stepMethod(body) {
-  return stepMethodLibrary(body);
+  stepMethodLibrary(body);
+  const method = selectedMethod();
+  // Per-run tool allowlist for one-role tools/code methods (--visible-tools).
+  if (method && method.channel !== "action" && method.roles.length === 1 && selectedAgent()) renderToolPicker(body);
+}
+
+const TOOL_GROUP_LABELS = { gripper: "机械臂", scene: "场景观测", skills: "技能", episode: "任务", jobs: "后台作业", hybrid: "动作模型" };
+const TOOL_LABELS = {
+  move: "移动机械臂", grasp: "闭合夹爪", release: "打开夹爪", hold: "保持姿态",
+  view_env_state: "读取场景状态", capture_scene: "拍摄场景", locate: "定位物体（视相机能力而定）",
+  list_skills: "列出技能", read_skill: "读取技能", finish: "提交任务结果", actor_act: "调用动作模型",
+  get_tool_result: "查询作业结果", wait_for_tool: "等待一个作业", wait_for_tools: "等待多个作业",
+  list_tool_jobs: "列出作业", cancel_tool: "取消作业", queue_status: "查看队列", flush_queue: "清空队列",
+};
+const toolCatalogs = new Map();
+
+function toolSelectionKey() {
+  const w = S.wizard;
+  return JSON.stringify([w.bench.integration, w.bench.profile, w.method, w.agent]);
+}
+
+async function renderToolPicker(body) {
+  const w = S.wizard;
+  const key = toolSelectionKey();
+  const grid = h("div", { class: "tool-picker-grid" }, "正在读取工具…");
+  body.append(h("section", { class: "method-group tool-picker" },
+    h("h2", { class: "section-title" }, "向 Agent 开放的工具"),
+    h("p", { class: "muted small" }, "默认开放全部工具。取消勾选后，本次运行的 Agent 将无法调用该工具。"),
+    grid));
+  try {
+    if (!toolCatalogs.has(key)) {
+      const query = new URLSearchParams({ method: w.method, agent: w.agent });
+      toolCatalogs.set(key, await api(`/api/benchmarks/${encodeURIComponent(w.bench.integration)}/tools?${query}`));
+    }
+    const groups = toolCatalogs.get(key);
+    const all = Object.values(groups).flat();
+    const selected = new Set(w.visibleTools.get(key) ?? all);
+    put(grid, ...Object.entries(groups).filter(([, names]) => names.length).map(([group, names]) =>
+      h("fieldset", {}, h("legend", {}, TOOL_GROUP_LABELS[group] || group),
+        names.map((name) => h("label", { class: "check" },
+          h("input", { type: "checkbox", checked: selected.has(name), onchange: (e) => {
+            if (e.target.checked) selected.add(name); else selected.delete(name);
+            if (selected.size === all.length) w.visibleTools.delete(key);
+            else w.visibleTools.set(key, all.filter((tool) => selected.has(tool)));
+          } }), h("span", {}, TOOL_LABELS[name] || name, TOOL_LABELS[name] && h("code", {}, name)))))));
+  } catch (error) {
+    put(grid, h("p", { class: "muted small" }, error.message),
+      h("button", { class: "btn small", onclick: route }, "重新加载"));
+  }
 }
 
 function methodParams() {
@@ -475,6 +523,8 @@ function commandPreview() {
     if (option.name in options) parts.push(`${option.flag} ${options[option.name]}`);
   }
   for (const [name, value] of Object.entries(methodParams() || {})) parts.push(`--set ${shellQuote(`${name}=${value}`)}`);
+  const tools = w.visibleTools.get(toolSelectionKey());
+  if (tools) parts.push([...agent.tool_selection_flags, ...tools].join(" "));
   if (w.bench.container) parts.push("--container");
   return [...parts, "--monitor"].join(" \\\n  ");
 }
@@ -493,6 +543,7 @@ function stepConfirm(body) {
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(w.effort)],
     ["模型预设", w.model], ["Agent", agent.label],
+    ...(w.visibleTools.has(toolSelectionKey()) ? [["开放工具", w.visibleTools.get(toolSelectionKey()).join("、") || "无"]] : []),
     ...agent.options.filter((option) => option.name in options).map((option) => [option.label, options[option.name]]),
     ...(methodParams() ? [["方法参数", Object.entries(methodParams()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
   ];
@@ -517,6 +568,7 @@ async function launchRun(event) {
       json: { integration: w.bench.integration, profile: w.bench.profile, task: w.task.task,
               model: w.model, reasoning_effort: w.effort, method: w.method,
               ...(agent.id !== selectedMethod().agent ? { agent: agent.id } : {}),
+              ...(w.visibleTools.has(toolSelectionKey()) ? { visible_tools: w.visibleTools.get(toolSelectionKey()) } : {}),
               ...(options && Object.keys(options).length ? { agent_options: options } : {}),
               ...(methodParams() ? { params: methodParams() } : {}) },
     });
