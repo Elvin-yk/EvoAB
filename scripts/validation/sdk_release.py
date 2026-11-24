@@ -21,6 +21,8 @@ def main():
     parser.add_argument('--antigravity', action='store_true', help='Also install and check the optional SDK')
     parser.add_argument('--wheelhouse', type=Path)
     parser.add_argument('--upgrade-from', help='Install this published main-package version before upgrading')
+    parser.add_argument('--check-uninstall', action='store_true',
+                        help='Uninstall evoab after validation and verify no module remains importable')
     args = parser.parse_args()
     wheel, directory = args.wheel.resolve(), args.directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
@@ -192,7 +194,7 @@ assert not (root / 'tools' / 'dexterous_hand').exists()
 print('Offline SDK configuration, unavailable-entry errors and packaged resources: OK')
 """])
     command([python, '-m', 'pip', 'check'])
-    if args.upgrade_from:
+    if args.upgrade_from or args.check_uninstall:
         # Detect module ownership left behind by an upgrade or another distribution.
         command([python, '-m', 'pip', 'uninstall', '-y', 'evoab'])
         command([python, '-I', '-c', "import importlib.util; assert importlib.util.find_spec('evoab') is None"])

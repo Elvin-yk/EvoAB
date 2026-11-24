@@ -92,14 +92,10 @@ jobs:
           path: dist
       - if: matrix.installer == 'uv'
         run: python -m pip install uv
-      - name: Install wheel outside checkout and validate CLI and SDK
+      - name: Install wheel outside checkout and validate CLI, SDK and clean uninstall
         env:
           INSTALLER: ${{ matrix.installer }}
-        run: python scripts/validation/sdk_release.py dist/evoab-[0-9]*.whl "$RUNNER_TEMP/sdk-check" --installer "$INSTALLER"
-      - name: Check upgrade from 0.1.1 and clean uninstall
-        env:
-          INSTALLER: ${{ matrix.installer }}
-        run: python scripts/validation/sdk_release.py dist/evoab-[0-9]*.whl "$RUNNER_TEMP/upgrade-check" --installer "$INSTALLER" --upgrade-from 0.1.1
+        run: python scripts/validation/sdk_release.py dist/evoab-[0-9]*.whl "$RUNNER_TEMP/sdk-check" --installer "$INSTALLER" --check-uninstall
       - name: Verify isolated native dependency contract
         run: python scripts/validation/runtime_release.py dist/evoab_runtime-*.whl "$RUNNER_TEMP/runtime-check" --main-wheel dist/evoab-[0-9]*.whl
       - name: Check isolated uv CLI installation
@@ -112,7 +108,8 @@ jobs:
           uv tool install --python "$(command -v python)" dist/evoab-[0-9]*.whl
           cd "$RUNNER_TEMP"
           "$UV_TOOL_BIN_DIR/evoab" --version
-          "$UV_TOOL_BIN_DIR/evoab" run --integration robodojo --model validation-model \
+          "$UV_TOOL_BIN_DIR/evoab" run --integration robodojo --agent codex \
+            --agent-python "$(command -v python)" --model validation-model \
             --env-url http://127.0.0.1:18760 --no-sam3 --validate-config
 
   publish:
