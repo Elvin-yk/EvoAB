@@ -1164,7 +1164,28 @@ async function refresh() {
 
 async function loadWorkspace() {
   [S.config] = await Promise.all([api("/api/config"), loadBenchmarks(), loadRuns()]);
+  showBuild(S.config.build);
   applyDefaults();
+}
+
+// Which commit this Studio runs, so an outdated or modified deployment is visible at a glance.
+function showBuild(build) {
+  const badge = document.getElementById("buildBadge");
+  if (!badge) return;
+  // Commit time as recorded (author's timezone), e.g. "11-24 13:32".
+  const date = build?.date ? build.date.slice(5, 16).replace("T", " ") : "";
+  if (!build?.commit) {
+    badge.textContent = "版本未知";
+    badge.className = "build-badge warn";
+    badge.title = "这个工作台不是从 git 检出或带 BUILD.json 的部署启动的，无法确认代码版本。";
+  } else {
+    badge.textContent = [build.branch, build.commit.slice(0, 7), date].filter(Boolean).join(" · ") +
+      (build.dirty ? " · 有未提交改动" : "");
+    badge.className = `build-badge${build.dirty ? " warn" : ""}`;
+    badge.title = [build.subject, build.deployed_at && `部署于 ${build.deployed_at}`, `来源：${build.source}`]
+      .filter(Boolean).join("\n");
+  }
+  badge.hidden = false;
 }
 
 function init() {

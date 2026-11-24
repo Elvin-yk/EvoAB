@@ -82,3 +82,6 @@ eval_results/
 
 # Local reference material; excluded from the public project
 /archive/
+
+# Deployment stamp written by deploy scripts (evoab/workbench/build.py)
+/BUILD.json

@@ -17,6 +17,7 @@ from typing import Any
 
 from evoab.agents.registry import agent_launch
 from evoab.provider.contracts import PresetCompatibilityError
+from evoab.workbench.build import build_info
 from evoab.workbench import benchmarks, direct_trace, jobs, trace
 from evoab.workbench.launcher import (
     REASONING_EFFORTS, LaunchRequest, launch, methods, resolve_selection, tool_groups, validate,
@@ -135,6 +136,7 @@ class Workbench:
     def config(self) -> dict[str, Any]:
         return {
             "runs_root": str(self.runs_root),
+            "build": build_info(),
             "reasoning_efforts": REASONING_EFFORTS,
             "methods": methods(),
             "settings": self.settings(),
