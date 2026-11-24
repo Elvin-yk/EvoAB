@@ -81,6 +81,7 @@ namespaces = false
 "evoab.ui.web" = ["static/*.html", "static/*.js", "static/*.css"]
 "evoab.ui.studio" = ["static/*.html", "static/*.js", "static/*.css", "static/model-assets/*", "static/*.txt"]
 "evoab" = ["py.typed"]
+"evoab.methods" = ["*/method.yaml", "*/CARD.md", "*/prompts/*.md"]
 "evoab.resources" = ["prompts/**/*.md", "prompts/robodojo/task_requirements.json", "prompts/robodojo/instruction_supplements.json", "skills/**/*.md"]
 "evoab.integrations.robolab" = ["SOURCE.md"]
 "evoab.integrations.piper_x" = ["templates/*.json", "SOURCE.md", "README.md"]

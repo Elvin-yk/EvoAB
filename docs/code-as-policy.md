@@ -1,7 +1,7 @@
 # Code as Policy
 
-Select `--interaction-mode code_as_policy` for CLI run/TUI, or
-`SessionConfig(..., interaction_mode="code_as_policy")` for the Python SDK.
+Select `--recipe code_as_policy` for CLI run/TUI, or
+`SessionConfig(..., recipe="code_as_policy")` for the Python SDK.
 The default remains `tool_calling`. Both Codex and Claude Code use their native
 shell, file editing, and image readers. No Python kernel or new model tool is
 introduced. Programs call the same registered tools, arguments, validation and
@@ -16,7 +16,7 @@ The session provides the task/environment prompt, a generated
 `scratch/robot_api.md` containing the actual descriptions, input schemas and
 typed return-field documentation, an
 absolute Python executable, scratch cwd and connection environment variables.
-When enabled by the tool profile, skills are available through the existing
+When the recipe selects the skills capability, skills are available through the existing
 direct listing and reading tools.
 Calibration references, observations and robot metadata still come from the
 existing tools through Python. Existing Bash-based geometry/calibration
@@ -35,7 +35,7 @@ Each call waits for completed feedback through the existing executor.
 
 ### Skills and robot operations
 
-When registered by the selected tool profile, use the directly exposed
+When the recipe selects the skills capability, use the directly exposed
 `list_skills` and `read_skill` tools to obtain guidance.
 They use the existing schemas and return the paths or Markdown text directly.
 Only these registered knowledge tools are exposed through the agent's MCP tool

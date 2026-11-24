@@ -9,7 +9,7 @@ MODEL="${MODEL:-qwen3.8-flash}"
 
 evoab run \
   --integration behavior \
-  --tool-profile hybrid \
+  --recipe agent_policy \
   --env-url "$BEHAVIOR_ENV_URL" \
   --action-model-url "$ACTOR_URL" \
   --action-model-checkpoint-sha256 "$ACTOR_CHECKPOINT_SHA256" \

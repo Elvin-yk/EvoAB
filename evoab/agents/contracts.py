@@ -45,7 +45,6 @@ class AgentLaunch:
     """Benchmark launch capabilities declared by an agent adapter."""
 
     label: str
-    modes: tuple[Literal["direct_policy", "agentic", "agent_policy"], ...]
     description: str = ""
     integrations: tuple[str, ...] | None = None
     cli_flags: tuple[str, ...] = ()

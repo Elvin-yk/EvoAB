@@ -30,9 +30,22 @@ class Target:
 
 
 @dataclass(frozen=True)
+class JointRow:
+    """One control step of absolute joint targets for one arm."""
+
+    joints: tuple[float, ...]
+    closure: float  # 0 = open, 1 = closed
+    clamped: bool = False
+
+    def row(self) -> list[float]:
+        return [*self.joints, self.closure]
+
+
+@dataclass(frozen=True)
 class Limits:
     translation_m: float = 0.02
     rotation_rad: float = 0.1
+    joint_rad: float = 0.05
 
 
 def _quat_wxyz(rotation) -> tuple[float, float, float, float]:
@@ -102,6 +115,12 @@ class Representation:
     tool: str
     width: int
     columns: tuple[str, ...]
+    #: "pose" targets the registered grasp site through the environment's IK; "joint" bypasses it.
+    space: str = "pose"
+
+    def bind(self, description) -> "Representation":
+        """Specialize to one environment description (joint counts, names); pose rows need nothing."""
+        return self
 
     def schema(self, horizon: tuple[int, int], arms: tuple[str, ...] = ()) -> dict:
         row = {"type": "array", "items": {"type": "number"}, "minItems": self.width, "maxItems": self.width}
@@ -196,4 +215,87 @@ class DeltaEEF(Representation):
         return targets
 
 
-REPRESENTATIONS: dict[str, Representation] = {r.name: r for r in (AbsoluteEEF(), DeltaEEF())}
+class AbsoluteJoints(Representation):
+    """Absolute joint positions per control step; the environment applies them without IK."""
+
+    name, label, tool = "joint_abs", "Abs. joints", "emit_joint_actions"
+    description = "Emit a variable-length chunk of absolute joint-position targets."
+    space = "joint"
+    width = 0
+    columns: tuple[str, ...] = ()
+
+    def __init__(self, joint_names: dict[str, tuple[str, ...]] | None = None):
+        self.joint_names = dict(joint_names or {})
+
+    def bind(self, description) -> "AbsoluteJoints":
+        names = {}
+        for arm in description.arms:
+            control = arm.control
+            if control is not None and "joints" not in control.commands:
+                raise ValueError(f"arm {arm.name!r} does not accept joint commands; use a pose representation")
+            if not arm.joint_names:
+                raise ValueError(f"arm {arm.name!r} declares no joint_names; joint control is unavailable")
+            names[arm.name] = tuple(arm.joint_names)
+        return AbsoluteJoints(names)
+
+    def _width(self, arm: str) -> int:
+        return len(self.joint_names[arm]) + 1
+
+    def schema(self, horizon, arms=()):
+        arms = tuple(arms) or tuple(self.joint_names)
+
+        def row(arm):
+            width = self._width(arm)
+            return {"type": "array", "items": {"type": "number"}, "minItems": width, "maxItems": width}
+        items = row(arms[0]) if len(arms) == 1 else {
+            "type": "object", "properties": {arm: row(arm) for arm in arms},
+            "required": list(arms), "additionalProperties": False}
+        return {"type": "function", "function": {
+            "name": self.tool, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "actions": {"type": "array", "minItems": horizon[0], "maxItems": horizon[1], "items": items},
+                "note": {"type": "string", "description": "Brief reason for this chunk and what to check next."},
+            }, "required": ["actions", "note"], "additionalProperties": False}}}
+
+    def instruction(self, horizon):
+        layout = "; ".join(f"{arm}: [{', '.join(names)}, gripper]" for arm, names in self.joint_names.items())
+        return (
+            "Each action row gives ABSOLUTE joint positions in radians (prismatic joints in metres) in the "
+            f"declared joint order, followed by gripper (0=open, 1=closed). Row layout per arm: {layout}. "
+            "The client limits each joint's change per row and never interpolates between rows. Joint targets "
+            "bypass inverse kinematics: check measured joints and the camera views after each chunk.\n\n"
+            f"Respond with exactly one {self.tool} tool call containing between {horizon[0]} and {horizon[1]} "
+            "consecutive rows. Choose the number of rows needed before the next visual replan.")
+
+    def decode_chunk(self, arguments, measured, horizon, limits):
+        rows = _action_rows(arguments, horizon)
+        arms = list(measured)
+        if len(arms) == 1:
+            rows = [{arms[0]: row} for row in rows]
+        result, previous = [], dict(measured)
+        for index, row in enumerate(rows, 1):
+            if not isinstance(row, dict) or set(row) != set(arms):
+                raise OutputError(f"row {index} must provide exactly the arms {arms}")
+            step = {}
+            for arm in arms:
+                values = row[arm]
+                width = self._width(arm)
+                if not isinstance(values, list) or len(values) != width:
+                    raise OutputError(f"row {index} ({arm}) must have exactly {width} numbers")
+                if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
+                    raise OutputError(f"row {index} ({arm}) contains a non-finite or non-numeric value")
+                if not 0 <= values[-1] <= 1:
+                    raise OutputError(f"row {index} ({arm}) gripper must be between 0 (open) and 1 (closed)")
+                start = np.asarray(previous[arm].joints, dtype=float)
+                target = np.asarray(values[:-1], dtype=float)
+                if start.shape != target.shape:
+                    raise OutputError(f"{arm}: measured {start.size} joints but the row has {target.size}")
+                delta = np.clip(target - start, -limits.joint_rad, limits.joint_rad)
+                clamped = bool(np.any(np.abs(target - start) > limits.joint_rad + 1e-12))
+                step[arm] = JointRow(tuple(float(v) for v in start + delta), float(values[-1]), clamped)
+            previous = step
+            result.append(step)
+        return result
+
+
+REPRESENTATIONS: dict[str, Representation] = {r.name: r for r in (AbsoluteEEF(), DeltaEEF(), AbsoluteJoints())}

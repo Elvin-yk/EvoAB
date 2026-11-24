@@ -17,12 +17,14 @@ def _inside_package(path):
             or path.is_relative_to(RESOURCES.resolve()))
 
 
-def skill_root(*, writing=False):
-    configured = os.environ.get("EVOAB_SKILLS_DIR")
+def skill_root(*, writing=False, configured=None):
+    """The one skills library of a session: explicit root, EVOAB_SKILLS_DIR, or the packaged library."""
+    configured = configured or os.environ.get("EVOAB_SKILLS_DIR")
     root = (Path(configured).expanduser() if configured
             else RESOURCES / "skills").resolve()
     if writing and (not configured or _inside_package(root)):
-        raise ValueError("Skill writing requires EVOAB_SKILLS_DIR to point to a complete skills library outside the installed package")
+        raise ValueError("Skill writing requires a complete skills library outside the installed package "
+                         "(EVOAB_SKILLS_DIR or a recipe that carries skills between episodes)")
     return root
 
 
@@ -52,11 +54,11 @@ def tool_specs(skill_namespace, *, skill_writing=False):
 class SkillTools(ToolProvider):
     provider_id = "skills"
 
-    def __init__(self, episode, *, writing=False):
+    def __init__(self, episode, *, writing=False, root=None):
         self.episode = episode
         self.skill_writing = writing
         self.namespace = episode.description.metadata.get("skill_namespace", episode.description.integration)
-        self.root = skill_root(writing=writing)
+        self.root = skill_root(writing=writing, configured=root)
 
     def get_tools(self):
         return self._bind_tools(skill_writing=self.skill_writing)

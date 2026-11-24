@@ -1,14 +1,20 @@
 # RUA on RoboDojo
 
-In Studio, select RoboDojo, then choose **Agentic Policy → RUA**. From a shell,
-use `evoab runs launch --method agentic --agent rua` or `evoab run --agent rua`.
-The former `evoab runs launch --method rua` remains an alias. The adapter uses the reference
-`uni-robot-agent` source package (tested against the supplied 0.2.0 checkout)
-and its default Codex planner with the `direct` tool profile. The method is
-available for single-episode RoboDojo runs. Existing methods need no migration.
+RUA (Robot-Use Agent) is the harness described in *Democratizing Robot-Use
+Agents: A Unified Harness with Open Models* (arXiv 2611.01560). EvoAB grew from
+that code base, so there are two ways to run it:
 
-See the [RUA resource directory](../rua/README.md) for physical resource
-migration, the evaluation-host workflow, and the audited path dependencies.
+- **`rua`** — the paper setting as a native recipe (Codex runtime by default;
+  any tools-channel agent can run it): `evoab run --recipe rua …`, or choose
+  RUA in Studio's method step. Use this one for experiments.
+- **`rua_upstream`** — the original `uni-robot-agent` 0.2.0 package as an
+  external evaluator against EvoAB's prepared RoboDojo episode, for comparing
+  with the code the paper ran: `evoab run --recipe rua_upstream …` or
+  `evoab runs launch --method rua_upstream`. The rest of this page covers it.
+
+The evaluator owns its planner, model calls and tool client, so recipes cannot
+change its roles or tools; EvoAB translates the recipe's context settings to
+the evaluator's own option names.
 
 ## Episode ownership
 
@@ -30,11 +36,8 @@ the evaluator and removes containers it started.
 
 ## Prepare the evaluation host
 
-Run from the EvoAB checkout on the integration branch with the adapter changes
-present. Use Python 3.11 or later on the host. For an existing evaluation setup
-with sibling RUA resources, use the [migration workflow](../rua/README.md).
-The following commands apply to a fresh source checkout after placing the
-upstream sources in `rua/source/`. Use your existing EvoAB host Python when
+Use Python 3.11 or later on the host. Place the upstream sources in
+`rua/source/` (ignored by Git; see [rua/README.md](../rua/README.md)). Use your existing EvoAB host Python when
 available.
 
 ```bash
@@ -78,10 +81,10 @@ to a task ID from `evoab benchmarks tasks robodojo`, for example `stack_bowls`
 when its frozen layout is available.
 
 ```bash
-.venv/bin/evoab run --integration robodojo --agent rua \
+.venv/bin/evoab run --integration robodojo --recipe rua_upstream \
   --rua-python "$RUA_PYTHON" --model "$RUA_MODEL" \
   --provider-url "$RUA_PROVIDER_URL" --provider-profile passthrough.responses \
-  --deploy local --container --task "$RUA_TASK" --tool-profile direct \
+  --deploy local --container --task "$RUA_TASK" --recipe agentic \
   --no-sam3 --no-depth --output-dir ./runs/rua --monitor --monitor-port 0
 ```
 
@@ -91,7 +94,7 @@ an already prepared episode, replace `--deploy local --container --no-depth`
 with `--env-url "$EPISODE_URL"`. Configure depth in the existing service.
 
 For Studio or `evoab runs launch --integration robodojo --method agentic
---agent rua --task "$RUA_TASK" --model "$PRESET"`, export `EVOAB_RUA_PYTHON="$RUA_PYTHON"` before
+--recipe rua_upstream --task "$RUA_TASK" --model "$PRESET"`, export `EVOAB_RUA_PYTHON="$RUA_PYTHON"` before
 starting the launcher. Studio uses the selected preset's model ID, URL and
 key, plus the reasoning effort selected at launch. The optional turn limit
 maps to `--max-turns`. The shared HTTP preset resolver uses the provider
@@ -113,9 +116,7 @@ selected model. The resolver also reports catalog proxies, request overrides
 and credential-bearing base URLs as incompatible with this transport.
 
 For an explicitly configured RUA provider profile, use the single-episode CLI
-above. After the physical migration, restart Studio with the same runs
-directory and the new `EVOAB_RUA_PYTHON` and `EVOAB_CACHE_DIR` printed by
-`migrate_resources.py --verify`. The prepared Docker image is reused.
+above. Set `EVOAB_RUA_PYTHON` for Studio when the interpreter is not `rua/venv`.
 
 ## Verify the run
 

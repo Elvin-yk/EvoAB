@@ -56,7 +56,7 @@ bash examples/robodojo.sh run --model "$MODEL" --validate-config
 bash examples/robodojo.sh run --model "$MODEL" --monitor
 ```
 
-The script selects `stack_bowls` and keeps the default task supplements enabled.
+The script selects `stack_bowls` and adds the task supplements (`--include-extra-task-requirements`).
 Pass `--task OTHER_TASK` to change tasks, `--env-gpu 1` to choose another GPU,
 or `--no-depth` for RGB-only input with camera calibration. Only seed 0 is
 supported by the bundled RoboDojo runtime.

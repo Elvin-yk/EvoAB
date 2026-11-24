@@ -12,7 +12,7 @@ set -euo pipefail
 : "${ACTOR_CHECKPOINT_SHA256:?Set the verified digest from actor setup}"
 MODEL="${MODEL:-qwen3.8-flash}"
 evoab run --model "$MODEL" \
-  --integration isaaclab_arena --tool-profile hybrid \
+  --integration isaaclab_arena --recipe agent_policy \
   --env-url "${ARENA_ENV_URL:-http://127.0.0.1:18789}" \
   --action-model-url "${ACTOR_URL:-http://127.0.0.1:18762}" \
   --action-model-binding arena_g1_locomanipulation \

@@ -72,8 +72,8 @@ The integration declares its own options through `IntegrationSpec.config_model`.
 For example, the RoboDojo integration accepts
 `integration_options={"task": "expected-task-id", "run_id": "expected-run-id"}`. These values
 assert the identity of an already prepared episode. They do not create or reset
-it. RoboDojo alone also accepts `include_extra_task_requirements` (default `True`);
-set it to `False` to omit the packaged `instruction_supplements.json` guidance.
+it. RoboDojo alone also accepts `include_extra_task_requirements` (default `False`);
+set it to `True` to add the packaged `instruction_supplements.json` guidance.
 RoboLab rejects this field. Unknown options fail before connecting.
 Each integration retains its own
 defaults, validators and capabilities. A strategy
@@ -83,7 +83,7 @@ that calls environment-specific tools still depends on those capabilities.
 can remain available when the environment supplies the required camera data.
 To enable segmentation on a supported integration, supply `sam3_url` instead.
 Hybrid action models use `action_model_url` and
-`tool_profile="hybrid"` with the binding/reviewer fields in `integration_options`.
+`recipe="agent_policy"` with the binding/reviewer fields in `integration_options`.
 A reviewer in a tool-only session needs its own model, endpoint and compatible profile. No agent model is
 invented for it. Existing integration restrictions continue to apply.
 
@@ -271,15 +271,14 @@ config = SessionConfig(
     integration="libero_pro",
     env_url="http://localhost:18760",
     no_sam3=True,
-    tool_profile="direct",
-    tool_return_mode="background",
+    recipe="agentic",
+    recipe_overrides={"execution.return_mode": "background"},
 )
 ```
 
-`tool_profile` selects an integration-declared module combination independently
-of `tool_return_mode`. Unsupported profiles fail during `resolve()` without
-opening services. For compatibility, `integration_options={"action_profile":
-"direct"}` still works; conflicting old/new selectors fail validation.
-Resolved settings include the effective profile and ordered module names.
-Workspace, observation, skill-writing and debug visibility retain their existing
-configuration. See [tool profiles](running.md#tool-composition-profiles).
+`recipe` names a method from the library (or a recipe file);
+`recipe_overrides` takes declared parameter names or dotted recipe paths, like
+`--set`. A capability the integration lacks fails during `resolve()` without
+opening services. Resolved settings include `recipe_id`, `channel`,
+`tool_style`, the ordered `tool_modules` and `selected_tools`. See
+[composition](composition.md).

@@ -26,6 +26,25 @@ _WORKER_OPTIONS = (
 )
 
 
+_RUA_MODULES = ("skills", "scene", "gripper", "episode")
+
+
+def _legacy_settings(args) -> dict:
+    """RUA's harness still reads tool-profile and flat context settings; translate the recipe."""
+    options = dict(getattr(args, "context_options", None) or {})
+    names = {"max_estimated_input_tokens": "context_max_input_tokens",
+             "target_estimated_input_tokens": "context_target_input_tokens",
+             "keep_recent_blocks": "context_keep_recent_blocks",
+             "keep_observation_blocks": "context_keep_observation_blocks",
+             "min_recent_tool_images": "context_min_recent_tool_images",
+             "image_eviction_batch_size": "context_image_eviction_batch_size",
+             "observation_horizon": "context_observation_horizon",
+             "image_token_allowance": "context_image_token_allowance"}
+    legacy = {"tool_profile": "direct", "context_policy": args.context_policy}
+    legacy.update({names[key]: value for key, value in options.items() if key in names})
+    return legacy
+
+
 def preset_connection(name: str) -> tuple[str, str, str, str]:
     """Map a Studio preset to a model and transport supported by RUA's Codex planner."""
     connection = resolve_http_preset(
@@ -40,7 +59,7 @@ class RuaAgent:
     model_protocol = "responses"
     owns_provider = True
     workbench_launch = AgentLaunch(
-        label="RUA", modes=("agentic",), integrations=("robodojo",),
+        label="RUA", integrations=("robodojo",),
         description="Uni Robot Agent 连接 EvoAB 管理的 RoboDojo 环境。",
         cli_flags=("--rua-model-preset",), validate_preset=preset_connection,
         model_help="支持使用 API Key 的标准 Responses 或 Chat Completions 预设。",
@@ -68,14 +87,15 @@ class RuaAgent:
 
     @classmethod
     def validate_config(cls, args, explicit: set[str]) -> None:
-        if args.command != "run" or args.integration != "robodojo" or args.interaction_mode != "tool_calling":
-            raise ValueError("--agent rua requires run --integration robodojo with tool_calling interaction")
-        if (args.tool_profile not in (None, "direct") or args.action_profile not in (None, "direct")
-                or args.action_model_url):
-            raise ValueError("--agent rua requires the direct tool profile and no action-model URL")
+        if args.command != "run" or args.integration != "robodojo" or args.channel != "tools":
+            raise ValueError("--agent rua requires run --integration robodojo with the tools channel")
+        if (tuple(args.tool_modules) != _RUA_MODULES or args.tool_style != "full"
+                or len(args.compiled_recipe.roles) > 1 or args.action_model_url):
+            raise ValueError("--agent rua requires one role with the skills, scene, gripper and episode "
+                             "capabilities (full style) and no action-model URL")
         if any(flag.startswith(("--vla-", "--no-vla-", "--action-model-", "--actor-", "--no-actor-"))
                for flag in explicit):
-            raise ValueError("Actor and reviewer settings require the hybrid tool profile")
+            raise ValueError("Actor and reviewer settings require a recipe with the hybrid capability")
         # Preserve the venv path when its interpreter is a symlink to base Python.
         python = Path(os.path.abspath(Path(args.rua_python).expanduser()))
         if not python.is_file() or not os.access(python, os.X_OK):
@@ -101,6 +121,7 @@ class RuaAgent:
     @classmethod
     def evaluator_plan(cls, args) -> EvaluatorPlan:
         settings = {name: getattr(args, name, None) for name in _WORKER_OPTIONS}
+        settings.update(_legacy_settings(args))
         settings["model"] = getattr(args, "_rua_model", args.model)
         flags = {f"--{name.replace('_', '-')}" for name in _WORKER_OPTIONS}
         flags.update(f"--no-{flag[2:]}" for flag in ("--save-exchanges", "--model-parallel-tool-calls",

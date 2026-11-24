@@ -10,9 +10,9 @@ Direct motion. A discarded suffix is never replayed. Disabling review with
 
 ## Tool composition
 
-Select `--tool-profile hybrid` on an integration that declares it; binding
+Select `--recipe agent_policy` on an integration that declares it; binding
 admission depends on the actual controller and actor profile. The
-`--action-profile hybrid` alias remains supported. RoboDojo and RoboLab
+`--recipe agent_policy` alias remains supported. RoboDojo and RoboLab
 can compose Hybrid with Direct tools. DexJoCo, BEHAVIOR, IsaacLab Arena and NaVILA
 compose Hybrid with scene, skills and episode tools, without gripper tools.
 Integrations own these compositions; a backend never chooses the visible tools.

@@ -7,8 +7,8 @@ def validate_episode(session):
     info = session.episode.description
     if info.integration != "piper_x" or info.environment.metadata.get("robot_id") != session.context.args.robot_id:
         raise ValueError("Environment service is bound to another integration or robot_id")
-    if session.context.args.tool_profile != "readonly" and not info.environment.metadata.get("execute"):
-        raise ValueError("An observation-only environment requires --tool-profile readonly")
+    if "gripper" in session.context.args.tool_modules and not info.environment.metadata.get("execute"):
+        raise ValueError("An observation-only environment requires a recipe without the gripper capability")
 
 
 class Session(PreparedEpisodeSession):

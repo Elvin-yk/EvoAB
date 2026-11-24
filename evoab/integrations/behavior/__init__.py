@@ -1,12 +1,9 @@
 """R1Pro mobile manipulation through the shared Hybrid tool family."""
-from typing import Literal
-
 from evoab.integrations.base import IntegrationSpec
 from evoab.integrations.hybrid import HybridOptions, add_hybrid_cli_args, validate_hybrid_cli
 
 
 class BehaviorOptions(HybridOptions):
-    action_profile: Literal["hybrid"] | None = None
     task: str | None = None
     run_id: str | None = None
     seed: int | None = None
@@ -37,6 +34,6 @@ def get_integration_spec():
     from .session import create_session
     return IntegrationSpec(name="behavior", create_session=create_session, config_model=BehaviorOptions,
         add_cli_args=add_cli_args, validate_cli=validate_cli,
-        tool_profiles={"hybrid": (SKILLS_MODULE, SCENE_MODULE, HYBRID_MODULE, EPISODE_MODULE)},
-        default_tool_profile="hybrid", deployment_module="evoab.integrations.behavior.deployment",
+        tool_modules=(SKILLS_MODULE, SCENE_MODULE, HYBRID_MODULE, EPISODE_MODULE),
+        default_recipe="agent_policy", deployment_module="evoab.integrations.behavior.deployment",
         allow_automatic_retry=False)

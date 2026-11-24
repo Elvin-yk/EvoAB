@@ -57,8 +57,7 @@ supplies third-party binaries, meshes and calibration as described in its
 Public support for **Franka** is **Coming soon**.
 
 `piper_x` provides a separate Piper-X Body runtime and environment adapter using
-the same Direct tools and `wholepath` contract. It includes an observation-only
-`readonly` tool profile and explicit per-station identity/calibration manifests.
+the same Direct tools and `wholepath` contract. Recipes without the gripper capability give an observation-only session, and explicit per-station identity/calibration manifests.
 See [Piper-X](../evoab/integrations/piper_x/README.md) for preparation,
 official CLI commands, migration details and hardware validation status.
 
@@ -85,7 +84,7 @@ action binding. Profiles need not expose scalar grippers.
 | Scene | `view_env_state` reads recorded RGB/state; `capture_scene` freezes RGB/state and available calibration and paired depth; `locate` queries the immutable snapshot using the advertised capabilities |
 | Direct motion | `move(targets, profile="standard")`, `grasp`, `release`, `hold` |
 | Actor | `actor_act` runs bounded chunks with fresh observations and optional reviewer decisions |
-| Guidance | `list_skills()` lists shared general/ and current-environment Markdown paths recursively; `read_skill(path=...)` reads a file's content and SHA256; `--skill-writing` adds `write_skill` within the episode's namespace and requires an explicit external skills root |
+| Guidance | `list_skills()` lists shared general/ and current-environment Markdown paths recursively; `read_skill(path=...)` reads a file's content and SHA256; `--set roles.main.capabilities.skills.options.write=true` adds `write_skill` within the episode's namespace and requires an explicit external skills root |
 | Completion | `finish` submits termination; the official task outcome stays outside model-visible feedback |
 
 Tool definitions live in [`tools/gripper/`](../evoab/tools/gripper/),
@@ -118,7 +117,7 @@ recovery to the operator. Keep native stop evidence in `diagnostics` for people.
 `--integration robodojo` adds the RoboDojo prompt and optional task-requirements
 loader to the shared prepared-episode lifecycle. `--task` and `--run-id` identify
 the expected episode. `--include-extra-task-requirements` loads the repository's
-task requirements; it is enabled by default for RoboDojo and loads the simplified
+task requirements; it is off by default (official Agent Track rules) and loads the simplified
 `resources/prompts/robodojo/instruction_supplements.json` catalog. These supplements
 clarify the task instruction, including the required sequence.
 The full `task_requirements.json` remains a separate reference resource.
@@ -148,9 +147,9 @@ See [runtime defaults](running.md#single-episode-cli) for capability selection.
 
 ### Clean robot tools
 
-All seven gripper integrations support `--tool-profile clean`: RoboDojo,
+All seven gripper integrations support `--recipe clean`: RoboDojo,
 RoboLab, RoboTwin, LIBERO-Plus, LIBERO-PRO, RMBench and CALVIN.
-The former `--tool-profile minimal` remains a compatibility alias; CLI and Python
+The former `--recipe clean` remains a compatibility alias; CLI and Python
 configuration resolve it to `clean`, including saved run metadata.
 It exposes `move`, `hold`, `capture_scene` and `finish`, reusing the same schemas, controllers,
 execution receipts and outcome storage as Direct. `move` already accepts a
@@ -362,9 +361,9 @@ Shared tools and HTTP protocols stay in `tools/` and
 
 ### Prepared episode composition
 
-Declare ordered tool modules on `IntegrationSpec.tool_profiles` and reuse
+Publish the tool modules the integration supports on `IntegrationSpec.tool_modules` and reuse
 `PreparedEpisodeSession(context, binding_factory=...)` for URL-backed episodes.
-The selected `context.tool_modules` create providers against `session.episode`
+The modules the recipe selected (`context.tool_modules`, each with its selection) create providers against `session.episode`
 and register auxiliary clients with `session.own()`. The session closes them even if later
 setup fails, then releases its environment client. The outer session owns
 `IntegrationContext.artifacts`; integrations use that store without closing it

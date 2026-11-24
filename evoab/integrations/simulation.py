@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-def build_simulation_spec(name, *, tool_profiles):
+def build_simulation_spec(name):
     from evoab.context.prompt import environment_for_model, state_json_for_model, Prompt, register_prompt_builder
     from evoab.integrations.gripper import build_gripper_spec, create_session, validate_gripper_cli
 
@@ -26,11 +26,11 @@ def build_simulation_spec(name, *, tool_profiles):
         ))
         if episode:
             result = result.append(system="Environment description:\n" + environment_for_model(episode.description.environment),
-                                   user=None if context.tool_profile == "clean" else "Initial measured state:\n" + state_json_for_model(episode.state))
+                                   user=None if context.initial_observation else "Initial measured state:\n" + state_json_for_model(episode.state))
         return result
 
     return build_gripper_spec(name=name, create_session=create_session,
-                              tool_profiles=tool_profiles, validate_cli=validate)
+                              validate_cli=validate)
 
 
 def materialized_asset(path: Path) -> bool:

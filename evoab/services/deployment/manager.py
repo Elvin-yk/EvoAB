@@ -126,7 +126,9 @@ def evaluator_entry():
     from argparse import Namespace
     from evoab.session import run
     from evoab.telemetry.logging import configure_logging
+    from evoab.composition.compiler import restore_compiled
     args = Namespace(**json.load(sys.stdin))
+    restore_compiled(args)
     configure_logging(args.log_level)
     run(args)
 
@@ -164,7 +166,8 @@ def run_evaluation(args):
             if evaluator_plan is None:
                 command = [sys.executable, '-c',
                     'from evoab.services.deployment.manager import evaluator_entry; evaluator_entry()']
-                input_data = json.dumps(vars(args), default=str).encode()
+                from evoab.composition.compiler import portable_args
+                input_data = json.dumps(portable_args(args), default=str).encode()
                 log_path = None
             else:
                 plan = evaluator_plan(args)

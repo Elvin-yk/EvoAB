@@ -187,11 +187,10 @@ def summarize_run(
         "provider": launch.get("provider_label") or config.get("provider_url"),
         "model": (result or {}).get("model_preset") or (result or {}).get("model") or launch.get("model"),
         "agent": (result or {}).get("agent_backend") or launch.get("agent"),
-        "method_id": "direct_policy" if (run_dir / "direct" / "policy.json").is_file() else (
-            (result or {}).get("method") or launch.get("method")
-        ),
-        "tool_profile": (result or {}).get("tool_profile") or launch.get("tool_profile"),
-        "action_profile": (result or {}).get("action_profile") or launch.get("action_profile"),
+        "method_id": (result or {}).get("recipe") or launch.get("method") or (
+            "direct_policy" if (run_dir / "direct" / "policy.json").is_file() else None),
+        "channel": (result or {}).get("channel") or launch.get("channel"),
+        "roles": (result or {}).get("roles") or [],
         "reasoning_effort": (result or {}).get("reasoning_effort") or launch.get("reasoning_effort"),
         "seed": (result or {}).get("seed"),
         "max_steps": config.get("max_steps") or launch.get("max_steps"),
@@ -227,8 +226,8 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
         "model": launch.get("model"),
         "agent": launch.get("agent"),
         "method_id": launch.get("method"),
-        "tool_profile": launch.get("tool_profile"),
-        "action_profile": launch.get("action_profile"),
+        "channel": launch.get("channel"),
+        "roles": [],
         "reasoning_effort": launch.get("reasoning_effort"),
         "seed": None,
         "max_steps": launch.get("max_steps"),
@@ -244,21 +243,23 @@ def _pending(launch: dict[str, Any], now: float) -> dict[str, Any]:
 
 
 def _method(run: dict[str, Any]) -> str:
+    """``Method label · agent`` for a run, using the method library when the method still exists."""
     from evoab.agents.registry import agent_launch
-    from evoab.workbench.launcher import METHODS
+    from evoab.composition.methods import get_method
 
-    method = next((m for m in METHODS if m["id"] == run.get("method_id")), None)
-    agent = run.get("agent") or "codex"
-    if method is None:
-        return f"{agent} · {run.get('tool_profile') or run.get('action_profile') or 'direct'}"
-    if agent != method["agent"]:
-        try:
-            registered = agent_launch(agent)
-        except ValueError:
-            registered = None
-        if registered is not None:
-            agent = registered.label
-    return f"{method['label']} · {agent}"
+    method_id = run.get("method_id")
+    try:
+        method = get_method(method_id) if method_id else None
+    except ValueError:
+        method = None
+    agent = run.get("agent") or "—"
+    try:
+        registered = agent_launch(agent) if agent != "—" else None
+    except ValueError:
+        registered = None
+    agent_label = registered.label if registered is not None else agent
+    label = method.recipe.label if method is not None else (method_id or "—")
+    return f"{label} · {agent_label}"
 
 
 def short_id(run: dict[str, Any]) -> str:
@@ -275,8 +276,6 @@ def scan_runs(root: Path) -> list[dict[str, Any]]:
     the how-many-th started run of the same task with the same model (oldest
     first). Launches that never created a run directory get no attempt.
     """
-    from evoab.workbench.launcher import method_identity
-
     if not root.is_dir():
         return []
     now = time.time()
@@ -299,7 +298,6 @@ def scan_runs(root: Path) -> list[dict[str, Any]]:
         else:
             run["attempt"] = None
         run["short_id"] = short_id(run)
-        run["method_id"], run["agent"] = method_identity(run.get("method_id"), run.get("agent"))
         run["method"] = _method(run)
         run["key"] = f"run/{run['id']}" if run["id"] else f"launch/{run['launch_id']}"
     runs.reverse()

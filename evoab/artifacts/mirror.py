@@ -7,7 +7,6 @@ is downloaded once per mirror.
 
 from __future__ import annotations
 
-import copy
 import hashlib
 from pathlib import Path
 
@@ -52,48 +51,6 @@ class RemoteArtifactMirror:
         }
         self._refs[remote_id] = result
         return dict(result)
-
-    def mirror_snapshot(self, snapshot: dict) -> dict:
-        """Create a local manifest while retaining the remote snapshot identity.
-
-        ``snapshot_id`` identifies the remote observation; ``local_snapshot_id``
-        addresses its mirrored manifest in the local store. Localization consumes
-        the mirrored frames, while remote artifact reads use the original IDs.
-        """
-        local = copy.deepcopy(snapshot)
-        remote_snapshot_id = snapshot.get("snapshot_id")
-        cameras = local.get("cameras", {})
-        for frame in cameras.values():
-            if frame.get("rgb") is not None:
-                frame["rgb"] = self.mirror_ref(frame["rgb"])
-            if frame.get("depth_m") is not None:
-                frame["depth_m"] = self.mirror_ref(frame["depth_m"])
-        for samples in local.get("history", {}).values():
-            for sample in samples:
-                sample["rgb"] = self.mirror_ref(sample["rgb"])
-        # Exclude mirror-only metadata from the stored manifest so equivalent
-        # source and local snapshots keep the same content-addressed identity.
-        manifest_for_storage = copy.deepcopy(local)
-        for frame in manifest_for_storage.get("cameras", {}).values():
-            for key in ("rgb", "depth_m"):
-                if frame.get(key) is not None:
-                    frame[key] = {
-                        name: value for name, value in frame[key].items()
-                        if name not in {"remote_artifact_id", "remote_sha256"}
-                    }
-        for samples in manifest_for_storage.get("history", {}).values():
-            for sample in samples:
-                sample["rgb"] = {key: value for key, value in sample["rgb"].items()
-                                 if key not in {"remote_artifact_id", "remote_sha256"}}
-        manifest_ref = self.store.put_json({
-            key: value for key, value in manifest_for_storage.items()
-            if key not in {"snapshot_id", "manifest", "remote_snapshot_id"}
-        })
-        local["local_snapshot_id"] = manifest_ref["artifact_id"]
-        local["manifest"] = manifest_ref
-        if remote_snapshot_id is not None:
-            local["remote_snapshot_id"] = remote_snapshot_id
-        return local
 
     def local_path(self, reference: dict) -> Path:
         """Return the verified file owned by the shared artifact store."""

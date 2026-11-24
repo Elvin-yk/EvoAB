@@ -84,7 +84,7 @@ In the planner interpreter:
 
 ```bash
 evoab run --integration libero_plus --env-url http://127.0.0.1:18781 \
-  --model MODEL --action-profile direct --no-sam3
+  --model MODEL --recipe agentic --no-sam3
 ```
 
 `--task` on the service accepts an official task name or zero-based index.
@@ -182,7 +182,7 @@ define evaluation episodes. The [original LIBERO demonstrations](https://hugging
 are a separate training download. The [official PRO perturbation release](https://huggingface.co/datasets/zhouxueyang/LIBERO-Pro)
 provides task definitions and initial states for evaluation.
 
-Choose a tool profile in the method step, then select the model and reasoning
+Choose a method in the method step, then select the model and reasoning
 effort together before reviewing the launch. Each run
 starts a fresh native episode at initial-state index 0, validates its identity,
 and shuts down its service when the run ends. With the CLI use
@@ -195,5 +195,5 @@ step. Repeating the same setup command verifies cached clips and resumes missing
 downloads. Studio serves installed clips from its own host, including offline.
 Missing clips hide the preview action and the task remains available to run. Each preview is one external-camera episode from the LeRobot conversion
 of LIBERO, identified by its exact suite and task. Perturbation entries do not
-share these previews. Selecting a task reveals a single drawer action to create a run with that task. Only the confirmation step submits a run. Studio offers Agentic
-Policy under Agent only (one persistent agent session using robot tools). LIBERO-PRO currently has no Studio method pairing the agent with a separate learned action policy; the CLI tool-profile ID is `direct`.
+share these previews. Selecting a task reveals a single drawer action to create a run with that task. Only the confirmation step submits a run. LIBERO-PRO offers
+no actor binding, so methods needing the `hybrid` capability are unavailable.

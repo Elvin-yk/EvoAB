@@ -1,0 +1,25 @@
+id: direct_policy
+label: Direct Policy
+summary: Each inference is one stateless request that must return an action chunk; the controller executes it.
+paradigms: [direct]
+status: builtin
+references:
+  - {title: "Astranomy: an empirical study of GPT-6 Astra as a native robot policy", url: "https://research.nvidia.com/labs/srl/projects/astranomy/", kind: project}
+roles:
+  main:
+    description: Emits 3–15 action rows per inference from a sampled window of recent frames.
+    channel: action
+    action:
+      representation: abs_eef
+      horizon: [3, 15]
+      history: [15, 7]
+      step_limits: [0.02, 0.1]
+loop: {entry: main}
+parameters:
+  - {name: representation, path: roles.main.action.representation, label: Action representation,
+     type: string, choices: [abs_eef, delta_eef, joint_abs],
+     help: "abs_eef/delta_eef use the environment's IK; joint_abs needs joint control."}
+  - {name: horizon, path: roles.main.action.horizon, label: "Rows per chunk (MIN:MAX)", type: pair}
+  - {name: history, path: roles.main.action.history, label: "Frame window (LENGTH:STRIDE)", type: pair}
+  - {name: custom_prompt, path: roles.main.action.custom_prompt, label: Extra instructions, type: text}
+  - {name: max_calls, path: roles.main.action.max_calls, label: "Inference limit (0 = until the episode ends)", type: integer}

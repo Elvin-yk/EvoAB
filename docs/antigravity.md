@@ -18,9 +18,8 @@ export no_proxy="$NO_PROXY"
 evoab run --integration robodojo \
   --agent antigravity --model qwen3.8-flash \
   --provider-profile aliyun.gemini_chat_completions \
-  --reasoning-effort none --context-policy identity \
-  --env-url http://environment-host:19260 --sam3-url http://sam-host:18124 \
-  --interaction-mode tool_calling --action-profile direct \
+  --reasoning-effort none --set roles.main.context.policy=identity \
+  --env-url http://environment-host:19260 --sam3-url http://sam-host:18124 \ --recipe agentic \
   --max-turns 0 --episode-timeout-s 10800
 ```
 

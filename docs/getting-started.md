@@ -110,7 +110,7 @@ This command runs without a model credential or a running simulator:
 
 ```bash
 evoab run --integration robodojo --model YOUR_MODEL --env-url http://127.0.0.1:18760 \
-  --action-profile direct --no-sam3 --validate-config
+  --recipe agentic --no-sam3 --validate-config
 ```
 
 It should print `Configuration valid`. Replace `--validate-config` with
@@ -160,7 +160,7 @@ export MODEL='YOUR_MODEL'
 evoab run --integration robodojo --deploy local \
   --task stack_bowls --model "$MODEL" \
   --provider-url https://provider.example/v1 \
-  --action-profile direct --no-sam3 \
+  --recipe agentic --no-sam3 \
   --output-dir ./runs --monitor --monitor-port 8765
 ```
 
@@ -221,7 +221,7 @@ evoab run --integration robodojo --agent codex --model YOUR_MODEL \
   --provider-url https://provider.example/v1 \
   --env-url http://127.0.0.1:18760 \
   --task stack_blocks --run-id YOUR_SERVER_RUN_ID \
-  --action-profile direct --no-sam3 \
+  --recipe agentic --no-sam3 \
   --output-dir outputs/robodojo
 ```
 
@@ -239,7 +239,7 @@ and needs an API endpoint and credential at execution time. These can be configu
 independently or inherited from the main agent; see
 [reviewer configuration](running.md#vla-reviewer). The
 [minimal Hybrid example](../examples/robodojo_hybrid.sh) connects to separately
-prepared environment and actor services, with normal budgets and task supplements.
+prepared environment and actor services, with normal budgets and the optional task supplements.
 Supply your model ID and the actor checkpoint hash; see
 [service deployment](deployment.md#foreground-services).
 
@@ -255,7 +255,7 @@ evoab run --integration robodojo --agent claude_code \
   --model YOUR_CLAUDE_MODEL --provider-url https://provider.example/v1 \
   --provider-profile passthrough.messages \
   --env-url http://127.0.0.1:18760 \
-  --action-profile direct --no-sam3 --output-dir ./runs
+  --recipe agentic --no-sam3 --output-dir ./runs
 ```
 
 The same provider flags work with `--deploy local`. Use `--claude-effort` and
@@ -279,7 +279,7 @@ In another terminal, with your provider credential set:
 ```bash
 evoab tui --integration robodojo --model YOUR_MODEL \
   --provider-url https://provider.example/v1 \
-  --env-url http://127.0.0.1:18760 --action-profile direct --no-sam3
+  --env-url http://127.0.0.1:18760 --recipe agentic --no-sam3
 ```
 
 The TUI connects to the same services and accepts one task. It keeps the event
@@ -293,7 +293,7 @@ arguments to get the shared and environment namespaces in `paths` and their
 sorted recursive Markdown paths in `entries`. Pass a relevant file path to `read_skill(path=...)`
 to obtain its `content` and `sha256`. Missing namespaces contribute no entries and are not created.
 To allow writes, configure `EVOAB_SKILLS_DIR` as a complete external
-skills library, then add `--skill-writing`. All skill tools use that library;
+skills library, then add `--set roles.main.capabilities.skills.options.write=true`. All skill tools use that library;
 there is no fallback to packaged files and no special `memory/` directory.
 See [skills setup](running.md#skills) for a small initialization example. Review
 updated skills before reusing them in later tasks.

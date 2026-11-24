@@ -2,14 +2,11 @@
 from typing import Any, Protocol
 
 from .contracts import (
-    GoalRegionRequest,
-    GoalRegionReply,
     ActionCommand,
     EnvironmentDescription,
     EnvironmentState,
     JointCommand,
     NativeCommand,
-    PathCommand,
     PoseCommand,
     StepReceipt,
 )
@@ -35,20 +32,3 @@ class EnvironmentBackend(Protocol):
     def close(self) -> None: ...
 
 
-class PathBackend(Protocol):
-    """Optional whole-path capability, declared by environment metadata ``motion_execution: wholepath``."""
-    def step_path(self, command: PathCommand) -> StepReceipt: ...
-
-
-class GoalRegionBackend(Protocol):
-    """Optional solve-only capability; not required by other integrations."""
-    def solve_goal_region(self, request: GoalRegionRequest) -> GoalRegionReply: ...
-
-
-class DeviceBackend(Protocol):
-    """Native device operations, separate from the scalar-gripper backend."""
-    def read_state(self): ...
-    def validate_device(self, command) -> None: ...
-    def preview_device(self, command) -> dict: ...
-    def execute_device(self, command, *, cancellation) -> dict: ...
-    def interrupt_device(self, device: str) -> dict: ...

@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+- **Recipes replace interaction modes and tool profiles (breaking).** A run's
+  method is a recipe (`evoab/composition/`): roles with a brain, a channel
+  (`tools`, `code`, `action`), capabilities and a context policy, connected by a
+  loop. `--recipe METHOD` and `--set PATH=VALUE` replace `--interaction-mode`,
+  `--tool-profile`/`--action-profile`, `--direct-*`, `--skill-writing`,
+  `--tool-return-mode`, `--resource-scheduling`, `--execution-mode`,
+  `--observation-profile` and `--context-*`; `SessionConfig(recipe=...,
+  recipe_overrides=...)` replaces the matching SDK fields. Migration:
+  `--tool-profile direct` → `--recipe agentic`, `hybrid` → `agent_policy`,
+  `clean` → `clean`; `--interaction-mode code_as_policy|direct_policy` →
+  `--recipe code_as_policy|direct_policy`; `--direct-horizon 3:15` →
+  `--set horizon=3:15`; execution flags → `--set execution.<name>=...`.
+  Single-role recipes produce the former tool schemas and prompts byte for byte.
+- `IntegrationSpec.tool_profiles`/`default_tool_profile` become `tool_modules`
+  (a catalog) and `default_recipe`; `ToolModule.create(session, selection)`
+  receives the role's tool subset, typed options and style.
+- Method library (`evoab/methods/`, `EVOAB_METHODS_DIR`) with reproduction
+  cards; `evoab methods list|show|graph|components|validate`.
+- Multi-role recipes: `delegate_<role>` tools run another role (its own brain,
+  channel and tool view) against the same episode. New `planner_direct` method.
+- Experience across episodes: `loop.episodes.repeat/carry/keep` with staged,
+  success-gated promotion of skills and programs. New `code_iterate` method.
+- Direct control in joint space: `joint_abs` representation (`JointCommand`).
+- RUA becomes native: the `rua` method is the paper setting (arXiv 2611.01560)
+  as a recipe; the external evaluator is the `rua_upstream` method. The one-off
+  resource migration tooling (`rua/migrate_resources.py`, `rua/link_resources.py`)
+  and its test are removed.
+- `--model-preset` lets HTTP agents use a Studio preset; Codex and Claude Code
+  can be launched from Studio, including code methods.
+- Managed runs (`--deploy local`) pass the recipe to the agent process as data
+  and recompile it there.
+- Delegation: tool/code delegations no longer hold an exclusive queue (and are
+  rejected under `global-serial`); `Session.cancel()` and the episode deadline
+  reach delegated roles; action delegations report executed steps for replanning.
+- Removed unused code: `AgentLaunch.modes`, Studio's legacy method aliases,
+  several unused helpers, three unreferenced validation scripts and two orphaned docs.
+- Studio: method step from the library with component graphs and generic
+  parameter forms; run pages show the recipe graph annotated with call counts.
+
 - Studio can uninstall one prepared Docker deployment (卸载 beside 部署/已部署):
   `DELETE /api/benchmarks/<integration>/<profile>/setup` removes that
   deployment's records and local runtime image while keeping runs and

@@ -13,10 +13,9 @@ def add_cli_args(parser):
 
 
 def get_integration_spec():
-    from evoab.integrations.gripper import CLEAN_TOOLS, DIRECT_TOOLS
     from evoab.integrations.simulation import build_simulation_spec
 
-    spec = build_simulation_spec("libero", tool_profiles={"clean": CLEAN_TOOLS, "direct": DIRECT_TOOLS})
+    spec = build_simulation_spec("libero")
     spec.add_cli_args = add_cli_args
     spec.config_model = LiberoOptions
     spec.deployment_module = "evoab.integrations.libero.deployment"

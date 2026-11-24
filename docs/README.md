@@ -23,6 +23,13 @@ first PyPI release.
 - **[Python SDK](sdk.md)** — custom strategies, built-in agents, tool jobs, events,
   results and explicit preparation/deployment; [examples](../examples/sdk/).
 
+## Methods and composition
+
+- **[Composition](composition.md)** — recipes: roles, channels (tools, code,
+  action), capabilities, delegation between roles and experience across episodes.
+- **[Method library](methods.md)** — built-in methods, reproduction cards and
+  adding a method; [coding-agent skill](agent_skills/add-evoab-method/SKILL.md).
+
 ## Run and inspect
 
 - **[CLI reference](running.md#single-episode-cli)** — provider access, context,

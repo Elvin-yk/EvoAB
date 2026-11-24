@@ -14,7 +14,6 @@ import shutil
 import subprocess
 import sys
 import time
-import urllib.request
 import zipfile
 
 from evoab import __version__
@@ -137,31 +136,6 @@ class Preparation:
             'import json,sys; from huggingface_hub import snapshot_download; snapshot_download(**json.loads(sys.argv[1]))',
             payload])
         return str(target)
-
-    def download_zip(self, url, digest, target):
-        archive = self.root / 'downloads' / (digest + '.zip')
-        archive.parent.mkdir(exist_ok=True)
-        if not archive.exists():
-            partial = archive.with_suffix('.partial')
-            with urllib.request.urlopen(url, timeout=120) as response, partial.open('wb') as stream:
-                while chunk := response.read(8 * 1024 * 1024):
-                    if time.monotonic() >= self.deadline:
-                        raise TimeoutError('Setup download deadline exceeded')
-                    stream.write(chunk)
-            if file_hash(partial) != digest:
-                raise ValueError(f'Asset checksum mismatch: {url}')
-            partial.replace(archive)
-        if file_hash(archive) != digest:
-            raise ValueError(f'Cached asset checksum mismatch: {archive}')
-        destination = Path(target).resolve()
-        with zipfile.ZipFile(archive) as bundle:
-            for member in bundle.infolist():
-                if not (destination / member.filename).resolve().is_relative_to(destination):
-                    raise ValueError('Asset archive contains a path outside its destination')
-            if bundle.testzip() is not None:
-                raise ValueError('Asset ZIP CRC check failed')
-            bundle.extractall(destination)
-
 
 def file_hash(path):
     digest = hashlib.sha256()

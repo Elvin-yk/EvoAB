@@ -3,10 +3,10 @@
 ``--model`` names a model preset from :mod:`evoab.provider.catalog`, which owns
 provider connections, request APIs, retries and usage accounting. Two modes:
 
-``tool_calling``   an agent loop with only EvoAB's robot tools registered, with
-                   transcript consolidation for long episodes (run-local storage)
-``direct_policy``  each inference is one stateless request that must return an
-                   action chunk (see :mod:`evoab.direct.runner`)
+``tools`` channel   an agent loop with only EvoAB's robot tools registered, with
+                    transcript consolidation for long episodes (run-local storage)
+``action`` channel  each inference is one stateless request that must return an
+                    action chunk (see :mod:`evoab.direct.runner`)
 """
 
 from __future__ import annotations
@@ -30,43 +30,19 @@ def _consolidator(workspace: Path, registry):
                         get_tool_definitions=registry.get_definitions)
 
 
-def _pair(value: str) -> tuple[int, int]:
-    first, _, second = value.partition(":")
-    try:
-        return int(first), int(second)
-    except ValueError as error:
-        raise ValueError(f"expected two integers as A:B, got {value!r}") from error
-
-
 @register_agent("native")
 class NativeAgent:
     model_protocol = "native"
     owns_provider = True
     capabilities = AgentCapabilities(tool_event_source="execution")
     workbench_launch = AgentLaunch(
-        label="EvoAB 内置 Agent", modes=("direct_policy", "agentic"),
+        label="EvoAB 内置 Agent",
         description="使用 EvoAB 内置运行时与模型预设。",
     )
 
     @classmethod
     def add_cli_arguments(cls, parser) -> None:
-        from evoab.direct.actions import REPRESENTATIONS
-        from evoab.direct.prompts import BLOCKS
-        group = parser.add_argument_group("Direct policy")
-        group.add_argument("--direct-representation", choices=tuple(REPRESENTATIONS), default="abs_eef")
-        group.add_argument("--direct-horizon", default="3:15", metavar="MIN:MAX",
-                           help="Rows per action chunk")
-        group.add_argument("--direct-history", default="15:7", metavar="LENGTH:STRIDE",
-                           help="Observation window and sampling stride (always includes the newest)")
-        group.add_argument("--direct-prompt-blocks", default=",".join(BLOCKS),
-                           help="Comma-separated prompt blocks; robot and timing are required")
-        group.add_argument("--direct-custom-prompt", default="", help="Append these instructions to each direct policy request.")
-        group.add_argument("--direct-prompt-file", type=Path,
-                           help="Replace the bundled embodiment description with this text")
-        group.add_argument("--direct-step-limits", default="0.02:0.1", metavar="METRES:RADIANS",
-                           help="Per-row translation and rotation limits")
-        group.add_argument("--direct-repair-attempts", type=int, default=2)
-        group.add_argument("--direct-max-calls", type=int, default=0, help="0: until the episode ends")
+        """Action-channel settings live in the recipe (``roles.<name>.action``)."""
 
     @classmethod
     def validate_config(cls, args, explicit: set[str]) -> None:
@@ -76,30 +52,10 @@ class NativeAgent:
         names = {p["name"] for p in catalog.presets()}
         if args.model not in names:
             raise ValueError(f"--model must name a model preset (evoab models); configured: {', '.join(sorted(names)) or 'none'}")
-        blocks = [b for b in args.direct_prompt_blocks.split(",") if b]
-        if not {"robot", "timing"} <= set(blocks):
-            raise ValueError("--direct-prompt-blocks must include robot and timing")
-        low, high = _pair(args.direct_horizon)
-        if not 1 <= low <= high <= 64:
-            raise ValueError("--direct-horizon must satisfy 1 <= MIN <= MAX <= 64")
-        length, stride = _pair(args.direct_history)
-        if length < 1 or stride < 1:
-            raise ValueError("--direct-history values must be positive")
 
     @classmethod
     def config_options(cls, args) -> dict[str, Any]:
-        from evoab.direct.runner import DirectConfig
-        low, high = _pair(args.direct_horizon)
-        length, stride = _pair(args.direct_history)
-        metres, _, radians = args.direct_step_limits.partition(":")
-        robot = args.direct_prompt_file.read_text(encoding="utf-8") if args.direct_prompt_file else None
-        return {"reasoning_effort": args.reasoning_effort, "direct": DirectConfig(
-            representation=args.direct_representation, min_horizon=low, max_horizon=high,
-            history_length=length, history_stride=stride,
-            blocks=tuple(b for b in args.direct_prompt_blocks.split(",") if b), robot_prompt=robot,
-            custom_prompt=args.direct_custom_prompt,
-            translation_limit_m=float(metres), rotation_limit_rad=float(radians),
-            repair_attempts=args.direct_repair_attempts, max_calls=args.direct_max_calls)}
+        return {"reasoning_effort": args.reasoning_effort, "direct": getattr(args, "direct_config", None)}
 
     @classmethod
     def resolve_defaults(cls, args) -> None:
@@ -133,6 +89,8 @@ class NativeAgent:
         client = ModelClient(self.preset, reasoning_effort=self.reasoning_effort)
         self._policy = DirectPolicy(episode, client, integration=integration, instruction=instruction,
                                     output_dir=session_dir, config=self.direct_config)
+        if self.timeout_s:
+            self._policy.deadline = time.monotonic() + self.timeout_s
         try:
             outcome = self._policy.run()
         finally:
@@ -156,8 +114,6 @@ class NativeAgent:
         from evoab.agents.native.tools import ImageInbox, RecordingHook, robot_tools
         from evoab.provider.catalog import ModelClient
 
-        if code_policy is not None:
-            raise ValueError("code_as_policy is not available with --agent native yet")
         started = time.time()
         client = ModelClient(self.preset, reasoning_effort=self.reasoning_effort)
         registry = ToolRegistry()

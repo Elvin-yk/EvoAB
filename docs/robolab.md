@@ -60,7 +60,7 @@ An offline configuration check requires no simulator or model call:
 ```bash
 evoab run --integration robolab --task BananaInBowlTask --seed 0 \
   --model YOUR_MODEL --env-url http://127.0.0.1:18770 \
-  --action-profile direct --no-sam3 --validate-config
+  --recipe agentic --no-sam3 --validate-config
 ```
 
 After checking the live service's task, seed, instruction type and RGB cameras,
@@ -69,7 +69,7 @@ use the same arguments for a run with the normal provider options:
 ```bash
 evoab run --integration robolab --task BananaInBowlTask --seed 0 \
   --model YOUR_MODEL --env-url http://127.0.0.1:18770 \
-  --action-profile direct --no-sam3 --reasoning-effort max \
+  --recipe agentic --no-sam3 --reasoning-effort max \
   --episode-timeout-s 10800 --max-turns 0 \
   --output-dir /absolute/path/to/new-run/agent
 ```

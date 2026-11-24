@@ -3,7 +3,7 @@
 A Direct prompt is assembled from blocks:
 
 ``robot``   the embodiment and its frame conventions (bundled per embodiment,
-            or supplied by the user with ``--direct-prompt-file``)
+            or supplied by the user with the recipe's ``action.robot_prompt_file``)
 ``timing``  control interval and per-row step limits (never the episode step budget)
 ``gripper`` grasp-point geometry measured from the environment
 ``camera``  camera extrinsics and intrinsics from the environment's calibration
@@ -34,13 +34,19 @@ def embodiment_text(description) -> str:
     return resources.files("evoab.resources").joinpath("prompts/direct/generic.md").read_text(encoding="utf-8")
 
 
-def timing_text(control_hz: float, limits: Limits) -> str:
+def timing_text(control_hz: float, limits: Limits, space: str = "pose") -> str:
     """Control timing and step limits. The episode's step budget is evaluation-side and never shown."""
-    return (
+    head = (
         "EXECUTION TIMING\n"
         f"Each action row runs for one control interval: {1 / control_hz:.8g} seconds ({control_hz:g} Hz) in this "
         "environment. A row specifies a target; it does not wait until that target is reached. API response "
-        "time does not advance simulation.\n\n"
+        "time does not advance simulation.\n\n")
+    if space == "joint":
+        return head + (
+            f"Each joint target may change by at most {limits.joint_rad:g} rad (or metres) per row. Actual "
+            "movement may be smaller. The gripper command still executes when joint changes are shortened. "
+            "Use measured joints to assess arrival.")
+    return head + (
         f"Translation targets are limited to {limits.translation_m:g} m per row and rotation changes to "
         f"{limits.rotation_rad:g} rad per row. Actual movement may be smaller. The gripper command still "
         "executes even when the requested arm movement is shortened. Use measured ee_pos/ee_quat to assess "
@@ -116,7 +122,7 @@ def assemble(*, description, representation: Representation, horizon, limits: Li
         raise ValueError(f"unknown Direct prompt blocks: {sorted(unknown)}")
     parts = {
         "robot": (robot_text or embodiment_text(description)).strip(),
-        "timing": timing_text(description.control_frequency_hz, limits),
+        "timing": timing_text(description.control_frequency_hz, limits, representation.space),
     }
     parts["robot"] += "\n\nControlled arms:\n" + "\n".join(
         f"- {arm.name}: {arm.control_frame}; {arm.grasp_site_description}" for arm in description.arms

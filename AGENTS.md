@@ -25,6 +25,7 @@ families are examples of this architecture, not a closed list of allowed tools.
 | Layer | Responsibility |
 |---|---|
 | `cli.py`, `config.py`, `session.py` | Resolve configuration and assemble/own the run lifecycle |
+| `composition/`, `methods/` | Recipes (roles, channels, capabilities, loops), their compilation, the method library and graphs |
 | `agents/` | Adapt planner SDKs, deliver tool calls through the executor, translate SDK events and records |
 | `provider/` | Connect model APIs: gateway, wire conversion, model-request retry and response delivery |
 | `context/` | Assemble prompts/history and apply context policies |
@@ -40,6 +41,9 @@ families are examples of this architecture, not a closed list of allowed tools.
 | `ui/` | Present state/events and route user intent through the session interfaces |
 | `resources/` | Package robot-facing prompts and runtime skills |
 
+- To add or reproduce a method, write a recipe in `evoab/methods/<id>/` with a
+  `CARD.md`; follow [the add-method skill](docs/agent_skills/add-evoab-method/SKILL.md).
+  Never branch on a method id in code; extend recipe contracts instead.
 - To change robot behavior, modify or add tools in an existing tool set, or
   create `tools/<family>/` for a new tool set. Keep reusable behavior there even
   when the first user is one environment. Avoid concrete integration imports;

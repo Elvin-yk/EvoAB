@@ -206,29 +206,6 @@ class RobotHandle:
             options = sorted(self.cameras)
         raise DeviceError(ErrorCode.UNKNOWN_DEVICE, f"robot {self.robot_id} has no {kind or 'device'} {selector!r}", details={"options": options})
 
-    def read_all(self, *, kinds: Iterable[str] | None = None, include: Iterable[str] | None = None) -> dict[str, dict[str, Any]]:
-        """One read_state per body; camera images are excluded unless asked for."""
-        wanted_kinds = set(kinds) if kinds else None
-        out: dict[str, dict[str, Any]] = {}
-        per_body: dict[str, list[DeviceHandle]] = {}
-        for handle in self.devices.values():
-            if wanted_kinds is not None and handle.kind not in wanted_kinds:
-                continue
-            if wanted_kinds is None and handle.kind == KIND_CAMERA:
-                continue
-            per_body.setdefault(handle.body.spec.name, []).append(handle)
-        for handles in per_body.values():
-            client = handles[0].client
-            try:
-                data = client.read_state([h.device_id for h in handles], include)
-            except DeviceError as exc:
-                for h in handles:
-                    out[h.key] = {"availability": "error", "error": exc.to_dict()}
-                continue
-            for h in handles:
-                out[h.key] = data["devices"].get(h.device_id, {"availability": "missing"})
-        return out
-
     def frames(self, roles: Iterable[str] | None = None) -> dict[str, bytes]:
         """Independent latest RGB reads; use ObservationService for a shared RGB-D snapshot."""
         out: dict[str, bytes] = {}

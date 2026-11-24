@@ -38,7 +38,7 @@ This setting requires the Codex backend; Claude Code rejects it.
 
 ## Local computation cancellation
 
-Every tool profile, including Clean and Code as Policy, receives the shared
+Every method, including Clean and Code as Policy, receives the shared
 `runtime/process_control.md` guidance. Cancel local calculations through their
 exact terminal session/job handle, or a recorded PID verified to belong to that
 calculation. Broad process-name matches and signals to shared process groups,
@@ -64,23 +64,20 @@ launcher or container configuration; a working directory is not such a boundary.
 ### Workbench launch registration
 
 An adapter can declare `workbench_launch = AgentLaunch(...)` on its registered
-class. The declaration lists its execution modes, supported integrations, model
-preset validator, and any integer options exposed in Studio. Leave
-`integrations` unset when the adapter works with every benchmark offered for
-the declared modes. Flags and option mappings refer to existing `evoab run`
+class. The declaration lists its label, supported integrations, model preset
+validator, and any integer options exposed in Studio. Leave `integrations`
+unset when the adapter works with every benchmark. Which methods an adapter can
+run is not its concern: methods are agent-independent and every agent runs every channel (see [composition](composition.md)). Set `runs_programs = True` when the agent runs code-channel programs in its own terminal; otherwise the harness gives it `run_program`. Flags and option mappings refer to existing `evoab run`
 arguments and are supplied by the adapter. The registry provides both the
 Studio picker metadata and the server-side launch mapping. Adapters without a
 launch declaration remain available through their existing entry points.
 
-Workbench execution modes are `direct_policy` for action chunks, `agentic`
-for an agent using tools, and `agent_policy` for an agent using the Hybrid
-tool profile. A mode appears when an adapter supports it on the selected
-benchmark. The existing Hybrid CLI remains available with its actor service
-configuration.
+Studio lists library methods; an adapter is offered for a method when it drives
+the method's entry channel and the method compiles for the selected benchmark.
 
 For Direct Policy, Studio can append optional per-run instructions to every model request.
 The launch field is `direct.custom_prompt` (up to 8192 characters in Studio);
-the CLI equivalent is `--direct-custom-prompt`. Blank text uses the standard prompt.
+the CLI equivalent is `--set custom_prompt`. Blank text uses the standard prompt.
 The run records the assembled text in `direct/prompt.md`.
 
 The launch API accepts `method` for the execution mode, `agent` for the adapter
@@ -90,10 +87,9 @@ adapter handles requests that omit `agent`. `GET /api/config` lists modes under
 `agent` query on `GET /api/models` filters presets using that adapter's
 validator and reports unavailable choices with reasons in `incompatible_presets`.
 Validators can raise `PresetCompatibilityError` for messages safe to display.
-HTTP-backed adapters can use `resolve_http_preset` with their client protocol
-and supported wire profiles. Legacy `method: "rua"` requests and saved settings resolve to
-`method: "agentic", agent: "rua"`. Run history resolves the same alias as it
-reads existing records.
+HTTP-backed adapters can use `preset_for_protocol` (or `resolve_http_preset`)
+with their client protocol; Codex and Claude Code do, and their launches pass
+`--model-preset` so `--model` names a Studio preset.
 
 ### Run contract
 

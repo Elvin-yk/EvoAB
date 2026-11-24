@@ -23,7 +23,7 @@ python -m evoab.integrations.rmbench.server \
 ```
 
 Connect a planner with `--integration rmbench --env-url http://127.0.0.1:18785
---action-profile direct`. Each service owns one episode and requires a new output
+--recipe agentic`. Each service owns one episode and requires a new output
 directory. Automatic setup/deploy recipes and Hybrid actors are not provided.
 
 ## Memory and evaluation boundaries

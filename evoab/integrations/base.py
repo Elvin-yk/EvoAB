@@ -11,7 +11,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel, ConfigDict
 
 from evoab.artifacts.store import ArtifactStore
-from evoab.integrations.composition import ToolAssembly, ToolModule
+from evoab.integrations.composition import SelectedModule, ToolAssembly, ToolModule
 from evoab.tools.toolkit import ToolProvider
 
 
@@ -36,8 +36,10 @@ class IntegrationSpec:
     name: str
     create_session: Callable[[Any], Any]
     add_cli_args: Callable[[argparse.ArgumentParser], None] = _add_no_cli_args
-    tool_profiles: Mapping[str, tuple[ToolModule, ...]] = field(default_factory=dict)
-    default_tool_profile: str = "direct"
+    # Every tool module this integration can assemble; recipe roles select among them.
+    tool_modules: tuple[ToolModule, ...] = ()
+    # Method used when a run names no recipe (see evoab/methods/).
+    default_recipe: str = "agentic"
     debug_modules: tuple[ToolModule, ...] = ()
     validate_cli: Callable[[Any], None] = _validate_no_cli_args
     allow_automatic_retry: bool = True
@@ -56,7 +58,8 @@ class IntegrationContext:
     session_dir: Path
     artifacts: ArtifactStore
     tracer: Any
-    tool_modules: tuple[ToolModule, ...]
+    # The modules the entry role selected, each with its tool subset, options and style.
+    tool_modules: tuple[SelectedModule, ...]
 
 
 @dataclass(frozen=True)

@@ -47,12 +47,6 @@ def quaternion_multiply(left, right) -> np.ndarray:
     ])
 
 
-def rotate_vector(orientation, offset) -> np.ndarray:
-    q = quaternion(orientation)
-    point = vector(offset, 3, "offset")
-    return point + 2 * np.cross(q[1:], np.cross(q[1:], point) + q[0] * point)
-
-
 def orientation_waypoint(current, target, max_angle: float = 0.6) -> np.ndarray:
     start, goal = quaternion(current), quaternion(target)
     dot = float(np.dot(start, goal))
@@ -87,20 +81,6 @@ def pose_waypoint(
     fraction = min(1.0, translation_budget / max(float(np.linalg.norm(delta)), 1e-12))
     next_xyz = origin + fraction * delta
     return np.concatenate((next_xyz, next_quat))
-
-
-def relative_rotation(current, axis, angle_rad: float, frame: str) -> np.ndarray:
-    direction = vector(axis, 3, "axis")
-    length = float(np.linalg.norm(direction))
-    if length <= 1e-12:
-        raise ValueError("axis cannot be zero")
-    rotation = np.r_[math.cos(angle_rad / 2), direction / length * math.sin(angle_rad / 2)]
-    orientation = quaternion(current)
-    if frame == "world":
-        return quaternion(quaternion_multiply(rotation, orientation))
-    if frame == "local":
-        return quaternion(quaternion_multiply(orientation, rotation))
-    raise ValueError("frame must be world or local")
 
 
 def rpy_to_quaternion(value) -> np.ndarray:

@@ -1,0 +1,17 @@
+id: agentic
+label: Agentic Policy
+summary: One agent observes, calls robot tools and decides from their feedback in a persistent session.
+paradigms: [orchestrate]
+status: builtin
+roles:
+  main:
+    description: Plans and acts with the shared scene, motion, skill and episode tools.
+    channel: tools
+    capabilities: [skills, scene, gripper, episode]
+loop: {entry: main}
+execution: {return_mode: background, resource_scheduling: per-resource}
+parameters:
+  - {name: context, path: roles.main.context.policy, label: Context policy, type: string,
+     choices: [identity, observation_window, sliding_window],
+     help: identity keeps the full transcript; windows need a provider URL.}
+  - {name: prompt, path: roles.main.prompt.append, label: Extra instructions, type: text}

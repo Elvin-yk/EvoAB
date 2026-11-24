@@ -7,36 +7,16 @@ import secrets
 import socket
 import sys
 import time
+import json
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from evoab.agents.contracts import AgentLaunch
-from evoab.agents.registry import agent_launch, list_agent_launches
+from evoab.agents.registry import agent_launch, get_agent_backend, list_agent_launches
 from evoab.workbench import benchmarks, jobs
 from evoab.workbench.runs import STUDIO_DIR
 
 REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh")
-# Workbench modes map to the existing run CLI interaction and tool profiles.
-METHODS = (
-    {"id": "direct_policy", "agent": "native", "action_profile": "direct", "label": "Direct Policy",
-     "interaction": "direct_policy", "tool_profile": "direct",
-     "description": "模型每次直接输出一段末端位姿动作块，由该评测集的控制器逐步执行，再观察、再输出。不经过任何工具调用。"},
-    {"id": "agentic", "agent": "native", "action_profile": "direct", "label": "Agentic Policy",
-     "interaction": "tool_calling", "tool_profile": "direct",
-     "description": "智能体在同一会话中观察场景、调用机器人工具（移动、抓取、感知等），并根据执行反馈决定下一步。"},
-    {"id": "agent_policy", "agent": None, "action_profile": "hybrid", "label": "Agent + Policy",
-     "interaction": "tool_calling", "tool_profile": "hybrid",
-     "description": "智能体通过策略模型提出的动作完成任务。"},
-)
-LEGACY_METHODS = {"rua": ("agentic", "rua")}
-# Direct-policy options Studio may set; each maps to one ``evoab run`` flag.
-DIRECT_OPTIONS = {
-    "representation": ("--direct-representation", ("abs_eef", "delta_eef")),
-    "horizon": ("--direct-horizon", None),
-    "history": ("--direct-history", None),
-    "prompt_blocks": ("--direct-prompt-blocks", None),
-    "custom_prompt": ("--direct-custom-prompt", None),
-}
 
 
 @dataclass(frozen=True)
@@ -46,69 +26,124 @@ class LaunchRequest:
     task: str
     model: str
     reasoning_effort: str = "low"
-    method: str = "direct_policy"
-    direct: dict | None = None
+    method: str = "agentic"
+    # Values for the method's declared parameters, by parameter name.
+    params: dict | None = None
+    # Overrides the entry role's agent runtime; None keeps the recipe's.
     agent: str | None = None
     agent_options: dict[str, int] | None = None
 
 
-def methods() -> tuple[dict, ...]:
-    """Studio mode metadata with implementations supplied by registered adapters."""
-    agents = list_agent_launches()
-    return tuple({**method, "agents": [
-        {"id": name, "label": agent.label, "description": agent.description,
-         "integrations": agent.integrations, "cli_flags": agent.cli_flags,
-         "options": [asdict(option) for option in agent.options],
-         "filters_presets": agent.validate_preset is not None, "model_help": agent.model_help}
-        for name, agent in agents.items() if method["id"] in agent.modes
-    ]} for method in METHODS)
+def _agent_choice(name: str, launch: AgentLaunch) -> dict:
+    return {"id": name, "label": launch.label, "description": launch.description,
+            "integrations": launch.integrations, "cli_flags": launch.cli_flags,
+            "options": [asdict(option) for option in launch.options],
+            "filters_presets": launch.validate_preset is not None, "model_help": launch.model_help}
 
 
-def method_identity(method: str | None, agent: str | None) -> tuple[str | None, str | None]:
-    """Translate historical method IDs and recover the implied agent on old records."""
-    if isinstance(method, str) and method in LEGACY_METHODS:
-        return LEGACY_METHODS[method]
-    if method is None and isinstance(agent, str) and agent in LEGACY_METHODS:
-        return LEGACY_METHODS[agent]
-    if agent is None:
-        mode = next((item for item in METHODS if item["id"] == method), None)
-        if mode is not None:
-            agent = mode["agent"]
-    return method, agent
+def methods(integration: str | None = None) -> tuple[dict, ...]:
+    """Library methods with what a launcher needs: parameters, compatible agents and the graph."""
+    from evoab.composition.components import is_evaluator
+    from evoab.composition.graph import recipe_graph
+    from evoab.composition.methods import list_methods
+
+    launches = list_agent_launches()
+    spec = None
+    if integration is not None:
+        from evoab.integrations import load_integration
+        spec = load_integration(integration).get_integration_spec()
+    result = []
+    for method in list_methods():
+        recipe = method.recipe
+        if integration is not None and recipe.integrations is not None and integration not in recipe.integrations:
+            continue
+        unavailable = None
+        if spec is not None:
+            from evoab.composition.compiler import compile_recipe
+            try:
+                compile_recipe(recipe, spec, base_dir=method.root)
+            except ValueError as error:
+                unavailable = str(error)
+        entry = recipe.entry
+        def usable(name, launch):
+            if integration is not None and launch.integrations is not None and integration not in launch.integrations:
+                return False
+            # Methods are agent-independent; only external evaluators (RUA) are tied to their own method.
+            if is_evaluator(name) or entry.brain.agent and is_evaluator(entry.brain.agent):
+                return name == entry.brain.agent
+            return True
+
+        agents = [_agent_choice(name, launch) for name, launch in launches.items() if usable(name, launch)]
+        default_agent = entry.brain.agent or "native"
+        agents.sort(key=lambda agent: agent["id"] != default_agent)
+        result.append({
+            "id": recipe.id, "label": recipe.label, "summary": recipe.summary, "paradigms": recipe.paradigms,
+            "status": recipe.status, "source": method.source, "integrations": recipe.integrations,
+            "channel": entry.channel, "agent": default_agent, "roles": list(recipe.roles),
+            "parameters": [{**parameter.model_dump(mode="json"), "default": _parameter_default(recipe, parameter)}
+                           for parameter in recipe.parameters],
+            "references": [reference.model_dump(mode="json") for reference in recipe.references],
+            "episodes": recipe.loop.episodes.model_dump(mode="json"),
+            "agents": agents if unavailable is None else [], "unavailable": unavailable,
+            "graph": recipe_graph(recipe),
+        })
+    return tuple(result)
+
+
+def _parameter_default(recipe, parameter):
+    from evoab.composition.recipe import get_path
+    value = get_path(recipe.model_dump(mode="json"), parameter.path)
+    if parameter.type == "pair" and isinstance(value, list):
+        return f"{value[0]}:{value[1]}"
+    return value
 
 
 def preferred_choice(integration: str, method: str | None, agent: str | None) -> tuple[str, str | None]:
     """Pick a usable saved selection for the current benchmark."""
-    available = {item["id"]: item for item in methods()}
-    for mode in dict.fromkeys((method, "direct_policy", *available)):
-        if mode not in available:
+    available = {item["id"]: item for item in methods(integration)}
+    for candidate in dict.fromkeys((method, "agentic", "direct_policy", *available)):
+        item = available.get(candidate)
+        if item is None or not item["agents"]:
             continue
-        item = available[mode]
-        choices = [choice["id"] for choice in item["agents"]
-                   if choice["integrations"] is None or integration in choice["integrations"]]
-        if choices:
-            preferred = agent if mode == method and agent in choices else item["agent"]
-            return mode, preferred if preferred in choices else choices[0]
-    return "direct_policy", None
+        ids = [choice["id"] for choice in item["agents"]]
+        return candidate, agent if candidate == method and agent in ids else None
+    return "agentic", None
 
 
 def resolve_selection(request: LaunchRequest) -> tuple[LaunchRequest, dict, AgentLaunch]:
     if not isinstance(request.method, str) or (request.agent is not None and not isinstance(request.agent, str)):
         raise ValueError("method and agent must be string identifiers")
-    method_id, agent_id = method_identity(request.method, request.agent)
-    if request.agent is not None and request.agent != agent_id:
-        raise ValueError(f"--method {request.method} selects Agent {agent_id!r}")
-    method = next((item for item in METHODS if item["id"] == method_id), None)
+    method_id, agent_id = request.method, request.agent
+    method = next((item for item in methods(request.integration) if item["id"] == method_id), None)
     if method is None:
-        raise ValueError(f"unknown method {request.method!r}")
-    if agent_id is None:
-        raise ValueError(f"{method['label']} requires an Agent implementation")
-    agent = agent_launch(agent_id)
-    if agent is None or method_id not in agent.modes:
-        raise ValueError(f"Agent {agent_id!r} does not support {method['label']} in Workbench")
-    if agent.integrations is not None and request.integration not in agent.integrations:
-        raise ValueError(f"{agent.label} is not available for {request.integration}")
-    return replace(request, method=method["id"], agent=agent_id), method, agent
+        raise ValueError(f"unknown method {request.method!r} for {request.integration}")
+    chosen = agent_id or method["agent"]
+    if chosen not in {agent["id"] for agent in method["agents"]}:
+        raise ValueError(f"Agent {chosen!r} cannot run {method['label']} on {request.integration}")
+    agent = agent_launch(chosen)
+    if agent is None:
+        raise ValueError(f"Agent {chosen!r} has no Studio launch configuration")
+    return replace(request, method=method_id, agent=agent_id), method, agent
+
+
+def _parameter_flags(request: LaunchRequest, method: dict) -> list[str]:
+    declared = {parameter["name"]: parameter for parameter in method["parameters"]}
+    if request.params is not None and not isinstance(request.params, dict):
+        raise ValueError("params must be an object")
+    flags = []
+    for name, value in (request.params or {}).items():
+        parameter = declared.get(name)
+        if parameter is None:
+            raise ValueError(f"unknown parameter {name!r} for {method['label']}")
+        if isinstance(value, str) and ("\x00" in value or len(value) > 8192):
+            raise ValueError(f"{name} must be text of at most 8192 characters without NUL")
+        if not isinstance(value, (str, int, float, bool)):
+            raise ValueError(f"{name} must be a scalar value")
+        text = json.dumps(value) if parameter["type"] == "text" and isinstance(value, str) else str(value)
+        if isinstance(value, bool):
+            text = "true" if value else "false"
+        flags.append(f"--set={name}={text}")
+    return flags
 
 
 def _agent_option_flags(request: LaunchRequest, agent: AgentLaunch) -> list[str]:
@@ -133,12 +168,6 @@ def free_port() -> int:
         return sock.getsockname()[1]
 
 
-def build_command(request: LaunchRequest, output_root: Path) -> list[str]:
-    """The exact ``evoab run`` command for one Studio launch."""
-    selection = resolve_selection(request)
-    return _build_command(*selection, output_root)
-
-
 def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, output_root: Path) -> list[str]:
     profile, task = benchmarks.launch_target(request.integration, request.profile, request.task)
     command = [
@@ -148,24 +177,18 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         "--env-port", str(free_port()),
         *(["--runtime-profile", profile] if profile is not None else []),
         "--task", task,
-        "--tool-profile", method["tool_profile"],
+        "--recipe", method["id"],
         "--no-sam3",
-        "--agent", str(request.agent),
+        *(["--agent", request.agent] if request.agent else []),
         "--model", request.model,
         "--reasoning-effort", request.reasoning_effort,
-        "--interaction-mode", method["interaction"],
         *agent.cli_flags,
         *_agent_option_flags(request, agent),
+        *_parameter_flags(request, method),
     ]
     runtime = benchmarks.runtime_for_launch(request.integration, request.profile)
     if runtime is not None and runtime.container:
         command.append("--container")
-    if method["interaction"] == "direct_policy":
-        for key, value in (request.direct or {}).items():
-            if key == "custom_prompt":
-                command.append(f"--direct-custom-prompt={value}")
-            else:
-                command += [DIRECT_OPTIONS[key][0], str(value)]
     return command + [
         "--output-dir", str(output_root),
         # Port 0 picks a free port; the CLI then prints the run directory at start.
@@ -190,23 +213,23 @@ def validate(request: LaunchRequest) -> dict:
     elif request.model not in {p["name"] for p in catalog.presets()}:
         raise ValueError(f"unknown model preset {request.model!r}")
     _agent_option_flags(request, agent)
-    if request.direct is not None and not isinstance(request.direct, dict):
-        raise ValueError("direct must be an object")
-    if request.direct and method["interaction"] != "direct_policy":
-        raise ValueError("Direct options apply only to the Direct Policy method")
-    for key, value in (request.direct or {}).items():
-        if key not in DIRECT_OPTIONS:
-            raise ValueError(f"unknown Direct option {key!r}")
-        choices = DIRECT_OPTIONS[key][1]
-        if choices and value not in choices:
-            raise ValueError(f"{key} must be one of {choices}")
-        if key == "custom_prompt":
-            if not isinstance(value, str) or "\x00" in value or len(value) > 8192:
-                raise ValueError("custom_prompt must be text of at most 8192 characters without NUL")
-            continue
-        if not isinstance(value, str) or not value or " " in value:
-            raise ValueError(f"invalid {key} value {value!r}")
+    _parameter_flags(request, method)
+    _check_recipe(request, method)
     return task
+
+
+def _check_recipe(request: LaunchRequest, method: dict) -> None:
+    """Compile the method with the requested parameters before starting a process."""
+    from evoab.composition.compiler import compile_recipe
+    from evoab.composition.methods import get_method
+    from evoab.composition.recipe import with_overrides
+    from evoab.integrations import load_integration
+
+    entry = get_method(method["id"])
+    recipe = with_overrides(entry.recipe, dict(request.params or {}))
+    if request.agent:
+        recipe = with_overrides(recipe, {f"roles.{recipe.loop.entry}.brain.agent": request.agent})
+    compile_recipe(recipe, load_integration(request.integration).get_integration_spec(), base_dir=entry.root)
 
 
 def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
@@ -231,12 +254,12 @@ def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
         max_steps=task.get("max_steps"),
         task=request.task,
         model=request.model,
-        agent=request.agent,
+        agent=request.agent or method["agent"],
         reasoning_effort=request.reasoning_effort,
-        action_profile=method["action_profile"],
-        tool_profile=method["tool_profile"],
         method=request.method,
-        direct=request.direct,
+        method_label=method["label"],
+        channel=method["channel"],
+        params=request.params,
         agent_options=request.agent_options,
     )
     return launch_id

@@ -1,0 +1,20 @@
+id: rua
+label: RUA (Robot-Use Agent)
+summary: The paper setting of the unified robot-use agent harness, run natively by EvoAB.
+paradigms: [orchestrate]
+status: reproduction
+references:
+  - {title: "Democratizing Robot-Use Agents: A Unified Harness with Open Models", url: "https://arxiv.org/abs/2611.01560"}
+  - {title: "uni-robot-agent", url: "https://github.com/Open-RUA/uni-robot-agent", kind: code}
+roles:
+  main:
+    description: One agent with the shared skill, scene, motion and episode tools; reasoning overlaps motion.
+    channel: tools
+    capabilities: [skills, scene, gripper, episode]
+    context: {policy: identity}
+loop: {entry: main}
+execution: {return_mode: background, resource_scheduling: per-resource}
+parameters:
+  - {name: context, path: roles.main.context.policy, label: Context policy, type: string,
+     choices: [identity, observation_window, sliding_window],
+     help: The paper evicts old images and compresses history; window policies need a provider URL.}

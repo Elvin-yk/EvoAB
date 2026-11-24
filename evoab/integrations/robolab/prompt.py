@@ -20,5 +20,5 @@ def build(context):
     ))
     if episode:
         prompt = prompt.append(system="Environment description:\n" + environment_for_model(episode.description.environment),
-                               user=None if context.tool_profile == "clean" else "Initial measured state:\n" + state_json_for_model(episode.state))
+                               user=None if context.initial_observation else "Initial measured state:\n" + state_json_for_model(episode.state))
     return prompt

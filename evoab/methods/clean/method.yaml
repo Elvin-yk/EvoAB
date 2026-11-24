@@ -1,0 +1,17 @@
+id: clean
+label: Clean baseline
+summary: Four tools with compact results and an initial RGB observation, for minimal-harness comparisons.
+paradigms: [orchestrate]
+status: builtin
+roles:
+  main:
+    description: Uses only move, hold, capture_scene and finish with compact results.
+    channel: tools
+    style: compact
+    initial_observation: true
+    capabilities:
+      - {id: gripper, tools: [move, hold]}
+      - {id: scene, tools: [capture_scene]}
+      - episode
+loop: {entry: main}
+execution: {return_mode: immediate}

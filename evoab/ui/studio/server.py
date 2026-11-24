@@ -60,6 +60,22 @@ def create_app(runs_root: Path) -> FastAPI:
     def config() -> dict[str, Any]:
         return bench.config()
 
+    @app.get("/api/methods")
+    def method_list(integration: str | None = None) -> list[dict[str, Any]]:
+        return bench.methods(integration)
+
+    @app.get("/api/methods/{method_id}")
+    def method_detail(method_id: str) -> dict[str, Any]:
+        return bench.method(method_id)
+
+    @app.get("/api/components")
+    def components(integration: str | None = None) -> dict[str, Any]:
+        return bench.components(integration)
+
+    @app.get("/api/trace/{run_id}/graph")
+    def run_graph(run_id: str) -> dict[str, Any]:
+        return bench.run_graph(run_id)
+
     @app.put("/api/settings")
     def save_settings(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         return bench.update_settings(payload)

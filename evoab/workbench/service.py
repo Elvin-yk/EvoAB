@@ -19,7 +19,7 @@ from evoab.agents.registry import agent_launch
 from evoab.provider.contracts import PresetCompatibilityError
 from evoab.workbench import benchmarks, direct_trace, jobs, trace
 from evoab.workbench.launcher import (
-    DIRECT_OPTIONS, REASONING_EFFORTS, LaunchRequest, launch, method_identity, methods, resolve_selection, validate,
+    REASONING_EFFORTS, LaunchRequest, launch, methods, resolve_selection, validate,
 )
 from evoab.workbench.runs import STUDIO_DIR, load_launches, scan_runs, usage_totals
 
@@ -108,9 +108,6 @@ class Workbench:
             value = {}
         value = value if isinstance(value, dict) else {}
         defaults = {key: value[key] if isinstance(value.get(key), str) else None for key in SETTING_KEYS}
-        defaults["default_method"], defaults["default_agent"] = method_identity(
-            defaults["default_method"], defaults["default_agent"],
-        )
         return defaults
 
     def update_settings(self, changes: dict[str, Any]) -> dict[str, Any]:
@@ -130,9 +127,6 @@ class Workbench:
         if "default_method" in changes and "default_agent" not in changes:
             current["default_agent"] = None
         current.update(changes)
-        current["default_method"], current["default_agent"] = method_identity(
-            current["default_method"], current["default_agent"],
-        )
         path = self.settings_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -143,9 +137,50 @@ class Workbench:
             "runs_root": str(self.runs_root),
             "reasoning_efforts": REASONING_EFFORTS,
             "methods": methods(),
-            "direct_options": {k: list(v[1]) if v[1] else None for k, v in DIRECT_OPTIONS.items()},
             "settings": self.settings(),
         }
+
+    # -- methods --------------------------------------------------------------
+
+    def methods(self, integration: str | None = None) -> list[dict[str, Any]]:
+        try:
+            return list(methods(integration))
+        except ValueError as error:
+            raise NotFound(str(error)) from error
+
+    def method(self, method_id: str) -> dict[str, Any]:
+        """One method with its reproduction card and recipe text."""
+        from evoab.composition.methods import get_method
+        from evoab.composition.recipe import recipe_document
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", method_id):
+            raise NotFound("unknown method")
+        try:
+            entry = get_method(method_id)
+        except ValueError as error:
+            raise NotFound(str(error)) from error
+        summary = next((m for m in methods() if m["id"] == method_id), {})
+        return {**summary, "card": entry.card, "recipe": recipe_document(entry.recipe)}
+
+    def components(self, integration: str | None = None) -> dict[str, Any]:
+        from evoab.composition.components import catalog
+        try:
+            return catalog(integration)
+        except ValueError as error:
+            raise NotFound(str(error)) from error
+
+    def run_graph(self, run_id: str) -> dict[str, Any]:
+        """The recipe a run used, as a graph annotated with executed tool calls."""
+        from evoab.composition.graph import annotate_with_trace, recipe_graph
+        from evoab.composition.recipe import Recipe
+        run_dir = self.run_dir(run_id)
+        try:
+            recorded = json.loads((run_dir / "recipe.json").read_text(encoding="utf-8"))
+            recipe = Recipe.model_validate(recorded["recipe"])
+        except (OSError, ValueError, KeyError) as error:
+            raise NotFound("this run has no recorded recipe") from error
+        graph = annotate_with_trace(recipe_graph(recipe), run_dir)
+        graph["overrides"] = recorded.get("overrides") or {}
+        return graph
 
     # -- benchmarks -----------------------------------------------------------
 

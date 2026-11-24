@@ -1,6 +1,4 @@
 """DexJoCo sessions with scene and device-independent hybrid tools."""
-from typing import Literal
-
 from evoab.integrations.base import IntegrationSpec
 from evoab.integrations.hybrid import (
     HybridOptions,
@@ -10,7 +8,6 @@ from evoab.integrations.hybrid import (
 
 
 class DexjocoOptions(HybridOptions):
-    action_profile: Literal["hybrid"] | None = None
     run_id: str | None = None
     task: str | None = None
     seed: int | None = None
@@ -42,6 +39,6 @@ def get_integration_spec():
     from .session import create_session
     return IntegrationSpec(name="dexjoco", create_session=create_session,
         add_cli_args=add_cli_args, validate_cli=validate_cli, config_model=DexjocoOptions,
-        tool_profiles={"hybrid": (SKILLS_MODULE, SCENE_MODULE, HYBRID_MODULE, EPISODE_MODULE)},
-        default_tool_profile="hybrid",
+        tool_modules=(SKILLS_MODULE, SCENE_MODULE, HYBRID_MODULE, EPISODE_MODULE),
+        default_recipe="agent_policy",
         deployment_module="evoab.integrations.dexjoco.deployment", allow_automatic_retry=False)

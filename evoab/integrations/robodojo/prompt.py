@@ -33,7 +33,7 @@ def load_task_requirements(task: str) -> str:
 def build(context: PromptContext) -> Prompt:
     episode = context.episode
     info = episode.description if episode is not None else None
-    if context.tool_profile == "clean":
+    if context.style == "compact":
         prompt = Prompt(user=context.task or (episode.instruction if episode else ""), system=(
             "Use the registered robot tools to complete the task. Do not inspect simulator "
             "internals or bypass these tools. Positions are world metres; state quaternions "
@@ -48,14 +48,14 @@ def build(context: PromptContext) -> Prompt:
         return prompt.append(user="No prepared episode is connected. Measured state and calibration are unavailable.")
     prompt = prompt.append(
         system="Environment description:\n" + environment_for_model(info.environment, indent=2),
-        user=None if context.tool_profile == "clean" else
+        user=None if context.initial_observation else
              f"Initial measured environment state: {json.dumps(without_evaluation_facts(episode.state.model_dump(mode='json')))}",
     )
     if info.environment.cameras and not any(camera.has_calibration for camera in info.environment.cameras):
         prompt = prompt.append(system=(
             "Camera calibration is disabled for this episode. Observations provide RGB without depth, "
             "camera intrinsics or camera extrinsics. "
-            + ("locate, when exposed, provides 2D segmentation only. " if context.tool_profile != "clean" else "")
+            + ("locate, when exposed, provides 2D segmentation only. " if "locate" in context.tool_names else "")
             + "Capturing again does not enable metric localization. Use visible relations and bounded "
             "motions with feedback; keep inferred coordinates distinct from measurements. "
             "Robot proprioception and the published robot geometry remain available."

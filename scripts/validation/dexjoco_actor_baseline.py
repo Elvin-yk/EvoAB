@@ -76,7 +76,7 @@ def main():
     args = SimpleNamespace(**DexjocoOptions(vla_review=False, seed=options.seed,
         action_model_checkpoint_sha256=options.checkpoint_sha256).model_dump(),
         env_url=options.env_url, action_model_url=options.action_model_url,
-        instruction=options.instruction, skill_writing=False, _vla_review_api_key=None)
+        instruction=options.instruction, skills_root=None, _vla_review_api_key=None)
     artifacts = ArtifactStore(output)
     # Prepare only the native episode; the baseline calls the shared actor runner
     # directly, so no planner-facing tool modules are assembled.

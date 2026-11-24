@@ -33,8 +33,8 @@ Upgrade CLI/planner and native services together and restart the services:
 scalar environment protocol 4, scalar tool schema 8 and actor HTTP protocol v3
 are incompatible with older service versions. Install `evoab==0.2.0`
 and `evoab-runtime==0.2.0` in their **separate** environments; never
-install both distributions together. Existing `--tool-profile minimal` remains
-an alias for `--tool-profile clean`.
+install both distributions together. Existing `--recipe clean` remains
+an alias for `--recipe clean`.
 
 ## Run a task
 
@@ -47,7 +47,7 @@ export EVOAB_API_KEY='YOUR_API_KEY'
 export EVOAB_PROVIDER_URL='https://provider.example/v1'
 evoab run --integration robodojo --deploy local \
   --task stack_bowls --model YOUR_MODEL_ID \
-  --action-profile direct --no-sam3 --output-dir ./runs --monitor
+  --recipe agentic --no-sam3 --output-dir ./runs --monitor
 ```
 
 Set your vision model and Responses-compatible endpoint. Open the printed

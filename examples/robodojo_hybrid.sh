@@ -6,7 +6,7 @@
 #   bash examples/robodojo_hybrid.sh --model "$MODEL" \
 #     --action-model-checkpoint-sha256 "$CHECKPOINT_SHA256"
 # Append --validate-config for an offline check, or --help for all CLI options.
-# This minimal example uses no SAM3 and keeps normal budgets and task supplements.
+# This minimal example uses no SAM3, normal budgets and the optional task supplements.
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -16,4 +16,4 @@ exec "${PYTHON:-python}" -m evoab run \
   --integration robodojo --task stack_bowls \
   --env-url "${EVOAB_ENV_URL:-http://127.0.0.1:18760}" \
   --action-model-url "${EVOAB_ACTION_MODEL_URL:-http://127.0.0.1:18761}" \
-  --action-profile hybrid --no-sam3 --output-dir ./runs/robodojo-hybrid "$@"
+  --recipe agent_policy --no-sam3 --include-extra-task-requirements --output-dir ./runs/robodojo-hybrid "$@"

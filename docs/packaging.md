@@ -68,7 +68,7 @@ and the offline configuration command:
 
 ```bash
 evoab run --integration robodojo --model test-model --env-url http://127.0.0.1:18760 \
-  --action-profile direct --no-sam3 --validate-config
+  --recipe agentic --no-sam3 --validate-config
 ```
 
 For the disposable installs, use the full executable paths from the pip and uv

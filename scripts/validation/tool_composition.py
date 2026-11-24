@@ -1,14 +1,14 @@
-"""CPU checks for integration composition, visibility and owned-resource cleanup.
+"""CPU checks for recipe composition, visibility and owned-resource cleanup.
 
 Run from a checkout with PYTHONPATH=. python scripts/validation/tool_composition.py.
 No robot, model or perception services are started. --snapshot PATH records the
-legacy configuration's schemas and prompt text for cross-revision comparisons.
+schemas and prompt text of the built-in methods for cross-revision comparisons;
+--compare PATH checks the current revision against such a snapshot.
 """
 from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager, ExitStack
-from dataclasses import replace
 import json
 from pathlib import Path
 import tempfile
@@ -62,6 +62,9 @@ class Environment:
     def record(self, step):
         return self.initial
 
+    def capture(self, request):
+        return self.initial
+
     def close(self):
         self.closed = True
 
@@ -75,19 +78,29 @@ class Resource:
         self.closed = True
 
 
-def config(integration="robolab", profile="direct", *, legacy=False, **settings):
+PROFILE_METHODS = {"direct": "agentic", "hybrid": "agent_policy", "clean": "clean"}
+OVERRIDES = {"tool_return_mode": "execution.return_mode", "observation_profile": "execution.observation_profile"}
+
+
+def config(integration="robolab", profile="direct", *, recipe=None, overrides=None, skill_writing=False,
+           **settings):
+    """A tool-only session for one built-in method; profile names map to the methods that replaced them."""
     options = {"task": "validation-task"}
     if integration == "robodojo":
         options["include_extra_task_requirements"] = False
     if profile == "hybrid":
         options.update(vla_review=False, action_model_checkpoint_sha256="a" * 64)
         settings.setdefault("action_model_url", "http://actor.invalid")
-    if legacy:
-        options["action_profile"] = profile
-    else:
-        settings["tool_profile"] = profile
+    recipe_overrides = dict(overrides or {})
+    for name, path in OVERRIDES.items():
+        if name in settings:
+            recipe_overrides[path] = settings.pop(name)
+    if skill_writing:
+        recipe_overrides["roles.main.capabilities.skills.options"] = {"write": True}
     return SessionConfig(integration=integration, env_url="http://environment.invalid",
-                         no_sam3=True, integration_options=options, **settings)
+                         no_sam3=True, integration_options=options,
+                         recipe=recipe or PROFILE_METHODS.get(profile, profile),
+                         recipe_overrides=recipe_overrides, **settings)
 
 
 @contextmanager
@@ -153,12 +166,31 @@ def snapshots(directory):
             for mode in ("immediate", "background"):
                 for command in ("run", "tui"):
                     key = f"{integration}/{profile}/{mode}/{command}"
-                    cfg = config(integration, profile, legacy=True, tool_return_mode=mode)
+                    cfg = config(integration, profile, tool_return_mode=mode)
                     with assembled(cfg, directory, command=command) as (assembly, *_):
                         prompt = assembly.build_prompt("Fixture instruction")
                         records[key] = {"schemas": assembly.executor.get_tool_schemas(),
                                         "prompt": prompt.flatten()}
     return records
+
+
+def _run_paths(text: str) -> str:
+    import re
+    return re.sub(r"/[^\s\"']*/tmp[A-Za-z0-9_]+", "<run>", text)
+
+
+def compare(previous: dict, current: dict) -> list[str]:
+    differences = []
+    for key in sorted(set(previous) | set(current)):
+        if key not in previous or key not in current:
+            differences.append(f"{key}: present in only one revision")
+            continue
+        old, new = previous[key], current[key]
+        if old["schemas"] != new["schemas"]:
+            differences.append(f"{key}: tool schemas differ")
+        if _run_paths(old["prompt"]) != _run_paths(new["prompt"]):
+            differences.append(f"{key}: prompt differs")
+    return differences
 
 
 class CompositionChecks(unittest.TestCase):
@@ -201,23 +233,26 @@ class CompositionChecks(unittest.TestCase):
                                     {"path": str(self.directory / "probe.txt"), "content": "ok"})
                                 self.assertEqual(file_result.output.success, command == "tui")
 
-    def test_profile_validation_and_legacy_alias(self):
+    def test_method_validation(self):
         for integration in INTEGRATIONS:
-            self.assertEqual(config(integration, legacy=True).resolve().tool_profile, "direct")
-            with self.assertRaisesRegex(ValueError, "does not support tool profile"):
-                config(integration, "missing").resolve()
+            self.assertEqual(config(integration).resolve().tool_modules, ("skills", "scene", "gripper", "episode"))
+            with self.assertRaisesRegex(ValueError, "unknown method"):
+                config(integration, recipe="missing").resolve()
             if integration not in HYBRID:
-                with self.assertRaisesRegex(ValueError, "does not support tool profile"):
+                with self.assertRaisesRegex(ValueError, "no capability 'hybrid'"):
                     config(integration, "hybrid").resolve()
-        cfg = config()
-        with self.assertRaisesRegex(ValueError, "select different"):
-            cfg.model_copy(update={"integration_options": {"action_profile": "hybrid"}}).resolve()
         for missing in ("action_model_url", "action_model_checkpoint_sha256"):
             cfg = config(profile="hybrid")
             changes = {missing: None} if missing == "action_model_url" else {
                 "integration_options": {**cfg.integration_options, missing: None}}
             with self.assertRaisesRegex(ValueError, "Hybrid requires"):
                 cfg.model_copy(update=changes).resolve()
+        with self.assertRaisesRegex(ValueError, "cannot be narrowed"):
+            config(overrides={"roles.main.capabilities.skills.tools": ["read_skill"]}).resolve()
+        with self.assertRaisesRegex(ValueError, "has no tools"):
+            config(overrides={"roles.main.capabilities.gripper.tools": ["teleport"]}).resolve()
+        with self.assertRaisesRegex(ValueError, "compact tool style requires execution.return_mode"):
+            config(profile="clean", tool_return_mode="background").resolve()
 
     def test_debug_visibility_and_disabled_features(self):
         for mode, selectors in (("background", ["finish"]), ("immediate", ["finish", "@jobs"]),
@@ -252,18 +287,19 @@ class CompositionChecks(unittest.TestCase):
                            self.directory) as (assembly, *_):
                 self.assertEqual(normal, assembly.build_prompt("Fixture").flatten())
 
-    def test_cli_profile_and_alias(self):
+    def test_cli_recipe_and_set(self):
         from evoab.cli import build_parser
         from evoab.config import resolve_settings
         for integration in INTEGRATIONS:
             spec = load_integration(integration).get_integration_spec()
             parser = build_parser(spec)
-            for flag in ("--tool-profile", "--action-profile"):
-                argv = ["run", "--integration", integration, "--model", "fixture",
-                        "--task", "validation-task", "--env-url", "http://fixture.invalid",
-                        "--no-sam3", flag, "direct"]
-                args = resolve_settings(parser.parse_args(argv), spec, agent_enabled=False)
-                self.assertEqual(args.tool_profile, "direct")
+            argv = ["run", "--integration", integration, "--model", "fixture",
+                    "--task", "validation-task", "--env-url", "http://fixture.invalid",
+                    "--no-sam3", "--recipe", "clean", "--set", "roles.main.max_turns=7"]
+            args = resolve_settings(parser.parse_args(argv), spec, agent_enabled=False)
+            self.assertEqual((args.recipe_id, args.tool_style, args.tool_return_mode), ("clean", "compact", "immediate"))
+            self.assertEqual(args.max_turns, 7)
+            self.assertEqual(args.selected_tools, ("move", "hold", "capture_scene", "finish"))
         self.assertFalse({"isaacsim", "mujoco", "torch"} & set(sys.modules))
 
     def test_observation_and_skill_writing_remain_optional(self):
@@ -299,29 +335,42 @@ class CompositionChecks(unittest.TestCase):
                 pass
 
     def test_custom_composition_omits_motion_and_its_prompt(self):
-        from evoab.integrations.composition import resolve_tool_profile
+        observe = {"roles.main.capabilities": ["skills", "scene", "episode"]}
+        with assembled(config(overrides=observe), self.directory) as (assembly, *_):
+            self.assertFalse({"move", "grasp", "release", "hold"} & surface(assembly))
+            self.assertNotIn("Gripper operation labels", assembly.build_prompt("Observe").flatten())
+        from evoab.integrations.composition import validate_modules
         spec = load_integration("robolab").get_integration_spec()
-        modules = tuple(m for m in spec.tool_profiles["direct"] if m.name != "gripper")
-        spec = replace(spec, tool_profiles={"observe": modules}, default_tool_profile="observe")
-        with patch("evoab.integrations.robolab.get_integration_spec", return_value=spec):
-            cfg = config(profile="observe")
-            with assembled(cfg, self.directory) as (assembly, *_):
-                self.assertFalse({"move", "grasp", "release", "hold"} & surface(assembly))
-                self.assertNotIn("Gripper operation labels", assembly.build_prompt("Observe").flatten())
-        duplicate = replace(spec, tool_profiles={"direct": (modules[0], modules[0])})
         with self.assertRaisesRegex(ValueError, "Duplicate tool module"):
-            resolve_tool_profile(SimpleNamespace(tool_profile="direct"), duplicate)
+            validate_modules((spec.tool_modules[0], spec.tool_modules[0]))
+
+    def test_clean_method_is_the_compact_four_tool_contract(self):
+        observation = patch("evoab.integrations.prepared_episode.Episode.observation", return_value={})
+        images = patch("evoab.tools.scene.perception.snapshot_images", return_value=[])
+        metadata = patch("evoab.tools.scene.perception.snapshot_metadata", return_value={"snapshot_id": "fixture"})
+        with observation, images, metadata, \
+                assembled(config(profile="clean"), self.directory, calibrated=False) as (assembly, *_):
+            self.assertEqual(surface(assembly), {"move", "hold", "capture_scene", "finish"})
+            prompt = assembly.build_prompt("Fixture").flatten()
+            self.assertIn("Clean result format", prompt)
+            self.assertTrue((self.directory / "initial_observation.json").is_file())
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshot", type=Path)
+    parser.add_argument("--compare", type=Path)
     args = parser.parse_args()
-    if args.snapshot:
+    if args.snapshot or args.compare:
         with tempfile.TemporaryDirectory() as directory:
             records = snapshots(Path(directory))
-        args.snapshot.write_text(json.dumps(records, indent=2) + "\n")
-        print(f"Recorded {len(records)} schema/prompt combinations")
+        if args.snapshot:
+            args.snapshot.write_text(json.dumps(records, indent=2) + "\n")
+            print(f"Recorded {len(records)} schema/prompt combinations")
+        if args.compare:
+            differences = compare(json.loads(args.compare.read_text()), records)
+            print("\n".join(differences) or f"Identical across {len(records)} combinations")
+            raise SystemExit(1 if differences else 0)
     else:
         unittest.main(argv=["tool_composition"], verbosity=2)
 

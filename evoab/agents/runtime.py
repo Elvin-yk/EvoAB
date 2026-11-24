@@ -17,7 +17,6 @@ def add_model_arguments(parser):
     """Shared transport options, independent of installed agent SDKs."""
     import argparse
     from evoab.config import _nonnegative, _positive
-    from evoab.context.history import list_context_policies
     from evoab.provider.registry import list_provider_profiles
     options = parser.add_argument_group("Model transport and context")
     options.add_argument(
@@ -27,6 +26,10 @@ def add_model_arguments(parser):
         help="Reasoning effort (default: max for Codex, none for Claude)",
     )
     options.add_argument("--provider-url")
+    options.add_argument(
+        "--model-preset", action="store_true",
+        help="Treat --model as a Studio model preset and take its model ID, base URL, wire profile and "
+             "API key from model settings (agents with an HTTP model transport)")
     options.add_argument(
         "--provider-profile",
         choices=list_provider_profiles(),
@@ -52,32 +55,3 @@ def add_model_arguments(parser):
         default=True,
         help="Allow multiple model tool calls per response",
     )
-    context = parser.add_argument_group("Context policy")
-    context.add_argument(
-        "--context-policy", choices=list_context_policies(), default="identity"
-    )
-    context.add_argument("--context-observation-horizon", type=_positive, default=2,
-                         help="Recent tool observation groups retained by observation_window")
-    context.add_argument("--context-image-token-allowance", type=_positive, default=1536,
-                         help="Estimated tokens per retained image for observation_window (not billed usage)")
-    context.add_argument(
-        "--context-max-input-tokens",
-        type=_positive,
-        help="Maximum estimated input tokens",
-    )
-    context.add_argument(
-        "--context-target-input-tokens",
-        type=_positive,
-        help="Target estimated input tokens after trimming",
-    )
-    for name, default, value_type in (
-        ("keep-recent-blocks", 4, _nonnegative),
-        ("keep-observation-blocks", 1, _nonnegative),
-        ("min-recent-tool-images", 3, _nonnegative),
-        ("image-eviction-batch-size", 20, _positive),
-    ):
-        context.add_argument(
-            "--context-" + name,
-            type=value_type,
-            default=default,
-        )

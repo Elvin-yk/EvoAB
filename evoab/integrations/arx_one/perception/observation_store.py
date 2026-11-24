@@ -251,8 +251,3 @@ class ObservationStore:
             self._row(db, observe_id)
             self._event(db, observe_id, phase, **data)
 
-    def derived_records(self, observe_id):
-        with self._db() as db:
-            self._row(db, observe_id)
-            rows = db.execute("SELECT record FROM derived WHERE observe_id=? ORDER BY rowid", (observe_id,)).fetchall()
-        return [json.loads(row["record"]) for row in rows]

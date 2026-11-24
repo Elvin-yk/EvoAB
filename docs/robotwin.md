@@ -49,7 +49,7 @@ Connect from the planner interpreter:
 
 ```bash
 evoab run --integration robotwin --env-url http://127.0.0.1:18783 \
-  --model MODEL --action-profile direct --no-sam3
+  --model MODEL --recipe agentic --no-sam3
 ```
 
 Each service owns one episode. Native setup, stepping, observations and cleanup

@@ -108,16 +108,14 @@ create the owned environment before the agent connects.
 | Option | Default | Purpose |
 |---|---|---|
 | `--integration` | Required | Explicit environment integration, such as `robodojo` |
-| `--agent` | `codex` | `codex` or `claude_code` |
-| `--model` | Required | Provider model ID |
+| `--recipe` | Integration's default method (`agentic`) | Method id from `evoab methods list`, or a recipe file; see [composition](composition.md) |
+| `--set PATH=VALUE` | — | Override a method parameter (`--set horizon=3:10`) or any recipe path (`--set execution.mode=replanning`); repeatable |
+| `--agent` | The recipe's entry agent | Override the entry role's runtime, e.g. `codex`, `claude_code`, `native` |
+| `--model` | Required unless the recipe pins one | Provider model ID or native preset |
 | `--max-turns` | `0` | Agent turn limit; `0` disables it |
 | `--reasoning-effort` | `max` for Codex; `none` for Claude | Main Codex agent effort; Claude requires `none` |
 | `--episode-timeout-s` | `10800` | Agent episode wall time for `run`, excluding managed environment startup; `0` disables it |
-| `--tool-return-mode` | `background` | `immediate` waits for final results; `background` exposes job controls |
-| `--resource-scheduling` | `per-resource` | Independent resource domains; `global-serial` uses one FIFO queue |
-| `--execution-mode` | Integration's mode | `parallel`, or `replanning`: read each result first and replan after a failed action |
-| `--observation-profile` | `none` | Integration observation profile; requires matching integration and per-resource scheduling |
-| `--skill-writing` | Disabled | Enable writing Markdown experience within the integration's skill namespace |
+| `--experience-dir` | `<output>/experience/<method>/<integration>` | Where a method that carries skills or programs keeps them between episodes |
 | `--env-url` | Environment or required in connection mode | Existing endpoint; conflicts with `--deploy local` |
 | `--deploy local` | Disabled | `run` only: own a prepared RoboDojo environment |
 | `--monitor` | Disabled | `run` only: start a local Web console |
@@ -219,8 +217,8 @@ Four settings control different stages:
 |---|---|---|
 | `--model-parallel-tool-calls` | Enabled | Whether the provider gateway allows multiple tool calls per model response |
 | `--mcp-parallel-dispatch` | Disabled | Whether Codex dispatches calls concurrently to the evoab MCP service |
-| `--tool-return-mode` | `background` | Tool result delivery, independent of model batching |
-| `--resource-scheduling` | `per-resource` | Resource scheduling, independent of result delivery |
+| `execution.return_mode` | `background` | Tool result delivery, independent of model batching |
+| `execution.resource_scheduling` | `per-resource` | Resource scheduling, independent of result delivery |
 
 The first two support `--no-` forms. MCP parallel dispatch requires Codex;
 `--no-model-parallel-tool-calls` also works with Claude by setting Messages
@@ -237,44 +235,46 @@ Codex's native collaboration events are normalized into agent activity records
 for the console and TUI. This is SDK event handling; there is no separate
 `--multi-agent` launcher option.
 
-### Tool composition profiles
+### Methods and recipes
 
-Select an integration-declared composition with `--tool-profile`. All included
-integrations default to `direct`, which assembles skills, scene, gripper and
-episode modules. `robodojo` and `robolab` also declare `hybrid`,
-which adds actor collaboration; the selected environment/controller and actor
-must still satisfy their binding contract. `robotwin`, `libero_plus`,
-`libero_pro`, `rmbench` and `calvin` declare `direct` and `clean`.
-All seven gripper integrations support `clean`.
+A run's method is a recipe: its roles (brain, channel, capabilities, context),
+the loop between them and the execution settings. `evoab methods list` shows the
+library; `evoab methods show ID` prints a method's card, recipe and parameters.
 
 ```bash
 evoab run --integration libero_pro --model MODEL \
   --env-url http://localhost:18760 --no-sam3 \
-  --tool-profile direct --tool-return-mode immediate
+  --recipe agentic --set execution.return_mode=immediate
 ```
 
+Execution settings live in the recipe's `execution` section:
+
+| Path | Default | Purpose |
+|---|---|---|
+| `execution.return_mode` | `background` | `immediate` waits for final results; `background` exposes job controls |
+| `execution.resource_scheduling` | `per-resource` | Independent resource domains; `global-serial` uses one FIFO queue |
+| `execution.mode` | Integration's mode | `parallel`, or `replanning`: read each result first and replan after a failed action |
+| `execution.observation_profile` | `none` | Integration observation profile; requires matching integration and per-resource scheduling |
+
+Skill writing is a capability option:
+`--set roles.main.capabilities.skills.options.write=true` (requires
+`EVOAB_SKILLS_DIR`, or a method that carries skills between episodes).
+
 For the [clean robot tool set](integrations.md#clean-robot-tools), select
-`--tool-profile clean` and connect to an environment with depth disabled.
-It exposes only `move`, `hold`, `capture_scene` and `finish` as harness tools and selects immediate
-returns automatically. The first model input includes RGB, state and calibration;
-no initial `capture_scene` call is needed. Native SDK helpers keep their existing
-configuration. Direct and Hybrid keep their current defaults and execution modes.
+`--recipe clean` and connect to an environment with depth disabled. It exposes
+only `move`, `hold`, `capture_scene` and `finish`, uses immediate returns and the
+compact result style, and starts with an RGB observation in the first message.
 
-For Hybrid, select `--tool-profile hybrid` and provide the actor URL, checkpoint
-SHA256 and [reviewer settings](#vla-reviewer). Only selected modules are
-instantiated: Direct does not construct an actor client, reviewer or Hybrid
-provider. Unknown or unsupported profiles fail configuration validation.
+For Hybrid, select `--recipe agent_policy` and provide the actor URL, checkpoint
+SHA256 and [reviewer settings](#vla-reviewer). Only selected capabilities are
+instantiated: a recipe without `hybrid` constructs no actor client, reviewer or
+Hybrid provider. A capability the integration lacks fails configuration
+validation unless the recipe marks it `optional`.
 
-`--action-profile direct|hybrid` remains a compatibility alias. Supplying both
-selectors is allowed when they agree; conflicting values fail before connecting.
-Resolved configuration and result records include `tool_profile` and
-`tool_modules`; `action_profile` remains available for existing result readers.
-
-Direct and Hybrid do not select execution mode. In these profiles, `immediate` hides
-job controls and waits for tool completion; `background` exposes job controls
-and applies each tool's return policy. Resource scheduling is unchanged.
-For Direct/Hybrid, workspace helpers remain available in TUI and absent from ordinary `run`.
-Observation profiles and skill-writing permissions retain their existing options.
+Resolved configuration and result records include `recipe`, `channel`,
+`tool_style`, `tool_modules` and `roles`; `recipe.json` in the run directory
+records the full recipe and the overrides applied. Workspace helpers remain
+available in TUI and absent from ordinary `run`.
 
 ### Tool visibility debugging
 
@@ -297,8 +297,8 @@ Add `actor_act`, `write_skill`, `finish`, or any individual member explicitly.
 For example, append to your usual episode command:
 
 ```bash
---tool-debug --tools @skills @scene @motion finish --tool-return-mode immediate
---tool-debug --tools @skills @scene @motion @jobs finish --tool-return-mode background
+--tool-debug --tools @skills @scene @motion finish --set execution.return_mode=immediate
+--tool-debug --tools @skills @scene @motion @jobs finish --set execution.return_mode=background
 ```
 
 Visibility is applied after composition and does not start omitted services.
@@ -336,7 +336,7 @@ namespace still allows discovery of general skills. Reads reject paths outside
 these scopes; discovery excludes file symlinks crossing scope boundaries and does not
 traverse directory symlinks.
 
-`--skill-writing` additionally exposes `write_skill`. It requires an explicit
+`--set roles.main.capabilities.skills.options.write=true` additionally exposes `write_skill`. It requires an explicit
 external skills root and permits `.md` files anywhere inside the current
 environment namespace. Shared `general/` skills remain read-only to the agent,
 even in an external library; maintain them through reviewed source changes.
@@ -365,7 +365,7 @@ shutil.copytree(source, target)  # Target must not already exist.
 PYTHON
 ```
 
-Then add `--skill-writing` to the episode command in that shell. For a uv tool
+Then add `--set roles.main.capabilities.skills.options.write=true` to the episode command in that shell. For a uv tool
 installation, prepare this directory from the checkout's
 `evoab/resources/skills/` instead. Store the external library on
 persistent storage and use a distinct copy per run when skills can change.
@@ -374,22 +374,23 @@ checkpoint, run archive, or other large directory needs copying.
 
 ### Context
 
-`--context-policy identity` preserves history without window tuning.
+Context is a role setting: `--set roles.main.context.policy=observation_window`
+(the recipe default `identity` preserves history without window tuning).
 `sliding_window` supports Codex Responses and Gemini CLI GenerateContent through
 the provider gateway. Both require
-`--context-max-input-tokens` and `--context-target-input-tokens`.
+`context.max_input_tokens` and `context.target_input_tokens`.
 
 | Sliding-window option | Default |
 |---|---|
-| `--context-keep-recent-blocks` | `4` |
-| `--context-keep-observation-blocks` | `1` |
-| `--context-min-recent-tool-images` | `3` |
-| `--context-image-eviction-batch-size` | `20` |
+| `context.keep_recent_blocks` | `4` |
+| `context.keep_observation_blocks` | `1` |
+| `context.min_recent_tool_images` | `3` |
+| `context.image_eviction_batch_size` | `20` |
 
 Input-token budgets use an estimate, not a model tokenizer. The recent-history
-counts refer to context blocks. `--context-min-recent-tool-images` controls the
+counts refer to context blocks. `context.min_recent_tool_images` controls the
 image-eviction phase; whole-block trimming can still remove those images.
-Explicit context budget/image options are rejected with `identity`. Choose
+Window options are ignored by `identity`. Choose
 budgets within the limits supported by your model and provider.
 
 Gemini trims native `contents` while keeping user prompts, system instructions,
@@ -434,7 +435,7 @@ and agent completion are recorded separately. See [result inspection](getting-st
 | `robodojo` | Shared gripper tools plus optional pinned task requirements; RoboDojo Pi0.5 requires an action-model URL and checkpoint SHA256 |
 | `robolab` | Direct and joint-policy Hybrid DROID tasks; connect to a prepared RoboLab/Isaac environment |
 
-All three integrations accept `--action-profile direct|hybrid` (default `direct`).
+All three integrations accept `--recipe agentic|hybrid` (default `direct`).
 Hybrid adds the independent `actor_act` tool and requires an actor URL and
 `--action-model-checkpoint-sha256`. The binding defaults to the prepared environment
 and can be selected with `--action-model-binding`; the SDK equivalent is
@@ -444,10 +445,11 @@ compatibility checks happen at session setup. See [Hybrid](hybrid.md) and the
 [bridge deployment contract](services.md#xpolicylab-bridge).
 
 Only RoboDojo supplies a task-requirements loader for
-`--include-extra-task-requirements`. It is enabled by default and reads the packaged
+`--include-extra-task-requirements`. It is off by default, matching the official
+Agent Track rules; when enabled it reads the packaged
 `resources/prompts/robodojo/instruction_supplements.json`. The full
 `task_requirements.json` is retained as a reference and is not loaded by default.
-Use `--no-include-extra-task-requirements` to disable the supplements. Both
+Use `--include-extra-task-requirements` to add the supplements. Both
 forms are RoboDojo-only options; RoboLab rejects them.
 
 ### Actor execution budgets
@@ -543,9 +545,9 @@ directory. Existing records retain their original format. The source repository 
 
 Use `--integration`, `--agent`, `--action-model-url`, `--action-model-checkpoint-sha256`,
 `--vla-review`, and `--include-extra-task-requirements`.
-Context retention uses `--context-keep-recent-blocks`,
-`--context-keep-observation-blocks`, `--context-min-recent-tool-images`, and
-`--context-image-eviction-batch-size`.
+Context retention uses `context.keep_recent_blocks`,
+`context.keep_observation_blocks`, `context.min_recent_tool_images`, and
+`context.image_eviction_batch_size`.
 Configuration and result files use `agent_backend` and `action_model_url`.
 Deployment scripts use `--action-model-*` flags and `ACTION_MODEL_*` variables.
 Historical `--robot`, `--planner` and `--archive-policy` options are not supported.
@@ -562,8 +564,8 @@ export EVOAB_API_KEY='replace-with-tokenhub-api-key'
 evoab run --integration robodojo --agent codex \
   --model hy4 --provider-profile tencent.responses \
   --provider-url https://tokenhub.tencentmaas.com/v1 \
-  --reasoning-effort high --context-policy identity \
-  --env-url http://127.0.0.1:18760 --action-profile direct --no-sam3 \
+  --reasoning-effort high --set roles.main.context.policy=identity \
+  --env-url http://127.0.0.1:18760 --recipe agentic --no-sam3 \
   --validate-config
 ```
 
@@ -575,7 +577,7 @@ This provider is an unreleased addition; use a source checkout containing
 The adapter preserves the supplied reasoning fields, reasoning history and
 function-call/result pairing. Supported model IDs and reasoning effort values
 are determined by your upstream service; the adapter does not remap them.
-`--context-policy identity` preserves conversation selection before encoding.
+`--set roles.main.context.policy=identity` preserves conversation selection before encoding.
 Inline PNG images become lossless WebP; other images and external URLs remain
 unchanged. Responses, including SSE events, errors and usage, are forwarded
 without protocol conversion. The Hybrid reviewer can also select
@@ -583,7 +585,7 @@ without protocol conversion. The Hybrid reviewer can also select
 
 ### DeepSeek image history
 
-Use `--provider-profile deepseek.chat_completions --context-policy identity` with the official
+Use `--provider-profile deepseek.chat_completions --set roles.main.context.policy=identity` with the official
 DeepSeek base URL and `deepseek-flash`. The adapter preserves full history and
 reasoning, uploading original inline images to the [Files API](https://api-docs.deepseek.com/guides/files_api/).
 Requests reuse file IDs within each client and credential; no sliding window,
@@ -612,7 +614,7 @@ OpenAI image detail `auto` maps to MiniMax `default`.
 The documented request-body limit is 64 MB and the per-image limit is 10 MB.
 Base64 expands binary image bytes by about one third. The 1M-token context
 window does not remove this byte limit. This adapter does not truncate history
-or upload images to a Files API. Use `--context-policy identity` to preserve
+or upload images to a Files API. Use `--set roles.main.context.policy=identity` to preserve
 history and inspect actual request sizes before long runs.
 Reference: https://platform.minimax.cn/docs/api-reference/text-openai-api
 
@@ -643,7 +645,7 @@ agent is running. Both managed deployment and an existing environment URL work:
 ```bash
 evoab run \
   --integration robodojo --deploy local --task stack_bowls \
-  --model "$MODEL" --action-profile direct --no-sam3 \
+  --model "$MODEL" --recipe agentic --no-sam3 \
   --output-dir ./runs --monitor --monitor-port 8765
 ```
 
@@ -730,7 +732,7 @@ physical-step replay; planner tool-output images alone omit intermediate views.
 
 Install `evoab[antigravity]` and select `--agent antigravity` with
 `--provider-url`, `--provider-profile aliyun.gemini_chat_completions`,
-`--reasoning-effort none` and `--context-policy identity`. The initial backend
+`--reasoning-effort none` and `--set roles.main.context.policy=identity`. The initial backend
 supports `tool_calling` with Qwen. See [setup, constraints and smoke validation](antigravity.md).
 
 
@@ -738,7 +740,7 @@ supports `tool_calling` with Qwen. See [setup, constraints and smoke validation]
 
 ### Compact clean results and observation history
 
-The clean tool profile uses compact model-facing JSON. Measured arm poses use
+The `clean` method uses compact model-facing JSON. Measured arm poses use
 `state.arms[name].pose` (world metres and fixed-axis XYZ radians), with joints,
 measured/commanded gripper values, native steps and ended state retained. Normal
 feedback omits duplicated poses and IK statistics; rejected/recovered motion and
@@ -750,11 +752,11 @@ readable RGB file. Snapshot artifact IDs are not filenames. RGB-only results omi
 disabled/null matrices. The raw tool events, stored snapshots, initial observation and image bytes stay intact.
 Direct/Hybrid outputs and tool execution are unchanged.
 
-Select `--context-policy observation_window --context-observation-horizon 2`
-independently of the tool profile. This policy supports Responses and
+Select `--set roles.main.context.policy=observation_window --set roles.main.context.observation_horizon=2`
+independently of the method's tools. This policy supports Responses and
 GenerateContent histories. It keeps the latest two distinct tool-observation
 groups, removing older images and their inline matrices together. The default
-`--context-keep-recent-blocks 4` retains camera descriptive metadata for the latest
+`--set roles.main.context.keep_recent_blocks=4` retains camera descriptive metadata for the latest
 four observation groups; older groups retain snapshot/time/camera references and
 per-camera image paths for retrieval. Applying the policy to an already-windowed
 history continues aging the retained camera metadata as new observations arrive.
@@ -766,9 +768,9 @@ unmodified history. These rules do not guarantee retention of every transient
 visual fact: use a larger horizon when evidence has not been recorded as memory.
 
 The window never deletes whole turns to meet a budget. An optional
-`--context-max-input-tokens` rejects an over-budget protected history rather than
+`context.max_input_tokens` rejects an over-budget protected history rather than
 silently discarding it. Estimates count text separately from an image allowance
-(`--context-image-token-allowance`, default 1536), not encoded image bytes; they
+(`context.image_token_allowance`, default 1536), not encoded image bytes; they
 are not provider billing counts. Existing `identity`/`sliding_window` defaults
 and algorithms are unchanged. No new summarization calls or reasoning-replay
 changes are introduced. Test result compaction alone before combining it with

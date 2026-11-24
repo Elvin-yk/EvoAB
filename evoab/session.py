@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -54,17 +55,57 @@ class SessionAssembly:
 
     toolkit: Toolkit
     executor: ToolExecutor
-    build_prompt: Callable[[str], Any]
+    build_prompt: Callable[..., Any]
     integration_session: IntegrationSession
     session_dir: Path
     artifacts: ArtifactStore
     observation_profile: Any | None
     telemetry: TelemetrySession
     allow_automatic_retry: bool = True
+    # What the entry role sees of the shared executor (the executor itself for one-role recipes).
+    entry_executor: ToolExecutor | None = None
+    role_tools: dict[str, frozenset[str]] = field(default_factory=dict)
+    delegation: "RoleDispatch | None" = None
+
+
+class RoleDispatch:
+    """Late binding between delegate tools (assembled first) and the session that runs roles."""
+
+    def __init__(self):
+        self._run = None
+
+    def bind(self, run: Callable[[str, str], dict]) -> None:
+        self._run = run
+
+    def __call__(self, role: str, instruction: str) -> dict:
+        if self._run is None:
+            return {"role": role, "error": "Delegation is only available while an agent runs"}
+        return self._run(role, instruction)
+
+
+def _union_modules(compiled) -> tuple:
+    """Instantiate each module once for all roles: the union of their tool subsets."""
+    from evoab.integrations.composition import ModuleSelection, SelectedModule
+    merged: dict[str, SelectedModule] = {}
+    order = [compiled.entry, *(role for name, role in compiled.roles.items() if name != compiled.recipe.loop.entry)]
+    for role in order:
+        for item in role.modules:
+            current = merged.get(item.name)
+            if current is None:
+                merged[item.name] = item
+                continue
+            a, b = current.selection, item.selection
+            if a.options != b.options or a.style != b.style:
+                raise ValueError(f"roles select capability {item.name!r} with different options or styles; "
+                                 "one episode instantiates each capability once")
+            tools = None if a.tools is None or b.tools is None else tuple(dict.fromkeys(a.tools + b.tools))
+            merged[item.name] = SelectedModule(item.module, ModuleSelection(tools, a.options, a.style))
+    return tuple(merged.values())
 
 
 def assemble_session(args) -> SessionAssembly:
     """Assemble tools and executor through IntegrationSession without depending on transport details."""
+    from evoab.composition import experience
     session = None
     executor = None
     observation_profile = None
@@ -81,6 +122,14 @@ def assemble_session(args) -> SessionAssembly:
 
     artifacts = ArtifactStore(session_dir)
     try:
+        compiled = args.compiled_recipe
+        experience.prepare(args, session_dir)
+        (session_dir / "recipe.json").write_text(json.dumps(
+            {"id": args.recipe_id, "source": getattr(args, "recipe_source", None),
+             "overrides": getattr(args, "recipe_overrides", {}),
+             "recipe": compiled.recipe.model_dump(mode="json")}, indent=2, allow_nan=False) + "\n")
+        multi_role = len(compiled.roles) > 1
+        selected = _union_modules(compiled) if multi_role else compiled.entry.modules
         integration_mod = load_integration(args.integration)
         integration_spec = integration_mod.get_integration_spec()
         session = integration_spec.create_session(
@@ -89,7 +138,7 @@ def assemble_session(args) -> SessionAssembly:
                 session_dir=session_dir,
                 artifacts=artifacts,
                 tracer=telemetry.tracer,
-                tool_modules=integration_spec.tool_profiles[args.tool_profile],
+                tool_modules=selected,
             )
         )
         session.start()
@@ -98,25 +147,42 @@ def assemble_session(args) -> SessionAssembly:
             integration=args.integration,
             agent_backend=args.agent_backend,
             model=args.model,
+            recipe=args.recipe_id,
+            channel=args.channel,
             tool_return_mode=args.tool_return_mode,
             resource_scheduling=args.resource_scheduling,
-            action_profile=getattr(args, "action_profile", None),
-            tool_profile=args.tool_profile, tool_modules=args.tool_modules,
+            tool_modules=args.tool_modules,
         )
 
         assembly = session.tool_assembly
         tools = assembly.tools
         policies = assembly.policies
+        # Tool names each module actually provides, for per-role visibility.
+        module_tools = {item.name: {tool.name for tool in provider.get_tools()}
+                        for item, provider in zip(assembly.selected, assembly.providers)}
+        dispatch = None
+        targets = {}
+        for role in compiled.roles.values():
+            for name in role.delegates:
+                target = compiled.roles[name]
+                from evoab.tools.delegation.provider import DelegateTarget
+                targets[name] = DelegateTarget(name, target.role.description, target.channel,
+                                               target.agent_for(args.agent_backend))
+        if targets:
+            from evoab.tools.delegation.provider import DelegationTools, tool_policies as delegation_policies
+            dispatch = RoleDispatch()
+            tools.extend(DelegationTools(targets, dispatch).get_tools())
+            policies.update(delegation_policies(targets))
         workspace = WorkspaceProvider()
         # File helpers remain TUI-only unless explicitly selected for an ablation.
-        if getattr(args, "command", "run") != "run" and args.tool_profile != "clean":
+        if getattr(args, "command", "run") != "run" and args.tool_style != "compact":
             tools.extend(workspace.get_tools())
 
         profile_name = getattr(args, "observation_profile", "none")
         if profile_name != "none":
             if args.resource_scheduling != "per-resource":
                 raise ValueError(
-                    "observation profiles currently require --resource-scheduling per-resource"
+                    "observation profiles currently require resource_scheduling per-resource"
                 )
             profile_mod = load_observation_profile(profile_name)
             observation_profile = profile_mod.create_observation_profile(
@@ -125,8 +191,24 @@ def assemble_session(args) -> SessionAssembly:
             )
             tools.extend(observation_profile.tools)
 
+        def visible(role) -> frozenset[str]:
+            from evoab.tools.delegation.provider import tool_name
+            names = set()
+            for item in role.modules:
+                provided = module_tools.get(item.name, set())
+                names |= provided if item.selection.tools is None else provided & set(item.selection.tools)
+            names |= {tool_name(target) for target in role.delegates}
+            return frozenset(names)
+
+        role_tools = {name: visible(role) for name, role in compiled.roles.items()}
+        entry_name = compiled.recipe.loop.entry
+        extra_entry = {tool.name for tool in tools} - set().union(*module_tools.values()) - {
+            f"delegate_{name}" for name in targets}
+        # Workspace (TUI) and observation-profile tools belong to the entry role.
+        role_tools[entry_name] = role_tools[entry_name] | frozenset(extra_entry)
+
         # Debug tool filtering does not change prompt guidance for the configured modes.
-        prompt_tool_names = tuple(sorted(tool.name for tool in tools))
+        prompt_tool_names = tuple(sorted(role_tools[entry_name]))
         selection = None
         if getattr(args, "tool_debug", False):
             declared, policies = assembly.debug_catalog(session, integration_spec.debug_modules)
@@ -151,7 +233,11 @@ def assemble_session(args) -> SessionAssembly:
             resource_scheduling=args.resource_scheduling,
             control_tool_names=None if selection is None else selection.control_names,
         )
-        schemas = toolkit.get_tool_schemas() if selection is None else executor.get_tool_schemas()
+        entry_executor = executor
+        if multi_role and selection is None:
+            from evoab.execution.views import ToolView
+            entry_executor = ToolView(executor, role_tools[entry_name], registered=toolkit.get_tool_names())
+        schemas = entry_executor.get_tool_schemas() if selection is None else executor.get_tool_schemas()
         (session_dir / "tools.json").write_text(
             json.dumps(schemas, indent=2, allow_nan=False) + "\n"
         )
@@ -167,19 +253,20 @@ def assemble_session(args) -> SessionAssembly:
         prompt_builder = get_prompt_builder(prompt_integration)
         prompt_context = PromptContext(
             integration_name=prompt_integration,
-            interaction_mode=getattr(args, "interaction_mode", "tool_calling"),
+            channel=args.channel if args.channel != "action" else "tools",
             task="",
             action_model_name=session.action_model_name,
             episode=session.episode,
             session_dir=session_dir,
             observation_profile=profile_name,
-            action_profile=getattr(args, "action_profile", None),
-            tool_profile=args.tool_profile,
+            style=args.tool_style,
+            initial_observation=args.initial_observation,
             tool_return_mode=args.tool_return_mode,
             resource_scheduling=args.resource_scheduling,
             tool_names=prompt_tool_names,
-            tool_prompt_resources=assembly.runtime_prompts,
-            skill_writing=getattr(args, "skill_writing", False),
+            tool_prompt_resources=tuple(path for item in compiled.entry.modules
+                                        for path in item.module.runtime_prompts),
+            skill_writing=args.skill_writing,
         )
         contributions = tuple(getattr(observation_profile, "prompt_contributions", ()))
         references = session.episode.robot_resources() if hasattr(session.episode, "robot_resources") else []
@@ -187,7 +274,7 @@ def assemble_session(args) -> SessionAssembly:
             (session_dir / "robot_resources.json").write_text(
                 json.dumps(references, indent=2, allow_nan=False) + "\n")
         initial_images, initial_metadata = (), None
-        if args.tool_profile == "clean":
+        if args.initial_observation:
             from evoab.tools.scene.perception import snapshot_images, snapshot_metadata
             episode = session.episode
             snapshot = episode.observation()
@@ -201,25 +288,47 @@ def assemble_session(args) -> SessionAssembly:
             (session_dir / "initial_observation.json").write_text(
                 json.dumps(initial_metadata, indent=2, allow_nan=False) + "\n")
 
-        def build_prompt(task: str):
-            context = replace(prompt_context, task=task)
+        def build_prompt(task: str, role: str | None = None):
+            compiled_role = compiled.roles[role or entry_name]
+            is_entry = compiled_role.name == entry_name
+            if is_entry:
+                context = replace(prompt_context, task=task)
+            else:
+                context = replace(
+                    prompt_context, task=task, channel=compiled_role.channel, style=compiled_role.role.style,
+                    initial_observation=False, session_dir=None, observation_profile="none",
+                    tool_names=tuple(sorted(role_tools[compiled_role.name])),
+                    tool_prompt_resources=tuple(path for item in compiled_role.modules
+                                                for path in item.module.runtime_prompts),
+                    skill_writing=compiled_role.skill_writing)
             base_prompt = prompt_builder(context)
             if references:
                 base_prompt = base_prompt.append(user=(
                     "Robot reference resources (read-only exact paths; use native file tools when needed):\n"
                     + json.dumps(references, allow_nan=False)))
-            if initial_metadata is not None:
+            if initial_metadata is not None and is_entry:
                 from evoab.tools.clean import result_view
                 model_metadata = result_view(initial_metadata, initial=True)
                 base_prompt = replace(base_prompt, images=initial_images).append(
                     user="Initial RGB observation (images in observation.image_cameras order):\n"
                          + json.dumps(model_metadata, allow_nan=False, separators=(",", ":")),
                 )
-            for contribution in assembly.prompt_contributions:
+            for contribution in assembly.contributions_for(compiled_role.tool_modules):
                 base_prompt = base_prompt.append(
                     system=contribution.system, user=contribution.user, source=contribution.source,
                 )
-            return assemble_prompt(base_prompt, context, contributions)
+            if compiled_role.prompt_text and compiled_role.channel != "action":
+                base_prompt = base_prompt.append(system=compiled_role.prompt_text,
+                                                 source=f"recipe:{args.recipe_id}:{compiled_role.name}")
+            if is_entry and getattr(args, "programs_dir", None):
+                base_prompt = base_prompt.append(system=experience.PROGRAMS_NOTE.format(path=args.programs_dir),
+                                                 source="experience:programs")
+            prompt = assemble_prompt(base_prompt, context, contributions if is_entry else ())
+            if not is_entry:
+                directory = session_dir / "prompts"
+                directory.mkdir(exist_ok=True)
+                (directory / f"{compiled_role.name}.md").write_text(prompt.flatten(), encoding="utf-8")
+            return prompt
 
         return SessionAssembly(
             toolkit=toolkit,
@@ -231,6 +340,9 @@ def assemble_session(args) -> SessionAssembly:
             observation_profile=observation_profile,
             telemetry=telemetry,
             allow_automatic_retry=integration_spec.allow_automatic_retry,
+            entry_executor=entry_executor,
+            role_tools=role_tools,
+            delegation=dispatch,
         )
     except BaseException as exc:
         # Stop producers and finish persistence before publishing even a failed startup.
@@ -299,6 +411,9 @@ class Session:
         self._started = time.time()
         self._deadline = None
         self._tools = None
+        # Agents of delegated roles currently running; cancel() reaches them too.
+        self._role_agents: set = set()
+        self._role_lock = threading.Lock()
         self.result: RunResult | None = None
         self.events = EventBus()
         self._subscriptions = EventSubscriptions(self.events)
@@ -380,17 +495,20 @@ class Session:
         error_msg = None
         try:
             logger.info("Task: %s", args.instruction)
-            with assembly.telemetry.tracer.span("agent.run", agent_backend=args.agent_backend, model=args.model):
-                if args.interaction_mode == "direct_policy":
+            if assembly.delegation is not None:
+                assembly.delegation.bind(self._run_role)
+            with assembly.telemetry.tracer.span("agent.run", agent_backend=args.agent_backend, model=args.model,
+                                                recipe=args.recipe_id, channel=args.channel):
+                if args.channel == "action":
                     self._agent_result = _run_direct(self._agent, args, assembly, self.events)
                 else:
                     self._agent_result = _run_agent(self._agent,
                         model_config=resolve_agent_model_config(args), context_config=resolve_context_config(args),
-                        interaction_mode=args.interaction_mode,
+                        channel=args.channel,
                         save_raw_request=args.telemetry == "debug", save_exchanges=args.save_exchanges,
                         artifacts=assembly.artifacts, tracer=assembly.telemetry.tracer,
                         prompt=assembly.build_prompt(args.instruction), task=args.instruction,
-                        toolkit=assembly.toolkit, executor=assembly.executor, max_turns=args.max_turns,
+                        toolkit=assembly.toolkit, executor=assembly.entry_executor, max_turns=args.max_turns,
                         event_bus=self.events, session_dir=assembly.session_dir)
             _log_agent_result(self._agent_result)
         except KeyboardInterrupt as error:
@@ -410,6 +528,61 @@ class Session:
             self.finish(error=error_msg)
         return self.result
 
+    def _run_role(self, role: str, instruction: str) -> dict:
+        """Run another recipe role against this episode; called by its delegate tool."""
+        from evoab.composition.roles import role_namespace
+        from evoab.execution.views import ToolView
+
+        args, assembly = self._args, self._assembly
+        compiled = args.compiled_recipe.roles[role]
+        role_args = role_namespace(args, compiled)
+        self._role_runs = getattr(self, "_role_runs", 0) + 1
+        run_dir = assembly.session_dir / "roles" / f"{self._role_runs:03d}_{role}"
+        (run_dir / "scratch").mkdir(parents=True, exist_ok=True)
+        timeout_s = None if self._deadline is None else max(0.001, self._deadline - time.monotonic())
+        started = time.time()
+        agent_name = role_args.agent_backend
+        agent = create_agent(agent_name, model=role_args.model, timeout_s=timeout_s,
+                             **get_agent_backend(agent_name).config_options(role_args))
+        with self._role_lock:
+            self._role_agents.add(agent)
+        try:
+            with assembly.telemetry.tracer.span("role.run", role=role, agent_backend=agent_name,
+                                                model=role_args.model, channel=compiled.channel):
+                if compiled.channel == "action":
+                    try:
+                        result = agent.run_direct(episode=assembly.integration_session.episode,
+                                                  integration=args.integration, instruction=instruction,
+                                                  session_dir=run_dir)
+                    finally:
+                        agent.close()
+                else:
+                    view = ToolView(assembly.executor, assembly.role_tools[role],
+                                    registered=assembly.toolkit.get_tool_names())
+                    result = _run_agent(agent,
+                        model_config=resolve_agent_model_config(role_args),
+                        context_config={"context_policy": role_args.context_policy,
+                                        "context_options": dict(role_args.context_options)},
+                        channel=compiled.channel, save_raw_request=args.telemetry == "debug",
+                        save_exchanges=args.save_exchanges, artifacts=assembly.artifacts,
+                        tracer=assembly.telemetry.tracer, prompt=assembly.build_prompt(instruction, role),
+                        task=instruction, toolkit=assembly.toolkit, executor=view,
+                        max_turns=compiled.role.max_turns, event_bus=self.events, session_dir=run_dir,
+                        announce_finish=False)
+        except Exception as error:  # noqa: BLE001 - a failed sub-run is a report, not a crashed episode.
+            logger.exception("Role %s failed", role)
+            return {"role": role, "channel": compiled.channel, "error": f"{type(error).__name__}: {error}",
+                    "run_dir": str(run_dir), "elapsed_s": round(time.time() - started, 3)}
+        finally:
+            with self._role_lock:
+                self._role_agents.discard(agent)
+        report = {"role": role, "channel": compiled.channel, "success": result.success,
+                  "message": result.message[:4000], "error": result.error, "stop_reason": result.stop_reason,
+                  "turns": result.turns_used, "tool_calls": result.tool_calls, "steps": result.steps_used,
+                  "elapsed_s": round(time.time() - started, 3), "run_dir": str(run_dir)}
+        (run_dir / "report.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
+        return report
+
     def subscribe(self, callback: Callable[[Event], None]) -> None:
         """Observe events; callback failures are recorded without aborting execution."""
         if self._closed:
@@ -418,8 +591,13 @@ class Session:
 
     def cancel(self) -> None:
         """Request planner cancellation; this is not a physical emergency stop."""
-        if self._agent is not None and not self._closed:
-            self._agent.cancel("interrupted")
+        if self._closed:
+            return
+        with self._role_lock:
+            agents = [self._agent, *self._role_agents]
+        for agent in agents:
+            if agent is not None:
+                agent.cancel("interrupted")
 
     def finish(self, *, error: str | None = None) -> RunResult | None:
         """Drain work, finalize once, persist and close owned connections."""
@@ -591,6 +769,11 @@ def _finalize_run(assembly, subscriptions, args, result, error_msg, started, *, 
     if not assembly.allow_automatic_retry and outcome.retryable:
         outcome = replace(outcome, retryable=False)
     task_success = outcome.success
+    try:
+        from evoab.composition import experience
+        experience.persist(args, assembly.session_dir, outcome.success)
+    except Exception as error:  # noqa: BLE001 - experience is secondary to the official record.
+        storage_errors = {**(storage_errors or {}), "experience": str(error)}
 
     if bus is not None:
         try:
@@ -640,8 +823,11 @@ def run_tui(args) -> None:
         print("TUI dependencies are missing. Reinstall evoab with pip or uv tool.", file=sys.stderr)
         sys.exit(1)
 
+    if args.channel == "action" or len(args.compiled_recipe.roles) > 1:
+        print("The TUI runs one-role tool or code recipes; use evoab run for this method.", file=sys.stderr)
+        sys.exit(2)
     agent_options = get_agent_backend(args.agent_backend).config_options(args)
-    agent_options["interaction_mode"] = getattr(args, "interaction_mode", "tool_calling")
+    agent_options["channel"] = args.channel
     agent_options["model_config"] = resolve_agent_model_config(args)
     agent_options["context_config"] = resolve_context_config(args)
     agent_options["save_raw_request"] = args.telemetry == "debug"
@@ -706,7 +892,7 @@ class SingleTaskSession:
         self._agent_backend = agent_backend
         self._model = model
         options = dict(agent_options or {})
-        self._interaction_mode = options.pop("interaction_mode", "tool_calling")
+        self._channel = options.pop("channel", "tools")
         self._model_config = options.pop("model_config", None)
         self._context_config = options.pop("context_config", {})
         self._save_raw_request = options.pop("save_raw_request", False)
@@ -733,7 +919,7 @@ class SingleTaskSession:
             result = _run_agent(
                 self._agent,
                 model_config=self._model_config,
-                interaction_mode=self._interaction_mode,
+                channel=self._channel,
                 context_config=self._context_config,
                 save_raw_request=self._save_raw_request,
                 save_exchanges=self._save_exchanges,
@@ -795,8 +981,9 @@ def _run_agent(
     artifacts=None,
     save_raw_request=False,
     save_exchanges=True,
-    interaction_mode="tool_calling",
+    channel="tools",
     tracer=None,
+    announce_finish=True,
     **request,
 ):
     """Own the model endpoint for one SDK run and finalize its immutable records."""
@@ -838,27 +1025,39 @@ def _run_agent(
 
     try:
         endpoint = gateway.start() if gateway is not None else None
-        if interaction_mode == "code_as_policy":
+        if channel == "code":
             from evoab.context.code_as_policy import prepare_code_policy
-            from evoab.execution.code_as_policy.bridge import CodePolicyBridge, DirectSkillTools
+            from evoab.execution.code_as_policy.bridge import CodePolicyBridge
+            from evoab.execution.views import ToolView
 
             code_bridge = CodePolicyBridge(request["executor"], event_bus=event_bus)
             code_url = code_bridge.start()
             code_root = Path(session_dir).resolve()
+            # Agents with their own terminal run programs there; any other agent gets run_program.
+            own_shell = bool(getattr(type(agent), "runs_programs", False))
             request["prompt"] = prepare_code_policy(
-                code_bridge.get_tool_schemas(), code_root, request["prompt"],
+                code_bridge.get_tool_schemas(), code_root, request["prompt"], own_shell=own_shell,
             )
-            request["code_policy"] = CodePolicyContext(
-                cwd=str(code_root / "scratch"),
-                env={"EVOAB_CODE_URL": code_url,
-                     "EVOAB_CODE_IMAGES": str(code_root / "images" / "code_as_policy"),
-                     # Keep checkout imports available from scratch as well as installed wheels.
-                     "PYTHONPATH": os.pathsep.join(filter(None, [
-                         str(Path(__file__).resolve().parent.parent), os.environ.get("PYTHONPATH"),
-                     ]))},
-                finish_request=lambda: code_bridge.finish_request, revoke=code_bridge.revoke,
-            )
-            request["executor"] = DirectSkillTools(code_bridge)
+            env = {"EVOAB_CODE_URL": code_url,
+                   "EVOAB_CODE_IMAGES": str(code_root / "images" / "code_as_policy"),
+                   # Keep checkout imports available from scratch as well as installed wheels.
+                   "PYTHONPATH": os.pathsep.join(filter(None, [
+                       str(Path(__file__).resolve().parent.parent), os.environ.get("PYTHONPATH"),
+                   ]))}
+            # Only knowledge tools stay native; observations, motion and finish go through programs.
+            knowledge = ToolView(code_bridge, {"list_skills", "read_skill"},
+                denial="Only skill discovery and reading are available directly in the code channel; "
+                       "call robot operations from your programs")
+            if own_shell:
+                request["code_policy"] = CodePolicyContext(
+                    cwd=str(code_root / "scratch"), env=env,
+                    finish_request=lambda: code_bridge.finish_request, revoke=code_bridge.revoke,
+                )
+                request["executor"] = knowledge
+            else:
+                from evoab.execution.code_as_policy.runner import ProgramTools
+                request["executor"] = ProgramTools(knowledge, cwd=code_root / "scratch", env=env,
+                                                   image_dir=code_root / "images" / "code_as_policy")
         result = agent.run(model_endpoint=endpoint, **request)
         if result.stop_reason or result.error:
             cancel_agent(result.stop_reason or "agent_error")
@@ -921,7 +1120,7 @@ def _run_agent(
             task_success = solved()
         except Exception as exc:
             logger.warning("Failed to read task_success: %s", exc)
-    if event_bus is not None:
+    if event_bus is not None and announce_finish:
         event_bus.emit(
             AgentRunFinished(
                 success=result.success,

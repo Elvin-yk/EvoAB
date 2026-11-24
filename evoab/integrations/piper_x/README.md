@@ -131,7 +131,7 @@ ID and a model configured for that planner:
 ```bash
 evoab run --integration piper_x --robot-id YOUR_ROBOT_ID \
   --env-url http://127.0.0.1:19312 --agent codex --model YOUR_MODEL_ID \
-  --action-profile direct --no-sam3 --output-dir ./runs --monitor
+  --recipe agentic --no-sam3 --output-dir ./runs --monitor
 ```
 
 `--no-sam3` disables SAM segmentation; calibrated RGB-D remains available.
@@ -141,8 +141,8 @@ and official CLI session. UNI owns result, trajectory and monitor artifacts.
 A model completion claim is not an external judgment: `task_success` stays null.
 
 For observation-only use, omit `--execute` from preparation/startup and pass
-`--tool-profile readonly` to the official CLI. That profile composes existing
-scene, skill and episode tools only. A Direct session refuses an observation-only
+`--set 'roles.main.capabilities=[skills, scene, episode]'` to the official CLI.
+That recipe override composes existing scene, skill and episode tools only. A Direct session refuses an observation-only
 environment before tool assembly.
 
 ## Motion, stopping and migration

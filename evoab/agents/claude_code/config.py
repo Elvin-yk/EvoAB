@@ -1,4 +1,6 @@
 """Claude-only settings and validation of supported model services."""
+from evoab.agents.contracts import AgentLaunch
+from evoab.provider.http_presets import preset_for_protocol
 import os
 import argparse
 import math
@@ -7,6 +9,14 @@ from urllib.parse import urlsplit
 
 class ClaudeConfig:
     model_protocol = "messages"
+    # Channels this runtime can drive (see evoab/composition).
+    # Runs code-channel programs in its own terminal instead of the run_program tool.
+    runs_programs = True
+    workbench_launch = AgentLaunch(
+        label="Claude Code", description="Claude Agent SDK：原生 shell 与进程内工具，支持工具调用与代码通道。", cli_flags=("--model-preset",),
+        validate_preset=lambda name: preset_for_protocol(name, "messages"),
+        model_help="使用 API Key 的模型预设；需要提供方支持 messages 或可转换的接口。",
+    )
 
     @classmethod
     def add_cli_arguments(cls, parser):

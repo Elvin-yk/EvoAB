@@ -12,9 +12,17 @@ it with a VLA or world-action model.
 
 ## Features
 
-- **One harness, many methods.** Direct robot tools, Hybrid control with an
-  action model such as Pi0.5, a four-tool Clean baseline, and Code as Policy.
-  More methods are added on top of these modes.
+- **Composable methods.** A method is a recipe: roles (each with a brain, a
+  channel, capabilities and a context policy) connected by a loop. Three channels
+  mix freely — *tools* (orchestrate skills, perception, motion, an action model),
+  *action* (emit end-effector or joint chunks directly) and *code* (write and run
+  programs). Roles delegate to each other, and episodes can carry learned skills
+  or programs forward. Methods do not depend on the agent: any agent (and any
+  model configured in settings) runs any method. See [composition](docs/composition.md).
+- **Method library.** Built-in and reproduced methods with reproduction cards:
+  Agentic, Clean, Direct Policy, Code as Policy, Agent + Policy, RUA, Planner +
+  Direct controller, code iteration across episodes. `evoab methods list`;
+  add your own with [docs/methods.md](docs/methods.md).
 - **Agent runtimes.** Codex and Claude Code, plus experimental OpenCode, Gemini
   CLI and Antigravity adapters. The model gateway converts between Responses,
   Chat Completions and Messages, so one agent can use many model endpoints.
@@ -55,7 +63,7 @@ provider and deploy benchmarks from the Studio page.
 `~/.config/evoab/agent/` and are managed in Studio (设置 → 模型) or with
 `evoab models`.
 
-`--interaction-mode direct_policy` makes the model the controller: each
+`--recipe direct_policy` makes the model the controller: each
 inference is one independent request (prompt pack + task + a short window of
 observations) that must return exactly one action-chunk tool call, such as
 `emit_eef_actions` with 3–15 absolute grasp-point poses `[x, y, z, qw, qx, qy,
@@ -69,20 +77,37 @@ representations execute all arms together. The environment supplies its base
 prompt (or the policy uses the generic description). Bundled prompt packs
 (`evoab/resources/prompts/direct/`) describe the embodiment and frames; timing,
 gripper geometry and camera geometry are generated from what the environment
-reports, and `--direct-prompt-blocks` / `--direct-prompt-file` choose or replace
+reports, and `action.blocks` / `action.robot_prompt_file` choose or replace
 them. Records go to `direct/` in the run directory, and Studio replays them step
 by step with every inference's request, reply, latency and cost.
 
 ```bash
 evoab run --integration libero_pro --deploy local --runtime-profile libero_object \
   --task pick_up_the_cream_cheese_and_place_it_in_the_basket --no-sam3 \
-  --agent native --model gpt-6-astra --interaction-mode direct_policy \
-  --direct-representation abs_eef --direct-horizon 3:15 --direct-history 15:7
+  --agent native --model gpt-6-astra --recipe direct_policy \
+  --set representation=abs_eef --set horizon=3:15 --set history=15:7
 ```
 
-Without `direct_policy`, `--agent native` runs an agent loop with only EvoAB's
-robot tools registered, consolidating the transcript when it outgrows the
-model's context window.
+`--set representation=joint_abs` emits absolute joint positions instead, for
+environments whose arms accept joint commands.
+
+With a tools-channel method (the default `agentic`), `--agent native` runs an
+agent loop with only EvoAB's robot tools registered, consolidating the transcript
+when it outgrows the model's context window.
+
+## Methods and composition
+
+```bash
+evoab methods list --integration robodojo     # methods usable on RoboDojo
+evoab methods show planner_direct             # card, recipe, parameters
+evoab methods validate my_recipe.yaml --integration libero_pro
+evoab run --integration robodojo --deploy local --task stack_bowls --no-sam3 \
+  --recipe planner_direct --model gpt-6-astra --set controller_calls=4
+```
+
+Studio's method step shows each method's component graph and parameters; a run's
+detail page shows the same graph annotated with how often each capability and
+delegated role was called.
 
 Benchmarks with a container recipe deploy as Docker runtimes in one step
 (Studio: 设置 → 评测集 → 部署, or `evoab benchmarks prepare
@@ -108,7 +133,7 @@ returns; the HTTP API is described at `/openapi.json`.
 evoab benchmarks tasks libero_pro --suite libero_object
 evoab models                        # model presets and providers
 evoab runs launch --task libero_object/pick_up_the_alphabet_soup_and_place_it_in_the_basket \
-  --method direct_policy --model gpt-6-astra --representation abs_eef
+  --method direct_policy --model gpt-6-astra --set representation=abs_eef
 evoab runs list
 evoab runs trace 721e018e          # rounds, tool calls, results and why the run ended
 evoab runs trace 721e018e --round 4   # full input and output of one model request
@@ -127,10 +152,12 @@ environment variable, never from arguments.
 ## Repository layout
 
 ```text
+evoab/composition/   recipes, component catalog, method library, compiler, graphs
+evoab/methods/       built-in methods: method.yaml + CARD.md per method
 evoab/agents/        agent runtimes (Codex, Claude Code, ...)
 evoab/provider/      model gateway and protocol conversion
 evoab/execution/     scheduling: serial, parallel, replanning, code as policy
-evoab/tools/         shared robot tools (gripper, scene, skills, episode, hybrid)
+evoab/tools/         shared robot tools (gripper, scene, skills, episode, hybrid, delegation)
 evoab/services/      environment, actor and perception services
 evoab/integrations/  environment and robot adapters
 evoab/ui/web/        run monitor and replay

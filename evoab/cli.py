@@ -16,11 +16,11 @@ from evoab.config import (
 )
 from evoab.agents import get_agent_backend, list_agent_backends
 from evoab.integrations import load_integration
-from evoab.integrations.composition import canonical_tool_profile
 
 
 WORKBENCH_COMMANDS = {
     "runs": "List, launch, trace and stop runs (same as Studio)",
+    "methods": "The method library: list, show, graph, components, validate",
     "models": "Model providers and presets",
     "benchmarks": "List benchmarks and tasks; prepare runtimes",
     "usage": "Token usage by API and model",
@@ -98,25 +98,30 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         required=True,
         help="Required environment integration, such as robodojo or libero_pro",
     )
+    agent.add_argument(
+        "--recipe", metavar="METHOD",
+        help="Method id from the method library (evoab methods) or a recipe file; "
+             "default: the integration's default method")
+    agent.add_argument(
+        "--set", action="append", default=[], metavar="PATH=VALUE",
+        help="Override a recipe value by parameter name or dotted path, e.g. --set horizon=3:10 "
+             "or --set roles.main.context.policy=observation_window (repeatable)")
+    agent.add_argument(
+        "--experience-dir",
+        help="Directory carrying skills/programs between episodes of a method that carries experience")
     agent.add_argument("--agent",
         dest="agent_backend",
         choices=list_agent_backends(),
-        default="codex",
+        default=None,
+        help="Override the entry role's agent runtime (default: the recipe's)",
     )
-    agent.add_argument("--model", required=True, help="Explicit provider model ID")
+    agent.add_argument("--model", help="Model ID or preset for the entry role (unless the recipe pins one)")
     agent.add_argument(
         "--max-turns",
         type=_nonnegative,
         default=0,
         help="Agent turn limit; 0 disables (use --episode-timeout-s for wall time)",
     )
-    agent.add_argument(
-        "--skill-writing", action=argparse.BooleanOptionalAction, default=False,
-        help="Enable writing Markdown experience within the episode skill namespace",
-    )
-    common.add_argument("--tool-profile", type=canonical_tool_profile,
-        choices=tuple(integration_spec.tool_profiles) if integration_spec else None,
-        help="Integration tool composition; minimal is an alias for clean; defaults to its declared default profile")
     visibility = common.add_argument_group("Tool visibility debugging")
     visibility.add_argument(
         "--tool-debug", action="store_true",
@@ -125,28 +130,6 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     visibility.add_argument(
         "--tools", nargs="*", default=[], metavar="SELECTOR",
         help="Debug only: tool names or @skills, @scene, @motion, @workspace, @observation, @jobs; empty exposes none",
-    )
-    execution = common.add_argument_group("Execution and observation")
-    execution.add_argument(
-        "--interaction-mode", choices=("tool_calling", "code_as_policy", "direct_policy"), default="tool_calling",
-        help="Control through tool calls, ordinary scripts run by the agent, or action chunks emitted "
-             "directly by the model (direct_policy, requires --agent native)",
-    )
-    execution.add_argument(
-        "--tool-return-mode", choices=("immediate", "background"), default="background",
-    )
-    execution.add_argument(
-        "--resource-scheduling", choices=("per-resource", "global-serial"), default="per-resource",
-    )
-    execution.add_argument(
-        "--execution-mode", choices=("parallel", "replanning"), default=None,
-        help="parallel queues calls per resource; replanning also cancels queued actions after a failed "
-             "one and requires reading results and a new observation. Default: the integration's mode",
-    )
-    execution.add_argument(
-        "--observation-profile",
-        default="none",
-        help="Environment observation sidecar; requires per-resource scheduling",
     )
     services = common.add_argument_group("Services")
     for name in ("env-url", "sam3-url"):
@@ -327,6 +310,9 @@ def main(argv=None, *, _supervised=False) -> None:
             else "Configuration valid"
         )
         return
+    if args.command == "run" and args.recipe.loop.episodes.repeat > 1:
+        from evoab.composition.episodes import run_sequence
+        raise SystemExit(run_sequence(argv, args))
     if args.command == "run" and (
         args.deploy == "local" or hasattr(get_agent_backend(args.agent_backend), "evaluator_plan")
     ):

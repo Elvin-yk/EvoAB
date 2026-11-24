@@ -226,8 +226,8 @@ is claimed.
 
 ## Gemini context
 
-`identity` remains the default. Select `--context-policy sliding_window` with
-`--context-max-input-tokens` and `--context-target-input-tokens` to filter native
+`identity` remains the default. Select `--set roles.main.context.policy=sliding_window` with
+`context.max_input_tokens` and `context.target_input_tokens` to filter native
 GenerateContent history before Qwen conversion. The policy validates every call
 ID and result name before eviction, retains complete call/result batches, and
 protects all standalone user inputs. System instructions, tool declarations,
@@ -239,8 +239,8 @@ metadata reports the selected policy. The provider validates original native
 content before context selection, so unsupported Google signatures, media or
 malformed results remain errors even when their old block would be removed.
 
-The image phase retains at least `--context-min-recent-tool-images` eligible
-images and evicts only full `--context-image-eviction-batch-size` batches. For
+The image phase retains at least `context.min_recent_tool_images` eligible
+images and evicts only full `context.image_eviction_batch_size` batches. For
 example, a minimum of `6` and batch size `2` retains 6–7 images when enough
 are available.
 Whole-block token pruning can subsequently remove older retained images. Recent

@@ -1,4 +1,4 @@
-"""``evoab runs | models | benchmarks | usage | settings | studio`` commands.
+"""``evoab runs | methods | models | benchmarks | usage | settings | studio`` commands.
 
 Each command calls the same :class:`Workbench` method as the matching Studio
 page. ``--json`` prints the exact payload the Studio API returns, for scripts
@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-COMMANDS = ("runs", "models", "benchmarks", "usage", "settings", "studio")
+COMMANDS = ("runs", "methods", "models", "benchmarks", "usage", "settings", "studio")
 
 
 def _print_json(value: Any) -> None:
@@ -201,11 +201,15 @@ def _runs_launch(bench, args) -> None:
     settings = bench.settings()
     method, agent = args.method, args.agent
     if method is None:
-        if agent is not None:
-            method = "agentic"
-        else:
-            method, agent = preferred_choice(args.integration, settings.get("default_method"),
-                                             settings.get("default_agent"))
+        method, saved_agent = preferred_choice(args.integration, settings.get("default_method"),
+                                               settings.get("default_agent"))
+        agent = agent or saved_agent
+    params = {}
+    for text in args.set or ():
+        name, sep, value = text.partition("=")
+        if not sep:
+            sys.exit(f"--set expects NAME=VALUE, got {text!r}")
+        params[name] = value
     payload = {
         "integration": args.integration,
         "profile": args.profile,
@@ -216,15 +220,60 @@ def _runs_launch(bench, args) -> None:
     }
     if agent is not None:
         payload["agent"] = agent
-    direct = {key: getattr(args, key) for key in ("representation", "horizon", "history", "prompt_blocks")
-              if getattr(args, key) is not None}
-    if direct:
-        payload["direct"] = direct
+    if params:
+        payload["params"] = params
     result = bench.launch(payload)
     if args.json:
         _print_json(result)
     else:
         print(f"launched #{result['short_id']} (launch {result['launch_id']}); follow with: evoab runs show {result['short_id']}")
+
+
+# -- methods ------------------------------------------------------------------
+
+
+def _methods(bench, args) -> None:
+    action = getattr(args, "action", None) or "list"
+    if action == "list":
+        items = bench.methods(args.integration)
+        if args.json:
+            _print_json(items)
+            return
+        _table([[m["id"], m["status"], m["channel"], "+".join(m["paradigms"]) or "—", len(m["roles"]),
+                 ",".join(a["id"] for a in m["agents"]) or "—", m["label"]] for m in items],
+               ["ID", "STATUS", "CHANNEL", "PARADIGMS", "ROLES", "AGENTS", "LABEL"])
+    elif action == "show":
+        method = bench.method(args.method)
+        if args.json:
+            _print_json(method)
+            return
+        print(method["card"].rstrip() or f"# {method['label']}")
+        print("\n---\nrecipe:\n" + method["recipe"])
+        for parameter in method["parameters"]:
+            print(f"  --set {parameter['name']}=...   {parameter['label']} (default {parameter['default']!r})")
+    elif action == "graph":
+        _print_json(bench.method(args.method)["graph"])
+    elif action == "components":
+        catalog = bench.components(args.integration)
+        if args.json:
+            _print_json(catalog)
+            return
+        for slot, items in catalog.items():
+            print(f"{slot}:")
+            for item in items:
+                tools = f" [{', '.join(item['tools'])}]" if item.get("tools") else ""
+                print(f"  {item['id']:20} {item['label']}{tools}")
+    elif action == "validate":
+        from evoab.composition.compiler import compile_recipe
+        from evoab.composition.methods import get_method
+        from evoab.integrations import load_integration
+        method = get_method(args.recipe)
+        compiled = compile_recipe(method.recipe, load_integration(args.integration).get_integration_spec(),
+                                  base_dir=method.root)
+        for name, role in compiled.roles.items():
+            print(f"{name:12} {role.agent or '(run agent)':12} {role.channel:7} tools={', '.join(role.selected_tools) or '—'}"
+                  + (f" delegates={', '.join(role.delegates)}" if role.delegates else ""))
+        print(f"{method.id}: valid for {args.integration}")
 
 
 def _runs_stop(bench, args) -> None:
@@ -348,13 +397,29 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--task", required=True, help="Task ID as listed by `evoab benchmarks tasks`, e.g. libero_object/pick_up_...")
     p.add_argument("--model", help="Model preset (default: the last one launched)")
     p.add_argument("--effort", help="Reasoning effort (default: settings.default_effort or low)")
-    p.add_argument("--method", help="Execution mode (direct_policy, agentic, agent_policy) or legacy alias rua")
-    p.add_argument("--agent", help="Registered Agent implementation (for example native or rua)")
-    p.add_argument("--representation", help="Direct policy: abs_eef or delta_eef")
-    p.add_argument("--horizon", help="Direct policy: rows per chunk, MIN:MAX")
-    p.add_argument("--history", help="Direct policy: observation window and stride, LENGTH:STRIDE")
-    p.add_argument("--prompt-blocks", dest="prompt_blocks", help="Direct policy: e.g. robot,timing,gripper,camera")
+    p.add_argument("--method", help="Method id from `evoab methods list` (default: the last one launched)")
+    p.add_argument("--agent", help="Override the method's entry agent runtime (for example native or codex)")
+    p.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
+                   help="Method parameter, e.g. --set horizon=3:10 (see `evoab methods show ID`)")
     p.set_defaults(handler=_runs_launch)
+
+    me = sub.add_parser("methods", help="The method library and its components").add_subparsers(dest="action")
+    p = me.add_parser("list", parents=[common], help="Methods, their channels, paradigms and agents")
+    p.add_argument("--integration", help="Only methods usable on this integration")
+    p.set_defaults(handler=_methods)
+    p = me.add_parser("show", parents=[common], help="A method's reproduction card, recipe and parameters")
+    p.add_argument("method")
+    p.set_defaults(handler=_methods)
+    p = me.add_parser("graph", parents=[common], help="A method's recipe as nodes and edges (JSON)")
+    p.add_argument("method")
+    p.set_defaults(handler=_methods)
+    p = me.add_parser("components", parents=[common], help="Building blocks a recipe can name")
+    p.add_argument("--integration", help="Include this integration's tool modules")
+    p.set_defaults(handler=_methods)
+    p = me.add_parser("validate", parents=[common], help="Compile a method id or recipe file against an integration")
+    p.add_argument("recipe")
+    p.add_argument("--integration", required=True)
+    p.set_defaults(handler=_methods)
 
     models = sub.add_parser("models", parents=[common], help="Model providers and presets (default: list)")
     models.set_defaults(handler=_models)
@@ -442,10 +507,12 @@ def main(argv: list[str]) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "settings" and not getattr(args, "action", None):
         args.action, args.json, args.runs_root, args.handler = "show", False, None, _settings
+    if args.command == "methods" and not getattr(args, "action", None):
+        args.action, args.json, args.runs_root, args.handler, args.integration = "list", False, None, _methods, None
     bench = Workbench(args.runs_root)
     try:
         args.handler(bench, args)
-    except WorkbenchError as error:
+    except (WorkbenchError, ValueError) as error:
         print(f"evoab {args.command}: {error}", file=sys.stderr)
         return 2
     return 0

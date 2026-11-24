@@ -50,7 +50,7 @@ are never supplied to the planner. Choose a task whose precondition holds in
 that reset; the service does not repair or synthesize benchmark initial states.
 
 Connect a planner with `--integration calvin --env-url http://127.0.0.1:18786
---action-profile direct`. Each native service owns one episode and requires a
+--recipe agentic`. Each native service owns one episode and requires a
 new output directory. Automatic setup/deploy recipes and Hybrid actors are not
 included.
 

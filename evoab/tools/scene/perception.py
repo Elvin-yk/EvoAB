@@ -51,10 +51,6 @@ def snapshot_metadata(manifest, cameras, *, mirror):
     }
 
 
-def load_frame(client, manifest, camera, *, mirror):
-    return _frame_and_image(client, manifest, camera, mirror=mirror)[0]
-
-
 def _frame_and_image(client, manifest, camera, *, mirror, load_depth=True):
     if camera not in manifest["cameras"]:
         raise RequestRejected(f"Camera {camera!r} is absent from the snapshot")

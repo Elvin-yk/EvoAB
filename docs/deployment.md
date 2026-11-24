@@ -137,7 +137,7 @@ Responses-compatible provider; alternatively pass `--provider-url` explicitly.
 
 ```bash
 evoab run --integration robodojo --deploy local \
-  --task stack_bowls --model "$MODEL" --action-profile direct \
+  --task stack_bowls --model "$MODEL" --recipe agentic \
   --no-sam3 --output-dir ./runs
 ```
 
@@ -152,7 +152,7 @@ To connect to an independently prepared episode:
 
 ```bash
 evoab run --integration robodojo --env-url http://localhost:18760 \
-  --task stack_bowls --model "$MODEL" --action-profile direct --no-sam3
+  --task stack_bowls --model "$MODEL" --recipe agentic --no-sam3
 ```
 
 `--env_url`, `--action_model_url`, and `--sam3_url` are aliases.

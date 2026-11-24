@@ -36,7 +36,7 @@ if args.run_id:
 if args.task:
     expected["task"] = args.task
 services = [(args.env_url, EpisodeInfo, expected), (args.sam3_url, PerceptionInfo, {})]
-if args.action_profile == "hybrid":
+if "hybrid" in args.tool_modules:
     services.append((args.action_model_url, ActorInfo, {}))
 deadline = time.monotonic() + startup.startup_timeout_s
 for url, contract, identity in services:

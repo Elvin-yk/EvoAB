@@ -118,7 +118,7 @@ these boundaries do not require every contribution to touch only one directory.
 4. Supply model/resource bindings where the family needs them: robot geometry,
    joint/control decoding, posture resources or storage. Bindings return domain
    data/results, not tool providers or arbitrary tool dispatch functions.
-5. Declare the supported tool profiles and reuse the family composition and prepared
+5. Publish the supported tool modules (`tool_modules`) and reuse the family composition and prepared
    lifecycle. Register additional clients with the session's ownership mechanism;
    use its artifact store. Do not clone the episode or close outer-owned stores.
 6. Add focused tests and deployment instructions. When migrating an existing
@@ -134,23 +134,24 @@ toolset inside the environment. Do not require unrelated backends to implement i
 An integration declares its profiles explicitly:
 
 ```python
-from evoab.integrations.gripper import (
-    DIRECT_TOOLS, HYBRID_TOOLS, build_gripper_spec,
-)
+from evoab.integrations.gripper import HYBRID_TOOL_MODULES, build_gripper_spec
 
 spec = build_gripper_spec(
     name="example",
     create_session=create_session,
-    tool_profiles={"direct": DIRECT_TOOLS, "hybrid": HYBRID_TOOLS},
+    tool_modules=HYBRID_TOOL_MODULES,   # default: DIRECT_TOOL_MODULES (no hybrid)
 )
 ```
 
-Declare only profiles whose bindings the integration can supply. A custom profile
-is another ordered tuple of modules; it does not require a branch in the shared
-session. `IntegrationSpec.default_tool_profile` defaults to `direct` and can be
-set explicitly when constructing the spec.
+Publish only modules whose bindings the integration can supply; recipes select
+among them by name (see [composition](composition.md)). No method-specific
+branch belongs in the shared session. `IntegrationSpec.default_recipe` names the
+method used when a run names none (`agentic` unless set).
 
-Define a new `ToolModule` with a provider factory and that family's policies.
+Define a new `ToolModule` with a provider factory `create(session, selection)`,
+that family's policies, the selectable `tools` it offers, a typed `options`
+model, and a `label`/`description` for the component catalog. Honour
+`selection.tools` when the module declares `tools`.
 Factories receive the prepared session, reuse `session.episode`, and register
 clients with `session.own()` before any later initialization can fail. Tool
 schemas and handlers stay in `tools/`. The module's optional `runtime_prompts`

@@ -1,5 +1,7 @@
 """Codex model settings, runtime defaults and executable validation."""
 from __future__ import annotations
+from evoab.agents.contracts import AgentLaunch
+from evoab.provider.http_presets import preset_for_protocol
 from typing import Any
 import os
 from pathlib import Path
@@ -21,6 +23,14 @@ def validate_agent_python(value: str | None) -> str | None:
 
 class CodexConfig:
     model_protocol = "responses"
+    # Channels this runtime can drive (see evoab/composition).
+    # Runs code-channel programs in its own terminal instead of the run_program tool.
+    runs_programs = True
+    workbench_launch = AgentLaunch(
+        label="Codex", description="OpenAI Codex SDK：原生 shell、文件编辑与 MCP 工具，支持工具调用与代码通道。", cli_flags=("--model-preset",),
+        validate_preset=lambda name: preset_for_protocol(name, "responses"),
+        model_help="使用 API Key 的模型预设；需要提供方支持 responses 或可转换的接口。",
+    )
 
     @classmethod
     def resolve_defaults(cls, args):

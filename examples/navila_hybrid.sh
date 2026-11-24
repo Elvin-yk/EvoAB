@@ -7,7 +7,7 @@ MODEL=${MODEL:-qwen3.8-flash}
 : "${ACTOR_URL:?Set the harness NaVILA bridge URL}"
 : "${CHECKPOINT_SHA256:?Set the declared upstream model digest}"
 
-evoab run --integration navila --tool-profile hybrid \
+evoab run --integration navila --recipe agent_policy \
   --env-url "$ENV_URL" --action-model-url "$ACTOR_URL" \
   --action-model-checkpoint-sha256 "$CHECKPOINT_SHA256" \
   --model "$MODEL" --no-vla-review --no-sam3 "$@"

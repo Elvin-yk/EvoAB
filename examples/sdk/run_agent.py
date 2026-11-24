@@ -8,9 +8,14 @@ def main():
     parser.add_argument('--integration', required=True)
     parser.add_argument('--env-url', required=True)
     parser.add_argument('--model', required=True)
+    parser.add_argument('--recipe', default='agentic', help='Method id (evoab methods list) or recipe file')
+    parser.add_argument('--agent', default='codex', help="Entry role's agent runtime")
+    parser.add_argument('--set', action='append', default=[], metavar='NAME=VALUE')
     args = parser.parse_args()
-    result = run(SessionConfig(integration=args.integration, env_url=args.env_url,
-                              no_sam3=True, agent=AgentConfig(model=args.model)))
+    overrides = dict(item.split('=', 1) for item in args.set)
+    result = run(SessionConfig(integration=args.integration, env_url=args.env_url, no_sam3=True,
+                              recipe=args.recipe, recipe_overrides=overrides,
+                              agent=AgentConfig(model=args.model, agent_backend=args.agent)))
     print(result.task_success, result.session_dir)
 
 

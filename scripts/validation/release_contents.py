@@ -16,7 +16,7 @@ EXCLUDED_INTEGRATIONS = {'robodojo_internal', 'efe', 'franka_robotiq',
                          'franka_sharpa', '_franka', 'dexterous_hand', 'dexterous_hand.py'}
 SOURCE_FILES = ('README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'AGENTS.md',
                 'CLAUDE.md', 'LICENSE', 'MANIFEST.in', 'pyproject.toml', 'pyrightconfig.json',
-                'rua/.gitignore', 'rua/README.md', 'rua/link_resources.py', 'rua/migrate_resources.py')
+                'rua/.gitignore', 'rua/README.md')
 SOURCE_SUFFIXES = {'.py', '.md', '.toml', '.json', '.sh', '.txt', '.png', '.pdf',
                    '.html', '.css', '.js', '.ts', '.urdf', '.npz', '.npy', '.typed', '.yml',
                    # Native driver sources an integration builds on the robot host (C++, ROS 2).

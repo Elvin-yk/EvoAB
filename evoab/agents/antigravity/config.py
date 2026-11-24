@@ -19,8 +19,6 @@ class AntigravityConfig:
 
     @classmethod
     def validate_config(cls, args, explicit):
-        if args.interaction_mode != 'tool_calling':
-            raise ValueError('Antigravity currently supports tool_calling interaction only')
         if not args.provider_url or args.provider_profile != 'aliyun.gemini_chat_completions':
             raise ValueError('Antigravity requires --provider-url and aliyun.gemini_chat_completions')
         if args.context_policy != 'identity':

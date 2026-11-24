@@ -33,8 +33,8 @@ def validate_cli(args):
 def get_integration_spec():
     from . import prompt  # Register environment context without loading Isaac.
     from .session import create_session
-    from evoab.integrations.gripper import CLEAN_TOOLS, DIRECT_TOOLS, HYBRID_TOOLS, build_gripper_spec
+    from evoab.integrations.gripper import HYBRID_TOOL_MODULES, build_gripper_spec
     return replace(build_gripper_spec(name="robolab", create_session=create_session,
-                              tool_profiles={"clean": CLEAN_TOOLS, "direct": DIRECT_TOOLS, "hybrid": HYBRID_TOOLS},
+                              tool_modules=HYBRID_TOOL_MODULES,
                                      add_cli_args=add_cli_args, validate_cli=validate_cli, config_model=RobolabOptions),
                    allow_automatic_retry=False)

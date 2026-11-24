@@ -48,7 +48,7 @@ function pageRun(main, key) {
     closeReplay();
     Object.assign(RV, { run, trace: null, t: null, follow: true, selected: null, open: new Set() });
     put(main, h("div", { class: "page review", "data-run": run.key },
-      h("div", { id: "rvHead" }), h("div", { id: "rvBody" }), h("div", { id: "rvLog" })));
+      h("div", { id: "rvHead" }), h("div", { id: "rvBody" }), h("div", { id: "rvGraph" }), h("div", { id: "rvLog" })));
     current.arg = run.key;
   }
   RV.run = run;
@@ -61,6 +61,7 @@ function pageRun(main, key) {
   }
   if (!RV.trace) put($("rvBody"), h("div", { class: "card empty" }, "读取运行记录…"));
   loadTrace();
+  renderRunGraph(run);
   renderLaunchLog(run);
 }
 

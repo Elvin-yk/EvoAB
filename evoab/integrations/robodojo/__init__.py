@@ -6,7 +6,7 @@ from evoab.integrations.gripper import GripperOptions
 
 
 class RobodojoOptions(GripperOptions):
-    include_extra_task_requirements: bool = True
+    include_extra_task_requirements: bool = False
 
 
 
@@ -18,8 +18,9 @@ def add_cli_args(parser):
     group.add_argument(
         "--include-extra-task-requirements",
         action=BooleanOptionalAction,
-        default=True,
-        help="Append RoboDojo instruction_supplements.json guidance for the prepared task (default: enabled)",
+        default=False,
+        help="Append RoboDojo instruction_supplements.json guidance for the prepared task (default: off, "
+             "as in the official Agent Track)",
     )
 
 
@@ -42,10 +43,10 @@ def create_session(context):
 
 
 def get_integration_spec():
-    from evoab.integrations.gripper import CLEAN_TOOLS, DIRECT_TOOLS, HYBRID_TOOLS, build_gripper_spec
+    from evoab.integrations.gripper import HYBRID_TOOL_MODULES, build_gripper_spec
 
     spec = build_gripper_spec(name="robodojo", create_session=create_session,
-                              tool_profiles={"clean": CLEAN_TOOLS, "direct": DIRECT_TOOLS, "hybrid": HYBRID_TOOLS},
+                              tool_modules=HYBRID_TOOL_MODULES,
                               add_cli_args=add_cli_args, validate_cli=validate_cli, config_model=RobodojoOptions)
     spec.deployment_module = "evoab.integrations.robodojo.deployment"
     return spec

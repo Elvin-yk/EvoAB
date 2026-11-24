@@ -96,29 +96,8 @@ function suiteLabel(suite) {
 }
 function methodLabel(value) {
   return String(value || "").split(" · ").map((part) => ({
-    "Direct Policy": "直接策略", "Agentic Policy": "智能体策略", "Agent + Policy": "智能体 + 策略",
-    direct: "直接控制", hybrid: "混合控制",
     native: "原生执行器", codex: "Codex",
   })[part] || part).join(" · ");
-}
-
-// Studio-only copy for the method cards; the execution mode still comes from the API.
-const METHOD_COPY = {
-  direct_policy: {
-    title: "LLM 直接给动作数字",
-    desc: "LLM 读取当前画面和历史观测，按固定格式一次交出 8D 绝对位姿或 7D 增量动作数字，由环境控制器逐行执行。它不自选机器人工具，也没有独立的 VLA 动作模型。",
-  },
-  agentic: {
-    title: "Agent 选择工具（Tool）",
-    desc: "Agent 看着当前画面和历史观测，自己挑机器人工具（移动、抓取、感知等），每次按返回结果决定下一步，动作由环境执行。没有独立的 VLA 动作模型。",
-  },
-  agent_policy: {
-    title: "Agent 调用 VLA",
-    desc: "Agent 通过 Hybrid 动作工具调用 VLA（视觉-语言-动作模型）：VLA 把图像和指令转成动作片段，Agent 决定何时调用并检查结果，再由环境控制器执行。",
-  },
-};
-function methodCopy(method) {
-  return METHOD_COPY[method.id] || { title: methodLabel(method.label), desc: method.description };
 }
 
 function effortLabel(value) {
@@ -150,8 +129,8 @@ const S = {
   tasks: {}, // "integration/profile" -> task list
   models: {}, // provider id -> {models, capabilities, recommended}
   agentModelSettings: new Map(),
-  wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: "direct_policy", agent: null,
-            agentOptions: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
+  wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: "agentic", agent: null,
+            params: {}, agentOptions: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
   history: { query: "", status: "all", bench: "all", model: "all", selected: new Set(), compare: false },
   replay: null,
 };
@@ -238,7 +217,9 @@ function wizardReady(upTo) {
 }
 function availableMethods() {
   const integration = S.wizard.bench?.integration;
-  return S.config.methods.map((method) => ({ ...method,
+  const loaded = integration && METHODS_BY_INTEGRATION.get(integration);
+  const methods = loaded || S.config.methods.filter((m) => !m.integrations || m.integrations.includes(integration));
+  return methods.map((method) => ({ ...method,
     agents: method.agents.filter((agent) => !agent.integrations || agent.integrations.includes(integration)),
   })).filter((method) => method.agents.length);
 }
@@ -386,92 +367,12 @@ async function stepTask(body) {
 }
 
 function stepMethod(body) {
-  const w = S.wizard;
-  const method = selectedMethod();
-  const groups = [
-    ["direct", "直接控制", "模型直接输出末端动作，或由 Agent 调用机器人工具；两种方式都不接入动作模型（VLA）。"],
-    ["hybrid", "策略协作", "Agent 调用动作模型（VLA）执行动作，适合已接入动作模型服务（actor）的评测集。"],
-  ];
-  body.append(h("h1", { class: "wizard-title" }, "选择运行方法"));
-  for (const [profile, label, note] of groups) {
-    const methods = availableMethods().filter((m) => m.action_profile === profile);
-    const section = h("section", { class: "method-group" },
-      h("h2", { class: "section-title" }, label),
-      h("p", { class: "muted small", style: "margin:0 0 10px" }, note),
-      methods.length ? h("div", { class: "choice-grid" }, methods.map((m) => {
-        const copy = methodCopy(m);
-        return h("button", {
-          class: `choice${w.method === m.id ? " selected" : ""}`, "aria-pressed": String(w.method === m.id),
-          onclick: () => { selectMethod(m, m.id === w.method ? w.agent : null); route(); },
-        }, h("span", { class: "title" }, copy.title), h("span", { class: "desc" }, copy.desc));
-      }))
-        : h("p", { class: "muted small" }, profile === "hybrid"
-          ? "暂无可用的策略协作 Agent。该模式需要评测集接入动作模型（VLA）；此处为空只说明当前没有 Agent 提供该模式。"
-          : "当前评测集没有可用的直接控制 Agent，可在上一步换一个评测集。"));
-    if (method?.action_profile === profile && method.interaction !== "direct_policy") {
-      section.append(h("section", { class: "agent-picker", "aria-label": "选择 Agent 实现" },
-        h("h3", { class: "section-title" }, "选择 Agent 实现"),
-        h("p", { class: "muted small", style: "margin:0 0 10px" }, "同一方法可由不同 Agent 实现；Agent 决定工具调用和模型连接方式。"),
-        h("div", { class: "choice-grid" }, method.agents.map((agent) => h("button", {
-          class: `choice${w.agent === agent.id ? " selected" : ""}`, "aria-pressed": String(w.agent === agent.id),
-          onclick: () => { w.agent = agent.id; route(); },
-        }, h("span", { class: "title" }, agent.label), h("span", { class: "desc" }, agent.description))))));
-    }
-    body.append(section);
-  }
-  if (method?.interaction === "direct_policy") body.append(directOptions());
+  return stepMethodLibrary(body);
 }
 
-const DIRECT_DEFAULTS = { representation: "abs_eef", horizon: "3:15", history: "15:7", blocks: ["gripper", "camera"] };
-const GRIPPER_NOTE = "夹爪一栏始终是绝对开合：0 表示张开，1 表示闭合，两种格式都一样。";
-const REPRESENTATION_HELP = {
-  abs_eef: "每行直接说清「移动到哪里、转到什么方向」。8 个数依次是：x、y、z 是抓取点在世界中的位置（米），qw、qx、qy、qz 描述目标朝向（按 wxyz 顺序），最后一个是夹爪开合。",
-  delta_eef: "每行只说清「在上一个目标上移动多少、转多少」。7 个数依次是：dx、dy、dz 是位置移动量（米），drx、dry、drz 是旋转量（弧度，绕世界坐标轴），最后一个是夹爪开合。第一行从当前实际位姿算起。",
-};
-const HORIZON_HELP = "每轮让模型给几个动作目标。行数由模型在所选范围内自己决定，每行执行一个控制步。给得少，模型会更频繁地停下来重新看画面再决定；给得多，就一次连续执行更多目标，中间不再看图。";
-const HISTORY_HELP = "按控制步计，不是秒。模型每次都拿到当前画面和往前若干步的画面：默认「当前、7 步前、14 步前」是 3 帧，「当前和 15 步前」是 2 帧。刚开局还没走过这些步，就只取已有的画面。";
-function directOptions() {
-  const w = S.wizard;
-  w.direct = w.direct || { ...DIRECT_DEFAULTS, blocks: [...DIRECT_DEFAULTS.blocks] };
-  const d = w.direct;
-  const seg = (label, key, options, help) => h("div", { class: "field" },
-    h("div", { class: "section-title" }, label),
-    h("div", { class: "segmented" }, options.map(([value, text]) => h("button", { class: d[key] === value ? "active" : "",
-      "aria-pressed": String(d[key] === value), onclick: () => { d[key] = value; route(); } }, text))),
-    h("p", { class: "muted small", style: "margin:0" }, typeof help === "function" ? help(d[key]) : help));
-  const block = (name, text, hint) => h("label", { class: "check" },
-    h("input", { type: "checkbox", checked: d.blocks.includes(name),
-      onchange: (e) => { d.blocks = e.target.checked ? [...new Set([...d.blocks, name])] : d.blocks.filter((b) => b !== name); } }),
-    h("span", {}, h("b", {}, text), h("span", { class: "muted small" }, ` ${hint}`)));
-  return h("section", { class: "method-group" },
-    h("h2", { class: "section-title" }, "直接策略设置"),
-    h("div", { class: "card direct-options" },
-      h("p", { class: "muted small", style: "margin:0" }, "只影响直接策略。"),
-      seg("动作表示（给目标位姿，或给每步的变化量）", "representation",
-        [["abs_eef", "绝对位姿（8 个数）"], ["delta_eef", "增量位姿（7 个数）"]],
-        (value) => `${REPRESENTATION_HELP[value]}${GRIPPER_NOTE}`),
-      seg("动作块长度 H（每次推理输出几个动作目标）", "horizon",
-        [["3:15", "3–15 个"], ["1:5", "1–5 个"], ["16:32", "16–32 个"], ["15:15", "固定 15 个"]], HORIZON_HELP),
-      seg("观测历史（每个相机取哪些控制时刻的画面）", "history",
-        [["15:7", "当前、7 步前、14 步前"], ["1:1", "仅当前"], ["30:15", "当前和 15 步前"]], HISTORY_HELP),
-      h("div", { class: "field" },
-        h("div", { class: "section-title" }, "额外提供给模型的信息"),
-        h("p", { class: "muted small", style: "margin:0" },
-          "本体与坐标系、执行时序、动作格式始终会传给模型，不能关闭。下面两项是环境实测的几何信息，默认开启；环境没有提供时会自动跳过。"),
-        block("gripper", "夹爪几何", "开启后模型能读到：动作里的位置指两指之间的抓取点，夹爪各轴在世界中的朝向、两指张开的宽度，以及用测得开合值判断是否夹住物体的方法。"),
-        block("camera", "相机几何", "开启后模型能读到：每个相机装在世界中的位置、朝哪个方向看、画面上下左右各对应什么方向，以及把画面里的位置换算成坐标用的焦距和中心点。")),
-      h("label", { class: "field" },
-        h("span", { class: "section-title" }, "自定义提示词（可选）"),
-        h("textarea", { class: "input", rows: 3, maxlength: 8192,
-          placeholder: "例如：接近物体时，先对齐夹爪再下降。",
-          oninput: (e) => { d.custom_prompt = e.target.value; } }, d.custom_prompt || ""),
-        h("small", { class: "muted" }, "追加到本次直接策略的每一轮提示词。留空使用默认提示词。"))));
-}
-function directPayload() {
-  const d = S.wizard.direct || DIRECT_DEFAULTS;
-  return { representation: d.representation, horizon: d.horizon, history: d.history,
-           prompt_blocks: ["robot", "timing", ...d.blocks].join(","),
-           ...(d.custom_prompt?.trim() ? { custom_prompt: d.custom_prompt } : {}) };
+function methodParams() {
+  const values = S.wizard.params[S.wizard.method] || {};
+  return Object.keys(values).length ? values : null;
 }
 
 function agentOptions(agent) {
@@ -552,6 +453,11 @@ async function stepModel(body) {
     agentOptions(agent));
 }
 
+function shellQuote(value) {
+  const text = String(value);
+  return /^[\w@%+=:,./-]+$/.test(text) ? text : "'" + text.replaceAll("'", "'\"'\"'") + "'";
+}
+
 function commandPreview() {
   const w = S.wizard;
   const method = selectedMethod();
@@ -559,20 +465,16 @@ function commandPreview() {
   const {runtime_profile: profile, native_task: task} = w.task;
   const parts = [
     "evoab run", `--integration ${w.bench.integration}`, "--deploy local", ...(profile ? [`--runtime-profile ${profile}`] : []),
-    `--task ${task}`, `--tool-profile ${method.tool_profile}`, "--no-sam3", `--agent ${agent.id}`,
-    `--model ${w.model}`, `--reasoning-effort ${w.effort}`, `--interaction-mode ${method.interaction}`,
+    `--task ${task}`, `--recipe ${method.id}`, "--no-sam3",
+    ...(agent.id !== method.agent ? [`--agent ${agent.id}`] : []),
+    `--model ${w.model}`, `--reasoning-effort ${w.effort}`,
     ...agent.cli_flags,
   ];
   const options = w.agentOptions.get(agent.id) || {};
   for (const option of agent.options) {
     if (option.name in options) parts.push(`${option.flag} ${options[option.name]}`);
   }
-  if (method.interaction === "direct_policy") {
-    const d = directPayload();
-    parts.push(`--direct-representation ${d.representation}`, `--direct-horizon ${d.horizon}`, `--direct-history ${d.history}`,
-      `--direct-prompt-blocks ${d.prompt_blocks}`);
-    if (d.custom_prompt) parts.push("--direct-custom-prompt='" + d.custom_prompt.replaceAll("'", "'\"'\"'") + "'");
-  }
+  for (const [name, value] of Object.entries(methodParams() || {})) parts.push(`--set ${shellQuote(`${name}=${value}`)}`);
   if (w.bench.container) parts.push("--container");
   return [...parts, "--monitor"].join(" \\\n  ");
 }
@@ -589,11 +491,10 @@ function stepConfirm(body) {
   const rows = [
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`], ["任务", taskName(w.task.task)],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
-    ["方法", methodLabel(method.label)], ["推理强度", effortLabel(w.effort)],
-    ["模型预设", w.model],
-    ...(method.interaction === "direct_policy" ? [] : [["Agent", agent.label]]),
+    ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(w.effort)],
+    ["模型预设", w.model], ["Agent", agent.label],
     ...agent.options.filter((option) => option.name in options).map((option) => [option.label, options[option.name]]),
-    ...(method.interaction === "direct_policy" ? [["直接策略设置", Object.entries(directPayload()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
+    ...(methodParams() ? [["方法参数", Object.entries(methodParams()).map(([k, v]) => `${k}=${v}`).join("  ")]] : []),
   ];
   body.append(
     h("div", { class: "card" }, h("table", { class: "table confirm-table" }, h("tbody", {}, rows.map(([k, v]) =>
@@ -614,9 +515,10 @@ async function launchRun(event) {
     await api("/api/runs", {
       method: "POST",
       json: { integration: w.bench.integration, profile: w.bench.profile, task: w.task.task,
-              model: w.model, reasoning_effort: w.effort, method: w.method, agent: agent.id,
+              model: w.model, reasoning_effort: w.effort, method: w.method,
+              ...(agent.id !== selectedMethod().agent ? { agent: agent.id } : {}),
               ...(options && Object.keys(options).length ? { agent_options: options } : {}),
-              ...(selectedMethod()?.interaction === "direct_policy" ? { direct: directPayload() } : {}) },
+              ...(methodParams() ? { params: methodParams() } : {}) },
     });
   } catch (error) {
     toast(`启动失败：${error.message}`, true);
@@ -764,6 +666,9 @@ function selectBenchmark(bench, p) {
   Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile,
     title: bench.title, container: !!p.image }, task: null, suite: "all", query: "" });
   selectMethod(selectedMethod() || availableMethods()[0], S.wizard.agent);
+  loadMethods(bench.integration).then(() => {
+    selectMethod(selectedMethod() || availableMethods()[0], S.wizard.agent);
+  }).catch(() => {});
 }
 
 function startWith(bench, p, task = null) {

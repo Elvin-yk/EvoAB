@@ -66,7 +66,7 @@ response in the actor-session archive. See [Hybrid review evidence](hybrid.md#re
 
 OmniRouter's Claude and Gemini routes do not implement the Responses API used
 by Codex. Select an explicit conversion profile alongside the service URL and
-credentials. Both profiles work with `--interaction-mode code_as_policy` and
+credentials. Both profiles work with `--recipe code_as_policy` and
 retain the existing robot API and execution lifecycle.
 
 Append these options to your configured `run` or `tui` command:
@@ -76,13 +76,13 @@ Append these options to your configured `run` or `tui` command:
 --agent codex --model claude-opus-5-5 --reasoning-effort medium \
   --provider-url https://omnirouter-api.cc/v1 \
   --provider-profile omnirouter.messages --codex-web-search disabled \
-  --interaction-mode code_as_policy
+  --recipe code_as_policy
 
 # Gemini 4 Argon through Chat Completions
 --agent codex --model gemini-4-argon-medium --reasoning-effort medium \
   --provider-url https://omnirouter-api.cc/v1 \
   --provider-profile omnirouter.chat_completions --codex-web-search disabled \
-  --interaction-mode code_as_policy
+  --recipe code_as_policy
 ```
 
 Provide the matching route's credential through `EVOAB_API_KEY`.

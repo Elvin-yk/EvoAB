@@ -8,7 +8,7 @@ hardware and GPU dependencies outside the agent process. The shared stack uses
 HTTPX, FastAPI and Uvicorn; the MCP bridge and provider gateway reuse its
 transport and hosting utilities. The CLI is `evoab`; Python modules use `evoab`.
 
-Prepare only the services needed for the selected action profile:
+Prepare only the services the selected method needs:
 
 | Mode | Required services |
 |---|---|
@@ -446,7 +446,7 @@ deployment. Configure planner/reviewer credentials as in [Running](running.md):
 evoab run --integration robodojo --model "$MODEL" \
   --provider-url "$PROVIDER_URL" \
   --env-url http://127.0.0.1:18760 --no-sam3 \
-  --action-profile hybrid --action-model-binding robodojo_x5_joint \
+  --recipe agent_policy --action-model-binding robodojo_x5_joint \
   --action-model-url http://127.0.0.1:8601 \
   --action-model-checkpoint-sha256 "$CHECKPOINT_SHA256"
 ```
@@ -456,8 +456,8 @@ Responses-compatible reviewer settings; `--no-vla-review` explicitly disables
 review. The SDK selects the same behavior through `SessionConfig`:
 
 ```python
+# with SessionConfig(..., recipe="agent_policy")
 integration_options = {
-    "action_profile": "hybrid",
     "action_model_binding": "robodojo_x5_joint",
     "action_model_checkpoint_sha256": checkpoint_sha256,
 }

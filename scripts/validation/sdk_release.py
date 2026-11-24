@@ -56,7 +56,7 @@ print('Installed SDK:', evoab.__file__)
         command([python, '-m', 'evoab', 'run', '--integration', integration,
                  '--model', 'validation-model', '--task', 'validation-task',
                  '--env-url', 'http://127.0.0.1:18760',
-                 '--no-sam3', '--tool-profile', 'direct',
+                 '--no-sam3', '--recipe', 'agentic', '--agent', 'codex',
                  '--agent-python', python, '--validate-config'])
     for backend, runtime_options in (
         ('antigravity', []),
@@ -65,7 +65,7 @@ print('Installed SDK:', evoab.__file__)
                         '--gemini-bridge-manifest', 'offline-manifest.json']),
     ):
         command([python, '-m', 'evoab', 'run', '--integration', 'libero_pro',
-                 '--agent', backend, '--model', 'qwen-validation',
+                 '--agent', backend, '--model', 'qwen-validation', '--recipe', 'agentic',
                  '--env-url', 'http://127.0.0.1:18760', '--no-sam3',
                  '--provider-url', 'https://provider.invalid/v1', *runtime_options, '--validate-config'])
     if args.antigravity:
@@ -86,15 +86,15 @@ print('Optional Antigravity SDK:', dist.version)
         command([python, '-m', 'evoab', 'run', '--integration', integration,
                  '--task', 'validation-task', '--model', 'validation-model',
                  '--env-url', 'http://127.0.0.1:18760', '--no-sam3',
-                 '--tool-profile', 'hybrid', '--action-model-binding', binding,
+                 '--recipe', 'agent_policy', '--agent', 'codex', '--action-model-binding', binding,
                  '--action-model-url', 'http://127.0.0.1:18761',
                  '--action-model-checkpoint-sha256', 'a' * 64, '--no-vla-review',
                  '--agent-python', python, '--validate-config'])
     command([python, '-m', 'evoab', 'run', '--integration', 'robodojo',
              '--agent', 'codex', '--model', 'hy4', '--provider-profile', 'tencent.responses',
              '--provider-url', 'https://tokenhub.tencentmaas.com/v1',
-             '--reasoning-effort', 'high', '--context-policy', 'identity',
-             '--env-url', 'http://127.0.0.1:18760', '--action-profile', 'direct',
+             '--reasoning-effort', 'high', '--recipe', 'agentic',
+             '--env-url', 'http://127.0.0.1:18760',
              '--no-sam3', '--agent-python', python, '--validate-config'])
     command([python, '-I', '-c', """from pathlib import Path
 from importlib.util import find_spec
@@ -139,25 +139,28 @@ SetupConfig(integration="dexjoco").resolve()
 DeploymentConfig(integration="dexjoco", task="pick_bucket", depth=False).resolve()
 assert not any(name in sys.modules for name in ("mujoco", "jax", "openpi", "torch", "scipy"))
 resolved = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760',
-                         no_sam3=True, tool_profile='direct').resolve()
-assert resolved.tool_profile == 'direct'
+                         no_sam3=True, recipe='agentic').resolve()
+assert resolved.recipe_id == 'agentic' and resolved.channel == 'tools'
 assert resolved.tool_modules == ('skills', 'scene', 'gripper', 'episode')
-legacy = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760',
-                       no_sam3=True, integration_options={'action_profile': 'direct'}).resolve()
-assert legacy.tool_modules == resolved.tool_modules
+clean = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760',
+                      no_sam3=True, recipe='clean').resolve()
+assert clean.selected_tools == ('move', 'hold', 'capture_scene', 'finish')
 dex = SessionConfig(integration='dexjoco', env_url='http://127.0.0.1:18788',
-    action_model_url='http://127.0.0.1:18769', no_sam3=True, tool_profile='hybrid',
+    action_model_url='http://127.0.0.1:18769', no_sam3=True,
     integration_options={'action_model_checkpoint_sha256': 'a' * 64,
                          'vla_review': False}).resolve()
 assert dex.tool_modules == ('skills', 'scene', 'hybrid', 'episode')
 try:
     SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760',
-                  no_sam3=True, tool_profile='direct',
-                  integration_options={'action_profile': 'hybrid'}).resolve()
+                  no_sam3=True, recipe='agent_policy').resolve()
 except ValueError as error:
-    assert 'select different' in str(error)
+    assert "no capability 'hybrid'" in str(error)
 else:
-    raise AssertionError('Conflicting tool selectors accepted')
+    raise AssertionError('A method needing an unavailable capability was accepted')
+assert {'agentic', 'clean', 'direct_policy', 'code_as_policy', 'planner_direct'} <= {
+    m.id for m in __import__('evoab.composition.methods', fromlist=['x']).list_methods()}
+for resource in ('methods/agentic/method.yaml', 'methods/planner_direct/CARD.md'):
+    assert (root / resource).is_file(), resource
 SetupConfig(integration='robodojo')
 DeploymentConfig(integration='robodojo', task='stack_bowls')
 rgb = DeploymentConfig(integration='robodojo', task='stack_bowls',

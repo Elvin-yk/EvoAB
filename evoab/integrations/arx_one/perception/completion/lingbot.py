@@ -115,13 +115,6 @@ def load_model(source, weights, device="mps"):
                    "load_s": time.monotonic() - started, "model_config": config}
 
 
-def run_frame(model, capture, tokens, model_info, filter_config=None, diagnostics=False):
-    """Compatibility path; identical stages executed sequentially."""
-    prepared = prepare_frame(capture, tokens, filter_config)
-    result = infer_frame(model, prepared, model_info)
-    return finish_frame(prepared, result, model_info, diagnostics)
-
-
 def prepare_frame(capture, tokens, filter_config=None):
     """CPU only: decode and rectify one immutable input."""
     timing = {"t_processing_started": str(time.time_ns()), "processing_monotonic_ns": time.monotonic_ns()}

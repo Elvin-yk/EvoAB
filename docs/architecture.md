@@ -7,7 +7,7 @@ action-model and perception services run independently, with their native depend
 The Python package is `evoab`; the CLI is `evoab`.
 
 The diagram shows the shared tool and service implementation, with RoboDojo as a simulator example. `actor_act` is available in Hybrid
-mode; `write_skill` requires `--skill-writing`. Agent collaboration, where
+mode; `write_skill` requires `--set roles.main.capabilities.skills.options.write=true`. Agent collaboration, where
 available, is supplied by the selected agent SDK.
 
 ## Design principles
@@ -53,10 +53,11 @@ configuration and capability boundaries.
 Explicit interfaces separate agent runtimes, scheduling, tool behavior, services
 and native backends. Researchers can replace runtimes, tools, environment
 backends, action models, perception models and context policies through their
-own contracts. The five logical layers map to the implementation as follows:
+own contracts. The logical layers map to the implementation as follows:
 
 | Layer | Responsibility | Main implementation |
 |---|---|---|
+| Method | Recipes: roles, channels, capabilities, loops; method library | `composition/`, `methods/` |
 | Agent | Model interaction and context | `agents/`, `provider/`, `context/` |
 | Orchestration | Scheduling, dispatch and background jobs | `execution/` and SDK tool adapters |
 | Tool | Shared robot operations and feedback | `tools/` |
@@ -72,7 +73,9 @@ progress-based motion stopping, actionable feedback and visual context managemen
 
 1. The CLI resolves and validates configuration. `--print-config` and
    `--validate-config` exit before opening services or creating run output.
-2. Configuration resolves an integration's declared tool profile. `session.py`
+2. Configuration loads the method (`--recipe`, default the integration's), applies
+   `--set` overrides and compiles every role against the integration's tool
+   modules. `session.py`
    passes its modules to `IntegrationSession`, registers the assembled tools and
    policies, and builds the prompt from their contributions.
 3. Codex or Claude Code invokes tools through its MCP adapter and the executor.
@@ -96,6 +99,8 @@ Package paths are relative to [`evoab/`](../evoab/).
 | Area | Responsibility |
 |---|---|
 | [`cli.py`](../evoab/cli.py), [`config.py`](../evoab/config.py) | CLI, process supervision, validation and redaction |
+| [`composition/`](../evoab/composition/) | Recipe schema, component catalog, compiler, method library, graphs, experience carried between episodes |
+| [`methods/`](../evoab/methods/) | Built-in methods (`method.yaml` + `CARD.md`) |
 | [`session.py`](../evoab/session.py) | Session assembly, task/interactive lifecycles and final outcomes |
 | [`agents/`](../evoab/agents/) | Codex and Claude Agent SDK adapters |
 | [`tools/`](../evoab/tools/) | Schemas, handlers, structured outputs and tool orchestration |
@@ -153,24 +158,36 @@ geometry. The core imports neither component nor a concrete integration.
 Native FK, IK, calibration, limits and physical stepping remain in environment
 adapters. See [the extension contract](hybrid.md).
 
-### Explicit tool composition
+### Recipes and tool composition
 
-`IntegrationSpec.tool_profiles` maps names to ordered `ToolModule` tuples;
-`default_tool_profile` selects the default. Each module owns a provider factory,
-execution policies and optional runtime prompt resource names. The prepared
-session assembles the selected modules against one Episode and owns their clients.
-`ToolAssembly` supplies providers, policies and prompt resources to the session.
-It replaces the fixed provider tuple and the separate evaluation-name whitelist.
+A run's method is a [recipe](composition.md) compiled before any service opens
+(`evoab/composition/compiler.py`). `IntegrationSpec.tool_modules` lists every
+`ToolModule` an integration can assemble; a recipe role selects modules by name
+as capabilities, optionally narrowed to some of a module's tools, with typed
+module options (`skills.write`) and a presentation style (`full` or `compact`).
+Each module owns a provider factory `create(session, selection)`, execution
+policies, selectable tool names and optional runtime prompt resources. The
+prepared session assembles the selected modules against one Episode and owns
+their clients; `ToolAssembly` supplies providers, policies and prompt resources.
 
-Each of the eight environment entry points declares its supported profiles.
-Shared `DIRECT_TOOLS`, `HYBRID_TOOLS` and `CLEAN_TOOLS` definitions avoid copying
-tool lists. Clean composes a selected `GripperTools` subset (`move`, `hold`)
-with capture-only `SceneTools` and `EpisodeTools` (`finish`). Capture-only
-composition does not configure perception. It starts with a persisted multimodal observation;
-see [clean tool behavior and calibration](integrations.md#clean-robot-tools).
-Hybrid is instantiated only when selected; environment bindings still own native
-semantic conversion. Duplicate module names and overlapping policy names fail
-validation, and Toolkit continues to reject duplicate tool names.
+When several roles share an episode, the session instantiates each module once
+for the union of their selections and gives each role a `ToolView`
+(`execution/views.py`) of the shared executor, so resource exclusion, jobs and
+receipts stay in one place. Roles reach each other only through the delegation
+tool family (`tools/delegation/`): `delegate_<role>` runs that role through the
+session and returns its report. A delegated action-channel role occupies the
+exclusive `episode` resource for its whole sub-run because it steps the
+environment directly; tool and code roles hold a separate `delegation` resource
+and call tools through the executor.
+
+The compact style is the former Clean baseline: `result_view` model views, the
+module's compact prompt notes and an optional initial RGB observation
+(`initial_observation`). Hybrid is instantiated only when selected; environment
+bindings still own native semantic conversion. Duplicate module names and
+overlapping policy names fail validation, and Toolkit continues to reject
+duplicate tool names. With one role, the recipe path produces the same tool
+schemas and prompts as the former profiles
+(`scripts/validation/tool_composition.py --compare`).
 
 Job controls remain owned by the executor, with visibility determined by return
 mode unless debugging supplies an explicit selection. Debug-only declarations
@@ -221,11 +238,12 @@ See [services](services.md) for deployment and extension contracts.
 |---|---|
 | `--model-parallel-tool-calls` | Whether the provider gateway permits multiple tool calls per model response. Defaults to true; explicit use requires a provider URL. Native SDK behavior is unchanged without the gateway. |
 | `--mcp-parallel-dispatch` | Whether Codex dispatches calls concurrently to the MCP server. Defaults to false. |
-| `--tool-return-mode` | `background` by default; `immediate` returns completed results and hides job controls. Both allow model batches. |
-| `--resource-scheduling` | `per-resource` by default; `global-serial` maps all calls onto one exclusive FIFO resource. |
-| `--execution-mode` | The integration's mode by default; `parallel` or `replanning` (see [execution modes](#execution-modes)). |
+| `execution.return_mode` | `background` by default; `immediate` returns completed results and hides job controls. Both allow model batches. |
+| `execution.resource_scheduling` | `per-resource` by default; `global-serial` maps all calls onto one exclusive FIFO resource. |
+| `execution.mode` | The integration's mode by default; `parallel` or `replanning` (see [execution modes](#execution-modes)). |
 
-Both switches accept `--no-` forms. MCP parallel dispatch is Codex-only; Claude
+`--model-parallel-tool-calls` and `--mcp-parallel-dispatch` are transport flags;
+the `execution.*` values belong to the recipe. Both switches accept `--no-` forms. MCP parallel dispatch is Codex-only; Claude
 maps disabled model parallelism to Messages `disable_parallel_tool_use`.
 Concurrent MCP dispatch does not establish model-output order at the executor boundary.
 
@@ -239,10 +257,10 @@ receipt for each cancelled job.
 
 ### Execution modes
 
-`--execution-mode` chooses how calls are scheduled. Without it, the run uses its
+`execution.mode` chooses how calls are scheduled. Without it, the run uses its
 integration's mode (`IntegrationSpec.execution_mode`, `parallel` unless the
 integration says otherwise; ARX ONE uses `replanning`). Both modes accept every
-`--tool-return-mode` and `--resource-scheduling` value.
+`execution.return_mode` and `execution.resource_scheduling` value.
 
 | Mode | Executor | Behavior |
 |---|---|---|
@@ -314,7 +332,7 @@ current files, including additions not yet in a curated index. Missing directori
 are not created; a missing environment directory does not hide general skills.
 By default these tools read the packaged library. `EVOAB_SKILLS_DIR`
 selects one complete external skills root for listing, reading, and writing;
-there is no overlay or fallback. `--skill-writing` requires that explicit
+there is no overlay or fallback. `--set roles.main.capabilities.skills.options.write=true` requires that explicit
 external root and permits Markdown writes within the episode namespace only.
 Shared general/ skills stay read-only to the agent.
 There is no special `memory/` directory. See [skills setup](running.md#skills).

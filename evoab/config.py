@@ -36,20 +36,27 @@ def runtime_env(name, default=None):
 def resolve_config(args, parser, integration_spec, argv=()):
     """CLI adapter: translate shared validation errors into argparse diagnostics."""
     explicit = {word.split("=", 1)[0] for word in argv if word.startswith("--")}
-    for owner, options in getattr(parser, "agent_options", {}).items():
-        if owner != args.agent_backend and (used := explicit & options):
-            parser.error(f"{sorted(used)[0]} requires --agent {owner}")
     try:
-        return resolve_settings(args, integration_spec, explicit=explicit)
+        resolved = resolve_settings(args, integration_spec, explicit=explicit)
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
+    for owner, options in getattr(parser, "agent_options", {}).items():
+        if owner != resolved.agent_backend and (used := explicit & options):
+            parser.error(f"{sorted(used)[0]} requires --agent {owner}")
+    return resolved
 
 
 def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True):
     """Resolve one runtime configuration without parsing arguments or exiting."""
     explicit = set(explicit)
     from evoab.agents.registry import get_agent_backend
+    resolve_recipe(args, integration_spec, explicit=explicit)
+    if not agent_enabled:
+        args.agent_backend, args.model = None, None
     if agent_enabled:
+        if not getattr(args, "model", None):
+            raise ValueError(f"--model is required (or pin roles.{args.recipe.loop.entry}.brain.model "
+                             f"in method {args.recipe_id!r})")
         get_agent_backend(args.agent_backend).resolve_defaults(args)
     # Read environment variables at the entry point; business modules receive resolved values.
     if args.no_sam3 and args.sam3_url:
@@ -89,21 +96,6 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
                 )
     if args.env_url and urlsplit(args.env_url).scheme not in {"http", "https"}:
         raise ValueError("--env-url must be a prepared episode HTTP(S) URL")
-    if args.context_policy == "identity" and any(
-        flag.startswith("--context-") and flag != "--context-policy"
-        for flag in explicit
-    ):
-        raise ValueError(
-            "context budget/image options require a non-identity context policy"
-        )
-    policy_options = {
-        "observation_window": {"--context-observation-horizon", "--context-image-token-allowance"},
-        "sliding_window": {"--context-target-input-tokens", "--context-keep-observation-blocks",
-                           "--context-min-recent-tool-images", "--context-image-eviction-batch-size"},
-    }
-    for owner, flags in policy_options.items():
-        if args.context_policy != owner and (used := explicit & flags):
-            raise ValueError(f"{sorted(used)[0]} requires --context-policy {owner}")
     local = getattr(args, "deploy", None) == "local"
     if getattr(args, "camera_calibration", None) is not None and not local:
         raise ValueError("--camera-calibration/--no-camera-calibration require --deploy local; "
@@ -118,19 +110,27 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     if args.observation_profile != "none":
         if args.resource_scheduling != "per-resource":
             raise ValueError(
-                "--observation-profile requires --resource-scheduling per-resource"
+                "the observation capability requires execution.resource_scheduling per-resource"
             )
         if args.observation_profile != args.integration:
             raise ValueError(
-                "--observation-profile must match --integration or be none"
+                "the observation profile must match --integration or be none"
             )
         from evoab.observation import load_observation_profile
 
         load_observation_profile(args.observation_profile)
     if agent_enabled:
         agent_backend = get_agent_backend(args.agent_backend)
-        if getattr(args, "interaction_mode", "tool_calling") == "direct_policy" and not hasattr(agent_backend, "run_direct"):
-            raise ValueError("--interaction-mode direct_policy requires --agent native")
+        # Roles on another agent reuse the run's model through this preset (composition/roles.py).
+        owns = getattr(agent_backend, "owns_provider", False)
+        args.model_preset_name = args.model if owns or getattr(args, "model_preset", False) else None
+        if getattr(args, "model_preset", False) and not owns:
+            if "--provider-url" in explicit or "--provider-profile" in explicit:
+                raise ValueError("--model-preset supplies its own provider URL and profile")
+            from evoab.provider.http_presets import preset_for_protocol
+            connection = preset_for_protocol(args.model, agent_backend.model_protocol)
+            args.model, args.provider_url = connection.model, connection.base_url
+            args.provider_profile, args._api_key = connection.profile, connection.api_key
         if getattr(agent_backend, "owns_provider", False):
             agent_backend.validate_config(args, explicit)
         else:
@@ -140,39 +140,71 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
             agent_backend.validate_config(args, explicit)
         if args.context_policy != "identity" and not args.provider_url:
             raise ValueError(
-                "context policy requires --provider-url or EVOAB_PROVIDER_URL"
+                f"context policy {args.context_policy} requires --provider-url or EVOAB_PROVIDER_URL"
             )
         context = resolve_context_config(args)
         if args.context_policy != "identity":
             from evoab.context.history import create_context_policy
 
             create_context_policy(args.context_policy, **context["context_options"])
+        from evoab.composition.roles import validate_roles
+        validate_roles(args)
     get_prompt_builder(args.integration)
-    from evoab.integrations.composition import resolve_tool_profile
-
-    resolve_tool_profile(args, integration_spec)
-    if args.tool_profile == "clean":
-        if "--tool-return-mode" in explicit and args.tool_return_mode != "immediate":
-            raise ValueError("clean requires --tool-return-mode immediate (no job-control tools)")
-        if (args.observation_profile != "none" or args.skill_writing or args.tool_debug
-                or args.interaction_mode != "tool_calling"):
-            raise ValueError("clean requires tool_calling without observation profiles, skill writing or tool debugging")
-        args.tool_return_mode = "immediate"
     integration_spec.validate_cli(args)
     if getattr(args, "skill_writing", False):
         from evoab.tools.skills import skill_root
 
-        skill_root(writing=True)
+        skill_root(writing=True, configured=args.skills_root)
     return args
+
+
+def resolve_recipe(args, integration_spec, *, explicit=()):
+    """Load, override and compile the run's method onto ``args`` (no services opened)."""
+    from evoab.composition.compiler import apply_to_args, compile_recipe
+    from evoab.composition.methods import get_method
+    from evoab.composition.recipe import parse_assignment, with_overrides
+
+    reference = getattr(args, "recipe", None) or integration_spec.default_recipe
+    if not isinstance(reference, str):
+        raise ValueError("recipe must name a method id or a recipe file")
+    method = get_method(reference)
+    overrides = dict(getattr(args, "recipe_overrides", None) or {})
+    for text in getattr(args, "set", None) or ():
+        path, value = parse_assignment(text)
+        overrides[path] = value
+    recipe = with_overrides(method.recipe, overrides)
+    compiled = compile_recipe(recipe, integration_spec, base_dir=method.root)
+    apply_to_args(args, compiled, explicit=set(explicit))
+    args.recipe_source = method.source
+    args.recipe_overrides = overrides
+    episodes = recipe.loop.episodes
+    experience = getattr(args, "experience_dir", None)
+    if episodes.carry and not experience:
+        output = args.output_dir or runtime_env("OUTPUT_DIR") or "outputs"
+        experience = str(Path(output) / "experience" / recipe.id / args.integration)
+    args.experience_dir = str(Path(experience).expanduser().resolve()) if experience else None
+    args.skills_root = (str(Path(args.experience_dir) / "skills")
+                        if args.experience_dir and "skills" in episodes.carry else None)
 
 def public_config(args) -> dict:
     from urllib.parse import urlsplit, urlunsplit
 
+    # Compiled objects are summarized; the full recipe is saved as recipe.json in the run directory.
+    hidden = {"print_config", "validate_config", "recipe", "compiled_recipe", "selected_modules", "direct_config"}
     result = {
         k: str(v) if isinstance(v, Path) else v
         for k, v in vars(args).items()
-        if k not in {"print_config", "validate_config"} and not k.startswith("_")
+        if k not in hidden and not k.startswith("_")
     }
+    if getattr(args, "recipe_id", None):
+        result["recipe"] = args.recipe_id
+        result["roles"] = sorted(args.compiled_recipe.roles)
+    if getattr(args, "direct_config", None) is not None:
+        from dataclasses import asdict
+        result["direct_config"] = asdict(args.direct_config)
+    for name in ("tool_modules", "selected_tools", "delegates"):
+        if name in result:
+            result[name] = list(result[name])
     # URLs may contain credentials or query tokens; strip them from all configuration output.
     for name, value in result.items():
         if (name.endswith("_url") or name.endswith("_endpoint")) and value:
@@ -184,35 +216,9 @@ def public_config(args) -> dict:
 
 
 def resolve_context_config(args) -> dict:
-    """Collect context policy settings independently of SDK selection."""
-    policy = getattr(args, "context_policy", "identity")
-
-    options: dict[str, int] = {}
-    if policy == "sliding_window":
-        maximum = getattr(args, "context_max_input_tokens", None)
-        target = getattr(args, "context_target_input_tokens", None)
-        if maximum is None or target is None:
-            raise ValueError(
-                "sliding_window requires --context-max-input-tokens and "
-                "--context-target-input-tokens"
-            )
-        options = {
-            "max_estimated_input_tokens": maximum,
-            "target_estimated_input_tokens": target,
-            "reserve_output_tokens": 0,
-            "keep_recent_blocks": args.context_keep_recent_blocks,
-            "keep_observation_blocks": args.context_keep_observation_blocks,
-            "min_recent_tool_images": args.context_min_recent_tool_images,
-            "image_eviction_batch_size": args.context_image_eviction_batch_size,
-        }
-    if policy == "observation_window":
-        options = {
-            "observation_horizon": args.context_observation_horizon,
-            "keep_recent_blocks": args.context_keep_recent_blocks,
-            "max_estimated_input_tokens": getattr(args, "context_max_input_tokens", None),
-            "image_token_allowance": args.context_image_token_allowance,
-        }
-    return {"context_policy": policy, "context_options": options}
+    """The entry role's compiled context policy (see composition.compiler)."""
+    return {"context_policy": getattr(args, "context_policy", "identity"),
+            "context_options": dict(getattr(args, "context_options", None) or {})}
 
 
 @dataclass(frozen=True)
@@ -246,8 +252,9 @@ class AgentConfig(BaseModel):
     """Built-in planner settings; credentials are excluded from serialized configuration."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    model: str = Field(min_length=1)
-    agent_backend: str = "codex"
+    model: str | None = Field(default=None, min_length=1)
+    # None uses the recipe's entry-role brain.
+    agent_backend: str | None = None
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
     max_turns: int = Field(default=0, ge=0)
     provider_url: str | None = None
@@ -257,15 +264,6 @@ class AgentConfig(BaseModel):
     provider_retries: int = Field(default=2, ge=0)
     provider_retry_backoff_s: int = Field(default=5, ge=0)
     model_parallel_tool_calls: bool = True
-    context_policy: Literal["identity", "sliding_window", "observation_window"] = "identity"
-    context_observation_horizon: int = Field(default=2, gt=0)
-    context_image_token_allowance: int = Field(default=1536, gt=0)
-    context_max_input_tokens: int | None = Field(default=None, gt=0)
-    context_target_input_tokens: int | None = Field(default=None, gt=0)
-    context_keep_recent_blocks: int = Field(default=4, ge=0)
-    context_keep_observation_blocks: int = Field(default=1, ge=0)
-    context_min_recent_tool_images: int = Field(default=3, ge=0)
-    context_image_eviction_batch_size: int = Field(default=20, gt=0)
     agent_python: str | None = None
     opencode_binary: str = "opencode"
     opencode_version: str | None = None
@@ -294,14 +292,11 @@ class SessionConfig(BaseModel):
     no_sam3: bool = False
     output_dir: Path | None = None
     episode_timeout_s: int = Field(default=10800, ge=0)
-    interaction_mode: Literal["tool_calling", "code_as_policy", "direct_policy"] = "tool_calling"
-    tool_return_mode: Literal["immediate", "background"] = "background"
-    resource_scheduling: Literal["per-resource", "global-serial"] = "per-resource"
-    # None selects the integration's execution mode (IntegrationSpec.execution_mode).
-    execution_mode: Literal["parallel", "replanning"] | None = None
-    observation_profile: str = "none"
-    skill_writing: bool = False
-    tool_profile: str | None = None
+    # Method id or recipe file; None uses the integration's default method.
+    recipe: str | None = None
+    # Dotted recipe paths or declared parameter names, e.g. {"horizon": "3:10"}.
+    recipe_overrides: dict[str, Any] = Field(default_factory=dict)
+    experience_dir: Path | None = None
     tool_debug: bool = False
     tools: list[str] = Field(default_factory=list)
     save_exchanges: bool = True
@@ -318,39 +313,31 @@ class SessionConfig(BaseModel):
         # Tool-only sessions retain model transport defaults for shared tool composition,
         # but do not load, validate or instantiate an agent backend.
         agent = self.agent
-        if agent:
-            from evoab.agents.registry import get_agent_backend
-
-            if hasattr(get_agent_backend(agent.agent_backend), "evaluator_plan"):
-                raise ValueError(f"{agent.agent_backend} requires the evoab run CLI")
         values.update(agent.model_dump(exclude={"api_key"}) if agent else {
             name: field.get_default() for name, field in AgentConfig.model_fields.items()
             if name not in {"model", "api_key"}
         })
         values.update(command="run", deploy=None, _api_key=agent.api_key if agent else None)
-        if self.agent is None:
-            values.update(agent_backend=None, model=None)
         if "vla_review_api_key" in values:
             values["_vla_review_api_key"] = values.pop("vla_review_api_key")
         explicit = {"--" + name.replace("_", "-") for name in self.model_fields_set}
-        if self.agent:
+        if agent:
             explicit.update("--" + name.replace("_", "-") for name in agent.model_fields_set)
-            if agent.agent_backend != 'gemini_cli' and any(
-                name.startswith('gemini_') for name in agent.model_fields_set
-            ):
-                raise ValueError("Gemini settings require agent_backend='gemini_cli'")
-            if agent.agent_backend != 'opencode' and any(
-                name.startswith('opencode_') for name in agent.model_fields_set
-            ):
-                raise ValueError("OpenCode settings require agent_backend='opencode'")
-            if agent.agent_backend != "codex" and any(
-                name == "agent_python" or name.startswith(("codex_", "mcp_"))
-                for name in agent.model_fields_set
-            ):
+            if "agent_backend" in agent.model_fields_set and agent.agent_backend is not None:
+                explicit.add("--agent")
+        resolved = resolve_settings(SimpleNamespace(**values), spec, explicit=explicit,
+                                    agent_enabled=agent is not None)
+        if agent:
+            from evoab.agents.registry import get_agent_backend
+
+            backend = resolved.agent_backend
+            if hasattr(get_agent_backend(backend), "evaluator_plan"):
+                raise ValueError(f"{backend} requires the evoab run CLI")
+            for prefix, owner in (("gemini_", "gemini_cli"), ("opencode_", "opencode"),
+                                  ("claude_", "claude_code")):
+                if backend != owner and any(name.startswith(prefix) for name in agent.model_fields_set):
+                    raise ValueError(f"{prefix.rstrip('_').title()} settings require agent_backend={owner!r}")
+            if backend != "codex" and any(name == "agent_python" or name.startswith(("codex_", "mcp_"))
+                                          for name in agent.model_fields_set):
                 raise ValueError("Codex settings require agent_backend='codex'")
-            if agent.agent_backend != "claude_code" and any(
-                name.startswith("claude_") for name in agent.model_fields_set
-            ):
-                raise ValueError("Claude settings require agent_backend='claude_code'")
-        return resolve_settings(SimpleNamespace(**values), spec, explicit=explicit,
-                                agent_enabled=self.agent is not None)
+        return resolved

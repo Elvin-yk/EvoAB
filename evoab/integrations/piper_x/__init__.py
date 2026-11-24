@@ -15,18 +15,17 @@ def add_cli_args(parser):
 
 def validate_cli(args):
     from evoab.integrations.gripper import validate_gripper_cli
-    if args.action_profile != "direct" or args.action_model_url:
+    if "hybrid" in args.tool_modules or args.action_model_url:
         raise ValueError("Piper-X currently supports the direct gripper profile")
     validate_gripper_cli(args)
 
 
 def get_integration_spec():
     from dataclasses import replace
-    from evoab.integrations.episode_tools import SKILLS_MODULE, SCENE_MODULE, EPISODE_MODULE
-    from evoab.integrations.gripper import DIRECT_TOOLS, build_gripper_spec
+    from evoab.integrations.gripper import build_gripper_spec
     from .session import create_session
     from . import prompt  # noqa: F401 - register context without native drivers.
     spec = build_gripper_spec(name="piper_x", create_session=create_session,
-        tool_profiles={"direct": DIRECT_TOOLS, "readonly": (SKILLS_MODULE, SCENE_MODULE, EPISODE_MODULE)}, add_cli_args=add_cli_args,
+        add_cli_args=add_cli_args,
         validate_cli=validate_cli, config_model=PiperOptions)
     return replace(spec, execution_mode="replanning", allow_automatic_retry=False, debug_modules=())

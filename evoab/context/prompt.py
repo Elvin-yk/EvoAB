@@ -85,10 +85,13 @@ class PromptContext:
     episode: Any | None = None
     session_dir: Path | None = None
     observation_profile: str = "none"
-    action_profile: str | None = None
-    tool_profile: str = "direct"
+    # How the role reaches the robot: "tools" (native calls) or "code" (programs).
+    channel: str = "tools"
+    # "compact" is the minimal four-tool baseline presentation.
+    style: str = "full"
+    # The first user message already carries a calibrated RGB observation.
+    initial_observation: bool = False
     skill_writing: bool = False
-    interaction_mode: str = "tool_calling"
     tool_return_mode: str = "background"
     resource_scheduling: str = "per-resource"
     tool_names: tuple[str, ...] = ()
@@ -115,18 +118,19 @@ def assemble_prompt(
 ) -> Prompt:
     """Append enabled runtime guidance, then persist the complete agent input."""
     prompts = get_prompts_dir()
-    prompt = _append_resource(base, prompts / "runtime" / ("clean.md" if context.tool_profile == "clean" else "common.md"))
+    compact = context.style == "compact"
+    prompt = _append_resource(base, prompts / "runtime" / ("clean.md" if compact else "common.md"))
     if context.tool_return_mode not in {"immediate", "background"}:
         raise ValueError(f"Invalid tool return mode: {context.tool_return_mode}")
     if context.resource_scheduling not in {"per-resource", "global-serial"}:
         raise ValueError(f"Invalid resource scheduling: {context.resource_scheduling}")
-    if context.interaction_mode not in {"tool_calling", "code_as_policy"}:
-        raise ValueError(f"Invalid interaction mode: {context.interaction_mode}")
+    if context.channel not in {"tools", "code"}:
+        raise ValueError(f"Invalid prompt channel: {context.channel}")
     prompt = _append_resource(prompt, prompts / "runtime" / "process_control.md")
-    resources = ("code_as_policy.md",) if context.interaction_mode == "code_as_policy" else (
+    resources = ("code_as_policy.md",) if context.channel == "code" else (
         "tool_calling.md", "batch.md", f"resource_{context.resource_scheduling}.md", f"return_{context.tool_return_mode}.md",
     )
-    if context.tool_profile == "clean":
+    if compact:
         resources = ("tool_calling.md", "return_immediate.md")
     for name in resources:
         prompt = _append_resource(prompt, prompts / "runtime" / name)
@@ -148,7 +152,7 @@ def assemble_prompt(
                 user=contribution.user,
                 source=contribution.source,
             )
-    if context.session_dir is not None and context.tool_profile != "clean":
+    if context.session_dir is not None and not compact:
         path = prompts / "runtime" / "storage_access.md"
         prompt = prompt.append(
             system=_render(path, {
@@ -240,12 +244,6 @@ def get_prompt_builder(integration: str) -> PromptBuilder:
     return _PROMPT_REGISTRY.get(integration, _PROMPT_REGISTRY["*"])
 
 
-def list_prompt_builders() -> tuple[str, ...]:
-    """List integrations with registered environment builders."""
-    _load_builtin_builders()
-    return tuple(sorted(_PROMPT_REGISTRY))
-
-
 @register_prompt_builder("*")
 def _default_prompt(context: PromptContext) -> Prompt:
     return Prompt(
@@ -255,7 +253,7 @@ def _default_prompt(context: PromptContext) -> Prompt:
             + (
                 "Do not inspect simulator internals or service implementation sources. "
                 "Use your own scripts to call the registered robot API."
-                if context.interaction_mode == "code_as_policy" else
+                if context.channel == "code" else
                 "Do not inspect source code, scripts, processes, servers, or simulator internals. "
                 "Do not use shell/exec or bypass the registered tools."
             )

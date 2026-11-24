@@ -84,3 +84,10 @@ def resolve_http_preset(name: str, *, client_protocol: str, profiles: tuple[str,
             model = route.spec.request_model_name(route.model) if route.spec else route.model
             return HttpPresetConnection(model, base_url, profile.name, provider.api_key)
     raise PresetCompatibilityError(f"This agent has no wire profile for the preset's {api} API.")
+
+
+def preset_for_protocol(name: str, client_protocol: str) -> HttpPresetConnection:
+    """Resolve a Studio model preset for an agent speaking ``client_protocol`` (responses, messages)."""
+    from evoab.provider.registry import list_provider_profiles
+    return resolve_http_preset(name, client_protocol=client_protocol,
+                               profiles=list_provider_profiles(client_protocol=client_protocol))

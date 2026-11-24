@@ -99,31 +99,6 @@ def region_depth(depth_mm, region=None, *, mask=None, intrinsics, border_px=2, m
     return points, summary, selected, accepted
 
 
-def region_overlay(rgb, depth_mm, selected, accepted):
-    """Overlay registered measurements at their original RGB pixels."""
-    if rgb.shape != (*depth_mm.shape, 3):
-        raise ValueError("overlay RGB and registered depth dimensions differ")
-    overlay = rgb.copy()
-    values = depth_mm[accepted].astype(float)
-    scale = np.percentile(values, [5, 95]).tolist() if values.size else [0., 0.]
-    if values.size:
-        t = np.clip((values - scale[0]) / max(1., scale[1] - scale[0]), 0., 1.)
-        colors = np.column_stack((255 * t, 180 * (1 - np.abs(2 * t - 1)), 255 * (1 - t)))
-        overlay[accepted] = (0.4 * rgb[accepted] + 0.6 * colors).astype(np.uint8)
-    eroded = np.asarray(Image.fromarray(selected.astype(np.uint8) * 255).filter(ImageFilter.MinFilter(3))) > 0
-    outline = selected & ~eroded
-    overlay[outline] = [255, 230, 0]
-    rejected = selected & ~accepted
-    rows, cols = np.indices(selected.shape)
-    overlay[rejected & ((rows + cols) % 7 == 0)] = [180, 180, 180]
-    image = Image.fromarray(overlay)
-    draw = ImageDraw.Draw(image)
-    draw.rectangle((0, 0, image.width - 1, 42), fill=(15, 15, 15))
-    draw.text((6, 3), f"REGION DEPTH: {int(accepted.sum())}/{int(selected.sum())} pixels; gray = excluded", fill="white")
-    draw.text((6, 22), f"Optical Z: blue {scale[0]:.0f} mm -> red {scale[1]:.0f} mm (p5-p95)", fill="white")
-    return np.asarray(image)
-
-
 class DepthService:
     """Read only pinned RGB-D. Derived results are evidence, never motion approval."""
 
