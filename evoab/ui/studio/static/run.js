@@ -13,8 +13,8 @@ const RV = {
 };
 
 const replayAgent = () => RV.trace?.agent || RV.run?.agent;
-const agentName = () => ({ native: "原生 Agent", codex: "Codex" })[replayAgent()] || replayAgent() || "Agent";
-const nativeReplay = () => replayAgent() === "native";
+const agentName = () => ({ native: "原生 Agent", physicalrsi: "PhysicalRSI", codex: "Codex" })[replayAgent()] || replayAgent() || "Agent";
+const nativeReplay = () => ["native", "physicalrsi"].includes(replayAgent());
 
 const ORIGIN = {
   code: ["固定代码", "harness"],
@@ -130,7 +130,7 @@ function buildMoments(tr) {
 function renderHead() {
   const run = RV.run;
   const tr = RV.trace;
-  const u = tr?.agent === "native" ? {
+  const u = ["native", "physicalrsi"].includes(tr?.agent) ? {
     input_tokens: tr.rounds.reduce((n, r) => n + r.usage.input, 0),
     output_tokens: tr.rounds.reduce((n, r) => n + r.usage.output, 0),
     cached_input_tokens: tr.rounds.reduce((n, r) => n + r.usage.cached, 0),
@@ -358,7 +358,7 @@ function drawInspector(t, frame, now) {
   let what;
   if (tr.ending && t >= endTime()) what = tr.ending.task_success ? "运行结束 · 任务成功" : "运行结束 · " + (tr.ending.task_success === false ? "任务未完成" : "未记录任务判定");
   else if (robotNow) what = `机器人正在执行 ${robotNow.name}`;
-  else if (running && nativeReplay()) what = `原生 Agent 第 ${round.index + 1} 轮进行中`;
+  else if (running && nativeReplay()) what = `${agentName()} 第 ${round.index + 1} 轮进行中`;
   else if (running) what = `等待模型输出（第 ${round.index + 1} 轮，已用 ${secs(t - round.started_at)}）`;
   else if (round) what = `第 ${round.index + 1} 轮已返回，${agentName()} 正在执行工具或准备下一轮`;
   else what = "Agent 尚未开始：固定代码正在准备环境与提示词";
@@ -627,7 +627,7 @@ async function openRound(index, tab = "input") {
   const body = h("div", { class: "drawer-body" }, h("div", { class: "muted" }, "读取完整请求…"));
   const tabs = h("div", { class: "tabs" });
   const drawer = h("div", { class: "drawer wide" },
-    h("div", { class: "drawer-head" }, h("h2", {}, `第 ${index + 1} 轮 · ${nativeReplay() ? "原生 Agent 记录" : "完整输入与输出"}`), h("span", { class: "spacer" }),
+    h("div", { class: "drawer-head" }, h("h2", {}, `第 ${index + 1} 轮 · ${nativeReplay() ? `${agentName()} 记录` : "完整输入与输出"}`), h("span", { class: "spacer" }),
       h("button", { class: "btn small", onclick: close }, "关闭")), tabs, body);
   document.body.append(backdrop, drawer);
   let d;

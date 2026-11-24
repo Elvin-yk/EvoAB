@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Studio offers PhysicalRSI alongside the built-in Agent and RUA under tool
+  calling. Single-task runs use the standard run history and replay. The separate
+  Studio research page has been retired, with existing campaigns accessible via CLI.
+
 - Studio recognizes prepared native runtimes separately from optional Docker
   prerequisites and checks disk capacity on the runtime cache filesystem.
 

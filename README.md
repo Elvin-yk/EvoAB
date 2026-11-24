@@ -92,13 +92,11 @@ others are built locally; nothing is hosted by EvoAB. See
 
 ## Studio
 
-Studio's **自我改进** page runs full PhysicalRSI research campaigns: System 1
-robot episodes, model-proposed candidates, paired evaluation, selection,
-lineage, and immutable research memory. Install the `physicalrsi` extra and
-prepare a simulator first. The same workflow is available with
-`evoab research launch`, `list`, `stop`, and `resume`.
-See [PhysicalRSI integration](docs/physicalrsi.md) for the declared evolution
-surface and evidence contracts.
+Select **PhysicalRSI** under **Agent implementation** for a tool-calling run.
+It uses the upstream skill composition API with EvoAB's registered tools and
+standard run history. Install the optional `physicalrsi` dependency first.
+Previously saved multi-episode campaigns remain accessible through the research CLI.
+See [PhysicalRSI integration](docs/physicalrsi.md).
 
 EvoAB Studio is a local web page for launching prepared LIBERO-PRO tasks,
 tracking running jobs, and reviewing run outcomes, token usage, and replays.

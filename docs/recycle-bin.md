@@ -54,23 +54,21 @@ installed source; it is not an upstream release upgrade.
 
 ## Research campaigns and categories
 
-Self-improvement records use the same persistent recycle bin. Select campaigns
-on the research page and choose Delete, then use **回收站 → 自我改进** to restore
-or permanently delete them. `POST /api/research/trash` accepts a `refs` list of
-campaign IDs; `evoab research recycle ID...` calls the same operation. Existing
-restore/delete endpoints and CLI commands operate on both categories' trash IDs.
+Use `evoab research recycle ID...` to move a finished campaign to the recycle
+bin. The **回收站 → 历史研究** category supports restore and permanent deletion.
+The API accepts campaign IDs in a `refs` list at `POST /api/research/trash`.
+Restore and delete commands accept trash IDs from either category.
 `GET /api/trash` includes `category: run|research`; old entries without this
 field are interpreted as runs, without migration or loss of restore capability.
 
-The recycle bin provides All, Task Runs and Self-improvement categories. Select
+The recycle bin provides All, Task Runs and Historical Research categories. Select
 all, header selection, restore, and permanent deletion apply to the displayed
 category. Clear Current Category never removes the other category; Clear Recycle
 Bin on All includes both. Switching categories clears selection. History's
-select-all applies to the current filters; research select-all covers the listed
-campaigns. Batch deletion rejects the whole selection if any job is active.
+select-all applies to the current filters. Batch deletion rejects the whole selection if any job is active.
 
 Research soft deletion preserves its complete campaign directory, removes the
-record from the research list, and blocks stop/resume until restoration. It does
+record from the CLI research list, and blocks stop/resume until restoration. It does
 not execute any experiment. Permanent deletion removes that campaign directory.
 Its ordinary episode records are managed separately, as stated in the UI.
 
@@ -84,7 +82,7 @@ shares the recycle lock and cannot recreate a purged launch or campaign record.
 
 Retained research dependencies are now shown on recycled episode rows. The
 clear/delete action is disabled when its selection omits a required campaign,
-with a visible explanation and a link to manage the research. **仅选可删除** selects
+with a visible explanation and the IDs of the retained campaigns. **仅选可删除** selects
 only entries whose dependencies are included or no longer exist. A batch rejection
 names the blocking research IDs and makes no filesystem changes. Interrupted
 setup campaigns with `research.json` but no launch record are included in the

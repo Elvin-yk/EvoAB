@@ -186,6 +186,7 @@ function route() {
   const hash = location.hash.slice(1) || "new";
   const [section, ...rest] = hash.split("/");
   if (section === "running") { location.replace("#history"); return; }
+  if (section === "research") { location.replace("#new"); return; }
   const page = section === "launch" ? "run" : section;
   const arg = section === "launch" ? hash : rest.join("/");
   const same = current.page === page && current.arg === arg;
@@ -195,7 +196,7 @@ function route() {
       S.modelSettings = null;
       S.agentModelSettings.clear();
     }
-    if (page === "history" || page === "trash" || page === "research" || page === "run" || (page === "settings" && arg === "benchmarks")) {
+    if (page === "history" || page === "trash" || page === "run" || (page === "settings" && arg === "benchmarks")) {
       runRefreshTimer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
     }
   }
@@ -214,7 +215,7 @@ function route() {
   const main = $("main");
   if (!same) main.scrollTop = 0;
   if (page === "benchmarks") { location.replace("#settings/benchmarks"); return; }
-  const pages = { new: pageNew, history: pageHistory, trash: pageTrash, research: pageResearch, run: pageRun, settings: pageSettings };
+  const pages = { new: pageNew, history: pageHistory, trash: pageTrash, run: pageRun, settings: pageSettings };
   (pages[page] || pageNew)(main, arg);
 }
 function pageHead(title, subtitle, ...actions) {
@@ -727,7 +728,7 @@ function pageHistory(main) {
         h("td", { class: "mono" }, runTitle(r)),
         h("td", {}, pill(r.status)),
         h("td", { class: "task-cell", title: runTask(r) }, runTask(r),
-          r.research_id ? h("a", { class: "faint small", href: "#research", onclick: e => e.stopPropagation() }, "所属自我改进研究") : null),
+          r.research_id ? h("div", { class: "faint small" }, r.research_id) : null),
         h("td", {}, runBenchmark(r), r.benchmark && h("div", { class: "faint small" }, suiteLabel(r.benchmark))),
         h("td", {}, methodLabel(r.method)),
         h("td", {}, r.model || "—", h("div", { class: "faint small" }, r.provider || "")),
@@ -735,7 +736,7 @@ function pageHistory(main) {
         h("td", { class: "num" }, r.live?.steps ?? r.environment_steps ?? "—"),
         h("td", { class: "num" }, fmtDuration(r.elapsed_s)),
         h("td", { class: "num" }, r.research_id
-          ? h("a", { href: "#research", onclick: e => e.stopPropagation() }, "见研究报告")
+          ? h("span", { class: "muted" }, "历史研究回合")
           : fmtTokens(r.usage.total_tokens)),
         h("td", {}, fmtTime(r.started_at)))))))
       : h("div", { class: "card empty" }, h("b", {}, S.runs.length ? "没有匹配的运行" : "还没有运行记录"), S.runs.length ? "调整筛选条件试试。" : "在“发起任务”里开始第一次运行。"));
@@ -796,7 +797,7 @@ async function recycleSelected(runs) {
 
 const recycleState = { selected: new Set(), busy: false, category: "all" };
 async function pageTrash(main) {
-  put(main, h("div", { class: "page wide" }, pageHead("回收站", "按类型管理已删除的任务运行和自我改进记录。可恢复，彻底删除后无法恢复。"),
+  put(main, h("div", { class: "page wide" }, pageHead("回收站", "管理已删除的任务运行和历史研究记录。可恢复，彻底删除后无法恢复。"),
     h("div", { id: "trashContent", class: "card card-pad" }, "正在读取回收站…")));
   await loadTrash();
 }
@@ -816,7 +817,7 @@ async function loadTrash() {
       };
       const blocked = blockers(ids);
       const blockedAll = blockers(runs.map(r => r.trash_id));
-      const protection = items => `${items.length} 条关联回合受研究证据保护。先在“自我改进”删除关联研究，再在回收站“全部”中选中研究与回合一起彻底删除；或点击“仅选可删除”。关联研究：${[...new Set(items.map(r => r.required_research))].join("、")}`;
+      const protection = items => `${items.length} 条关联回合受研究证据保护。可点击“仅选可删除”，或通过 CLI 将关联研究移入回收站后一起处理。关联研究：${[...new Set(items.map(r => r.required_research))].join("、")}`;
       const action = async (kind, values) => {
         if (state.busy || !values.length) return;
         if (kind === "delete" && blockers(values).length) { toast(protection(blockers(values)), true); return; }
@@ -835,7 +836,7 @@ async function loadTrash() {
       };
       put($("trashContent"),
         h("div", { class: "segmented", style: "margin-bottom:16px", "aria-label": "回收站分类" },
-          [["all", "全部"], ["run", "任务运行"], ["research", "自我改进"]].map(([value, label]) =>
+          [["all", "全部"], ["run", "任务运行"], ["research", "历史研究"]].map(([value, label]) =>
             h("button", { class: state.category === value ? "active" : "", "aria-pressed": String(state.category === value), disabled: state.busy,
               onclick: () => { state.category = value; state.selected.clear(); loadTrash(); } },
               `${label}（${allItems.filter(r => value === "all" || (r.category || "run") === value).length}）`))),
@@ -856,8 +857,7 @@ async function loadTrash() {
           h("button", { class: "btn small danger", disabled: !runs.length || state.busy || blockedAll.length > 0,
             title: blockedAll.length ? protection(blockedAll) : "永久删除当前分类中的全部记录",
             onclick: () => action("delete", runs.map(r => r.trash_id)) }, state.category === "all" ? "清空回收站" : "清空当前分类")),
-        blockedAll.length ? h("div", { class: "notice", style: "margin-bottom:16px" }, protection(blockedAll),
-          h("a", { href: "#research", class: "btn small" }, "管理关联研究")) : null,
+        blockedAll.length ? h("div", { class: "notice", style: "margin-bottom:16px" }, protection(blockedAll)) : null,
         runs.length ? h("div", { class: "table-wrap" }, h("table", { class: "table" },
           h("thead", {}, h("tr", {}, [h("input", { type: "checkbox", "aria-label": "全选当前回收站分类", checked: runs.length > 0 && ids.length === runs.length,
             disabled: !runs.length || state.busy, onchange: e => { state.selected = new Set(e.target.checked ? runs.map(r => r.trash_id) : []); render(); } }), "类型", "记录 ID", "任务", "状态", "模型", "删除时间"].map(t => h("th", {}, t)))),
@@ -865,7 +865,7 @@ async function loadTrash() {
             h("td", {}, h("input", { type: "checkbox", "aria-label": `选择 ${runTitle(r)}`,
               checked: state.selected.has(r.trash_id), disabled: state.busy,
               onchange: e => { if (e.target.checked) state.selected.add(r.trash_id); else state.selected.delete(r.trash_id); render(); } })),
-            h("td", {}, r.category === "research" ? "自我改进" : "任务运行"),
+            h("td", {}, r.category === "research" ? "历史研究" : "任务运行"),
             h("td", { class: "mono" }, r.research_id && r.category === "research" ? r.research_id : runTitle(r)),
             h("td", { class: "task-cell" }, runTask(r), r.required_research
               ? h("div", { class: "muted small" }, `研究证据：${r.required_research}`) : null),
@@ -1398,10 +1398,6 @@ function applyDefaults(force = false) {
 // -- startup -----------------------------------------------------------------
 
 async function refresh() {
-  if (current.page === "research") {
-    await refreshResearch();
-    return;
-  }
   if (current.page === "trash") {
     if (!recycleState.busy) await loadTrash();
     return;

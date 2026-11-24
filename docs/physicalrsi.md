@@ -1,4 +1,25 @@
-# Full PhysicalRSI research campaigns
+# PhysicalRSI in EvoAB
+
+## Run the PhysicalRSI agent
+
+In Studio, select a prepared manipulation simulator and task. Choose
+**Agent 选择工具（Tool） → PhysicalRSI** in the method step, then select a model
+preset and launch the run. Studio uses its regular run history and replay.
+The agent composes typed observation and decision skills through PhysicalRSI,
+and dispatches selected tools through EvoAB's session executor.
+
+Install with `pip install 'evoab[agent,physicalrsi]'`. The extra pins the
+upstream PhysicalRSI 0.3.0 revision. For an equivalent single task from CLI:
+
+```bash
+evoab run --integration metaworld --deploy local --task reach-v3 \
+  --agent physicalrsi --model YOUR_PRESET --interaction-mode tool_calling --no-sam3
+```
+
+The agent entry runs one episode using System 1. Use the research CLI to manage
+the separate multi-episode System 2 workflow and its existing records.
+
+## Multi-episode campaigns through the CLI
 
 EvoAB integrates PhysicalRSI 0.3.0's original `ResearchCampaign`, `SelfHarness`,
 `ExperimentEvaluator`, `LanguageMutationEvolver`, paired-permutation selection,
@@ -11,11 +32,9 @@ upstream Git commit `2574f72bebf9b357140ebe376db71e782575fe65`; this release
 is not currently available on PyPI. Native simulator assets and model weights
 remain separate deployment resources.
 
-Install `pip install 'evoab[agent,physicalrsi]'`, prepare a manipulation simulator,
-and configure a model preset. In Studio open **自我改进**, select the benchmark,
-task and model, then set rounds, candidates, validation seeds and episode tool
-budget. Confirming a launch starts actual model calls and native simulator
-trials, including development, paired validation and a final held-out test.
+Prepare a manipulation simulator and configure a model preset. A research launch
+starts model calls and simulator trials for development, paired validation, and
+a held-out test.
 
 ```bash
 evoab research launch --integration metaworld --task reach-v3 \
@@ -27,7 +46,7 @@ evoab research stop research_ID
 evoab research resume research_ID
 ```
 
-The CLI, HTTP API and Studio use the same Workbench operations:
+The research CLI and existing HTTP clients share Workbench operations:
 
 - `GET /api/research`
 - `POST /api/research`, JSON fields from `ResearchConfig`
@@ -73,8 +92,8 @@ implementation identities, bounded quota, per-round proposals, paired evaluation
 selection, lineage, research memory and final-test evidence. Original engine
 version and hashes plus adapter hashes are pinned. Native EvoAB episode records
 remain in run history, linked by `research_trial.json` to the parent campaign.
-Studio shows per-round decisions, skill and memory revisions, learned hypotheses,
-logs and held-out metrics. Replay retains the ordinary EvoAB episode artifacts.
+The research CLI lists per-round decisions, skill and memory revisions, learned
+hypotheses, logs and held-out metrics. Replay uses the ordinary episode artifacts.
 
 Stopping interrupts the worker, closes owned sessions and simulator process groups,
 and preserves receipts. Resume invokes the upstream audit and reuses completed
@@ -100,9 +119,7 @@ run-history rows link to the research report rather than displaying a misleading
 zero from the SDK's tool-only trace format. The model settings overview retains
 global API accounting, including proposal and reflection calls.
 
-Research records support select-all and recoverable deletion. Delete moves a
-finished campaign to the recycle bin's Self-improvement category; restore returns
-it to this page with its original evidence and revisions. Active jobs cannot be
-deleted. Campaigns and ordinary episode records are separate recycle-bin items;
-referenced episode evidence is protected from permanent removal while its parent
-campaign is retained. See [recycle-bin behavior](recycle-bin.md).
+Use `evoab research recycle ID...` to move a finished campaign to the recycle
+bin. Existing campaign entries appear under **历史研究**. Restore and permanent
+deletion operate on the campaign record, and referenced trial evidence stays
+protected while its campaign is retained. See [recycle-bin behavior](recycle-bin.md).

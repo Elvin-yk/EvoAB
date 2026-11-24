@@ -472,8 +472,9 @@ def _native_items(row: dict, *, full: bool = False) -> tuple[list[dict], list[di
     return incoming, [describe_item(item, full) for item in output]
 
 
-def _native_timeline(run_dir: Path, model: str | None, executions: dict, spans: list[dict]) -> tuple[list[dict], list[dict]]:
+def _native_timeline(run_dir: Path, model: str | None, executions: dict, spans: list[dict], agent: str) -> tuple[list[dict], list[dict]]:
     rows = _jsonl(run_dir / "agent/rounds.jsonl")
+    label = "PhysicalRSI" if agent == "physicalrsi" else "原生 Agent"
     registered = {tool["name"] for tool in (_read_json(run_dir / "tools.json") or [])}
     pending = dict(executions)
     rounds, calls = [], []
@@ -513,7 +514,7 @@ def _native_timeline(run_dir: Path, model: str | None, executions: dict, spans: 
                        "duration_s": end - start, "complete": True, "error": row.get("error"),
                        "usage": _usage(row), "context": {"tools": len(registered)}, "attempts": [],
                        "trigger": {"kind": "initial" if index == 0 else "continuation",
-                                   "text": "原生 Agent 根据任务和观测请求模型。" if index == 0 else "原生 Agent 继续本轮推理。"},
+                                   "text": f"{label} 根据任务和观测请求模型。" if index == 0 else f"{label} 继续本轮推理。"},
                        "new_input": incoming, "output": output, "calls": ids})
     return rounds, calls
 
@@ -526,9 +527,10 @@ def build_trace(run_dir: Path) -> dict[str, Any]:
     monitor = _read_json(run_dir / "monitor.json") or {}
 
     agent, model = _identity(run_dir, result or {}, monitor)
-    executions, links = _robot_executions(events, native=agent == "native")
-    if agent == "native":
-        rounds, calls = _native_timeline(run_dir, model, executions, spans)
+    recorded_rounds = agent in {"native", "physicalrsi"}
+    executions, links = _robot_executions(events, native=recorded_rounds)
+    if recorded_rounds:
+        rounds, calls = _native_timeline(run_dir, model, executions, spans, agent)
     else:
         rounds, calls = _exchange_timeline(run_dir, executions, links, _agent_activity(events), spans)
     t0 = monitor.get("started_at") or (rounds[0]["started_at"] if rounds else None)
@@ -780,7 +782,7 @@ def _ending(run_dir: Path, result: dict[str, Any] | None, rounds: list[dict[str,
 
 def round_detail(run_dir: Path, index: int) -> dict[str, Any]:
     """Everything sent and received in one round, untruncated."""
-    if _identity(run_dir, _read_json(run_dir / "result.json") or {}, {})[0] == "native":
+    if _identity(run_dir, _read_json(run_dir / "result.json") or {}, {})[0] in {"native", "physicalrsi"}:
         rows = _jsonl(run_dir / "agent/rounds.jsonl")
         if not 0 <= index < len(rows):
             raise IndexError(index)

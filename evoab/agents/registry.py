@@ -45,6 +45,7 @@ _BUILTIN_AGENTS: dict[str, str] = {
     "gemini_cli": "evoab.agents.gemini_cli.agent:GeminiCliAgent",
     "native": "evoab.agents.native.agent:NativeAgent",
     "rua": "evoab.agents.rua:RuaAgent",
+    "physicalrsi": "evoab.agents.physicalrsi:PhysicalRSIAgent",
 }
 
 
@@ -65,4 +66,5 @@ def agent_launch(name: str) -> AgentLaunch | None:
 
 def list_agent_launches() -> dict[str, AgentLaunch]:
     """Discover Workbench adapters through the same registry as the run CLI."""
-    return {name: launch for name in list_agent_backends() if (launch := agent_launch(name)) is not None}
+    return {name: launch for name in dict.fromkeys((*_BUILTIN_AGENTS, *_AGENT_REGISTRY))
+            if (launch := agent_launch(name)) is not None}
