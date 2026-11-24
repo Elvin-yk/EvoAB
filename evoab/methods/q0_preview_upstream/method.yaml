@@ -1,0 +1,15 @@
+id: q0_preview_upstream
+label: Q0-Preview (upstream)
+summary: Original Qoo Tech planning harness and CuRobo controller on one simulated RoboDojo X5 episode.
+paradigms: [orchestrate]
+status: experimental
+integrations: [robodojo]
+references:
+  - {title: Q0-Preview, kind: code, url: "https://github.com/XPolicyLab/XPolicyLab/tree/4a9e3afd73b86a48c5db076f5cf9dbfbef1a180e/policy/Q0_Preview"}
+roles:
+  main:
+    description: The upstream policy owns planning, Python tools, checkpoint review and motion planning.
+    brain: {agent: q0_preview, model: claude-opus-5-5, reasoning_effort: xhigh}
+    channel: tools
+    capabilities: []
+loop: {entry: main}

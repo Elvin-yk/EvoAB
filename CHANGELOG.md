@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add the experimental Q0-Preview upstream reference recipe for simulated RoboDojo X5 episodes, with synchronized RGB calibration, single-step receipts and native outcome recording.
+
 - **Recipes replace interaction modes and tool profiles (breaking).** A run's
   method is a recipe (`evoab/composition/`): roles with a brain, a channel
   (`tools`, `code`, `action`), capabilities and a context policy, connected by a

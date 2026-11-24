@@ -25,11 +25,12 @@ A recipe file or method directory can also be passed directly:
 | `code_as_policy` | code | code | 1 | Programs against the robot API |
 | `agent_policy` | orchestrate, policy | tools | 1 | Hybrid actor collaboration; gripper where available |
 | `rua` | orchestrate | tools | 1 | Paper setting of RUA (arXiv 2611.01560), native |
+| `q0_preview_upstream` | orchestrate | tools | 1 | [Original Q0-Preview policy](../evoab/methods/q0_preview_upstream/CARD.md), RoboDojo simulation reference protocol |
 | `rua_upstream` | orchestrate | tools | 1 | Original uni-robot-agent package as external evaluator, RoboDojo only |
 | `planner_direct` | orchestrate, direct | tools → action | 2 | Planner delegates sub-goals to a Direct controller |
 | `code_iterate` | code | code | 1 | Program library carried across episodes (RAX-style, partial) |
 
-Any agent runs any method (except the `rua_upstream` evaluator).
+Any agent runs any method (except methods pinned to an external evaluator).
 `evoab methods list [--integration X]` shows which are usable where; `evoab methods show ID` prints the card, recipe and parameters.
 
 ## Adding a method

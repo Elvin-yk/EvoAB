@@ -292,6 +292,20 @@ async function stepMethod(body) {
       if (body.isConnected) route();
       return;
     }
+    const choices = availableMethods().filter((m) => m.id === TEAM_METHOD || m.external_evaluator);
+    if (choices.length > 1) {
+      body.append(h("label", { class: "field" }, "运行方法", h("select", { class: "input",
+        onchange: (event) => {
+          selectMethod(choices.find((m) => m.id === event.target.value), w.agent);
+          w.model = null;
+          w.touched = true;
+          route();
+        } }, choices.map((m) => h("option", { value: m.id, selected: m.id === w.method }, m.label)))));
+    }
+    if (selectedMethod()?.external_evaluator) {
+      body.append(h("p", { class: "muted" }, selectedMethod().summary));
+      return;
+    }
     const groups = teamCatalogs.get(integration);
     if (!w.team) w.team = [newAgentCard("planner", groups)];
     const method = selectedMethod();

@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -104,6 +105,20 @@ class RecipeValidation(unittest.TestCase):
             self.assertFalse(failed.success)
             self.assertEqual(failed.extra["exit_code"], 3)
             self.assertTrue((root / "program_002.py").is_file())
+
+    def test_upstream_q0_selection_preserves_the_policy(self):
+        from evoab.workbench.launcher import LaunchRequest, resolve_run_recipe, resolve_selection
+
+        request = LaunchRequest("robodojo", "default", "stack_bowls", "fixture-opus",
+                                method="q0_preview_upstream")
+        resolved, method, _ = resolve_selection(request)
+        self.assertEqual([choice["id"] for choice in method["agents"]], ["q0_preview"])
+        self.assertEqual(resolved.reasoning_effort, "xhigh")
+        recipe = resolve_run_recipe(resolved, method)
+        self.assertEqual(recipe.entry.brain.agent, "q0_preview")
+        self.assertFalse(recipe.entry.capabilities)
+        with self.assertRaisesRegex(ValueError, "external evaluator"):
+            resolve_run_recipe(replace(resolved, team=[]), method)
 
     def test_method_library(self):
         ids = {method.id for method in list_methods()}

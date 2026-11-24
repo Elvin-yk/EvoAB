@@ -211,9 +211,10 @@ function wizardReady(upTo) {
   const w = S.wizard;
   const agent = selectedAgent();
   const settings = agent?.filters_presets ? S.agentModelSettings.get(agent.id) : S.modelSettings;
-  const compatiblePreset = w.team?.every((card) =>
+  const external = selectedMethod()?.external_evaluator;
+  const compatiblePreset = external ? settings?.presets.some((p) => p.name === w.model) : w.team?.every((card) =>
     settings?.presets.some((p) => p.name === (card.model_preset || w.model)));
-  const checks = [!!w.kind, !!w.bench, !!w.task, !!agent && !!w.team?.length && reachableAgents(w.team, 1).size === w.team.length, !!w.model && compatiblePreset];
+  const checks = [!!w.kind, !!w.bench, !!w.task, !!agent && (external || (!!w.team?.length && reachableAgents(w.team, 1).size === w.team.length)), !!w.model && compatiblePreset];
   return checks.slice(0, upTo + 1).every(Boolean);
 }
 function availableMethods() {
@@ -425,12 +426,14 @@ async function stepModel(body) {
       w.effort = only.reasoning_effort;
     }
   }
+  const method = selectedMethod();
+  const team = method.external_evaluator ? [] : w.team;
   const label = (name) => m.providers.find((p) => p.name === name)?.label || name;
   const groups = {};
   for (const p of m.presets) (groups[p.resolved_provider || p.provider] ||= []).push(p);
   put(holder,
     h("div", { class: "toolbar" },
-      h("span", { class: "section-title", style: "margin:0" }, `Agent 1 · ${TEAM_ROLE[w.team[0].role]} 的模型预设`),
+      h("span", { class: "section-title", style: "margin:0" }, method.external_evaluator ? "模型预设" : `Agent 1 · ${TEAM_ROLE[team[0].role]} 的模型预设`),
       !w.model ? h("span", { class: "muted small" }, "请点击下方预设以选中") : null,
       h("span", { class: "spacer" }), manage),
     agent.model_help ? h("p", { class: "muted small" }, agent.model_help) : null,
@@ -444,7 +447,7 @@ async function stepModel(body) {
         } },
         h("div", { class: "t mono" }, p.name),
         h("span", { class: "muted small" }, `${p.model} · 最多输出 ${fmtInt(p.max_tokens)} · ${fmtTokens(p.context_window_tokens)} 上下文${p.reasoning_effort ? ` · 预设推理 ${effortLabel(p.reasoning_effort)}` : ""}`)))])),
-    ...w.team.slice(1).map((card, index) => {
+    ...team.slice(1).map((card, index) => {
       const unavailable = card.model_preset && !m.presets.some((p) => p.name === card.model_preset);
       return h("label", { class: "field model-effort" },
         h("span", { class: "section-title" }, `Agent ${index + 2} · ${TEAM_ROLE[card.role]} 的模型预设`),
@@ -457,7 +460,7 @@ async function stepModel(body) {
           items.map((p) => h("option", { value: p.name, selected: p.name === card.model_preset }, p.name))))));
     }),
     incompatible,
-    h("div", { class: "model-effort" },
+    !method.fixed_effort && h("div", { class: "model-effort" },
       h("div", { class: "section-title", id: "effort-label" }, "推理强度"),
       h("div", { class: "segmented", role: "group", "aria-labelledby": "effort-label" },
         S.config.reasoning_efforts.map((e) => h("button", { class: w.effort === e ? "active" : "",
@@ -477,9 +480,9 @@ function commandPreview() {
   const {runtime_profile: profile, native_task: task} = w.task;
   const parts = [
     "evoab run", `--integration ${w.bench.integration}`, "--deploy local", ...(profile ? [`--runtime-profile ${profile}`] : []),
-    `--task ${shellQuote(task)}`, "--recipe team.recipe.json", "--no-sam3",
+    `--task ${shellQuote(task)}`, method.external_evaluator ? `--recipe ${shellQuote(method.id)}` : "--recipe team.recipe.json", "--no-sam3",
     ...(agent.id !== method.agent ? [`--agent ${agent.id}`] : []),
-    `--model ${shellQuote(w.model)}`, `--reasoning-effort ${w.effort}`,
+    `--model ${shellQuote(w.model)}`, `--reasoning-effort ${method.fixed_effort || w.effort}`,
     ...agent.cli_flags,
   ];
   const options = w.agentOptions.get(agent.id) || {};
@@ -502,9 +505,9 @@ function stepConfirm(body) {
   const rows = [
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`], ["任务", taskName(w.task.task)],
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
-    ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(w.effort)],
+    ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(method.fixed_effort || w.effort)],
     ["Agent 运行时", agent.label],
-    ...w.team.map((card, i) => [`Agent ${i + 1} · ${TEAM_ROLE[card.role]}`, [`模型 · ${card.model_preset || w.model}`, card.tools.map((name) => name === DIRECT_TOOL ? "Direct" : name).join("、") || "无工具", card.delegate_to.length ? "可委托给 " + card.delegate_to.map((n) => "Agent " + n).join("、") : "", card.instructions].filter(Boolean).join(" · ")]),
+    ...(method.external_evaluator ? [["模型", w.model]] : w.team.map((card, i) => [`Agent ${i + 1} · ${TEAM_ROLE[card.role]}`, [`模型 · ${card.model_preset || w.model}`, card.tools.map((name) => name === DIRECT_TOOL ? "Direct" : name).join("、") || "无工具", card.delegate_to.length ? "可委托给 " + card.delegate_to.map((n) => "Agent " + n).join("、") : "", card.instructions].filter(Boolean).join(" · ")])),
     ...agent.options.filter((option) => option.name in options).map((option) => [option.label, options[option.name]]),
   ];
   body.append(
@@ -512,7 +515,7 @@ function stepConfirm(body) {
       h("tr", {}, h("td", { class: "muted" }, k), h("td", {}, v)))))),
     h("div", { class: "section-title", style: "margin-top:20px" }, "等价命令"),
     h("div", { class: "command" }, commandPreview()),
-    h("button", { class: "btn small", onclick: (e) => downloadTeamRecipe(e.currentTarget) }, "下载命令使用的 team.recipe.json"),
+    !method.external_evaluator && h("button", { class: "btn small", onclick: (e) => downloadTeamRecipe(e.currentTarget) }, "下载命令使用的 team.recipe.json"),
     h("p", { class: "muted small" }, "API 密钥保存在服务器上，不会出现在页面或命令中。"),
     h("button", { class: "btn primary", style: "margin-top:8px", onclick: launchRun }, "启动运行"));
 }
@@ -527,9 +530,9 @@ async function launchRun(event) {
     await api("/api/runs", {
       method: "POST",
       json: { integration: w.bench.integration, profile: w.bench.profile, task: w.task.task,
-              model: w.model, reasoning_effort: w.effort, method: w.method,
+              model: w.model, reasoning_effort: selectedMethod().fixed_effort || w.effort, method: w.method,
               ...(agent.id !== selectedMethod().agent ? { agent: agent.id } : {}),
-              team: configuredTeam(w),
+              ...(selectedMethod().external_evaluator ? {} : { team: configuredTeam(w) }),
               ...(options && Object.keys(options).length ? { agent_options: options } : {}) },
     });
   } catch (error) {

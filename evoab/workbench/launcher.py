@@ -86,6 +86,8 @@ def methods(integration: str | None = None) -> tuple[dict, ...]:
         result.append({
             "id": recipe.id, "label": recipe.label, "summary": recipe.summary, "paradigms": recipe.paradigms,
             "status": recipe.status, "source": method.source, "integrations": recipe.integrations,
+            "external_evaluator": is_evaluator(default_agent),
+            "fixed_effort": entry.brain.reasoning_effort if is_evaluator(default_agent) else None,
             "channel": entry.channel, "agent": default_agent, "roles": list(recipe.roles),
             "parameters": [{**parameter.model_dump(mode="json"), "default": _parameter_default(recipe, parameter)}
                            for parameter in recipe.parameters],
@@ -130,7 +132,8 @@ def resolve_selection(request: LaunchRequest) -> tuple[LaunchRequest, dict, Agen
     agent = agent_launch(chosen)
     if agent is None:
         raise ValueError(f"Agent {chosen!r} has no Studio launch configuration")
-    return replace(request, method=method_id, agent=agent_id), method, agent
+    return replace(request, method=method_id, agent=agent_id,
+                   reasoning_effort=method["fixed_effort"] or request.reasoning_effort), method, agent
 
 
 def _parameter_flags(request: LaunchRequest, method: dict) -> list[str]:
@@ -280,6 +283,8 @@ def resolve_run_recipe(request: LaunchRequest, method: dict) -> Recipe:
     entry = get_method(method["id"])
     recipe = with_overrides(entry.recipe, dict(request.params or {}))
     if request.team is not None:
+        if method.get("external_evaluator"):
+            raise ValueError("An external evaluator owns its planner and tools.")
         from evoab.workbench.team import team_roles
         if request.params or request.visible_tools is not None:
             raise ValueError("Agent cards already define the tools and role parameters")
