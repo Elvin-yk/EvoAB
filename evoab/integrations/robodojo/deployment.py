@@ -196,8 +196,10 @@ def plan(args, runtime, output, run_id):
     port = args.port or 18760
     command = [runtime.python, '-m', 'evoab.integrations.robodojo.environment.server',
         '--native-root', str(native), '--task', task, '--layout', str(layout), '--layout-sha256', digest,
-        '--seed', str(seed),
         '--output-dir', str(output / 'environment'), '--run-id', run_id, '--host', args.host, '--port', str(port)]
+    # Older prepared runtimes report seed 0 but do not accept a --seed argument.
+    if seed != 0:
+        command.extend(('--seed', str(seed)))
     if args.depth is False:
         command.append('--no-depth')
     if getattr(args, 'camera_calibration', None) is False:

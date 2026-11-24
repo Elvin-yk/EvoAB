@@ -177,9 +177,11 @@ fabricate a successful task result.
 ## Environment profiles and limits
 
 Official RoboDojo uses the pinned clean checkout and frozen task layout.
-Only seed 0 is supported. `--layout` and optional `--layout-sha256` select and
-verify an alternative frozen layout. The actual task, seed and hash appear in
-service identity and run records.
+`--seed` selects evaluation set 0, 1, or 2 and `--layout-id` selects the
+frozen scene. Older prepared services support only seed 0. Update the
+runtime before using seed 1 or 2. `--layout` and optional `--layout-sha256`
+select and verify a specific frozen layout. The actual task, seed and hash
+appear in service identity and run records.
 
 RoboLab uses a [dedicated connection workflow](robolab.md) without automatic
 deployment. Physical-robot integrations are not part of this public release.
