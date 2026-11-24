@@ -129,6 +129,7 @@ const S = {
   tasks: {}, // "integration/profile" -> task list
   models: {}, // provider id -> {models, capabilities, recommended}
   agentModelSettings: new Map(),
+  modelProbes: new Map(),
   wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: TEAM_METHOD, agent: null,
             team: null, seed: 0, layoutId: 0, agentOptions: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
   history: { query: "", status: "all", bench: "all", model: "all", selected: new Set(), compare: false },
@@ -173,6 +174,7 @@ function route() {
     if (page === "settings" || current.page === "settings") {
       S.modelSettings = null;
       S.agentModelSettings.clear();
+      S.modelProbes.clear();
     }
     if (page === "history" || page === "run" || (page === "settings" && arg === "benchmarks")) {
       runRefreshTimer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
@@ -481,6 +483,44 @@ function agentOptions(agent) {
         } }), h("span", { class: "muted small" }, option.help))));
 }
 
+const PROBE_STATUS = {
+  pending: "正在验证模型…",
+  passed: "带图工具调用通过",
+  tool_exchange_failed: "未通过带图工具调用，请检查模型是否支持图像和多轮工具调用。",
+  provider_error: "模型服务请求失败，请检查模型 ID、API 和访问权限。",
+  runtime_unavailable: "模型验证未能运行，请检查 Agent 运行环境。",
+  timeout: "模型验证超时，请检查服务连接或降低推理强度后重试。",
+};
+
+function modelProbe(agent, preset, effort) {
+  const key = JSON.stringify([agent.id, preset, effort]);
+  const result = S.modelProbes.get(key);
+  const pending = result?.status === "pending";
+  const status = result?.detail || PROBE_STATUS[result?.status] || "配置校验通过，尚未验证模型调用。";
+  const routeDetails = result?.route && [result.route.model, result.route.api, result.route.adapter].filter(Boolean).join(" · ");
+  return h("div", { class: "toolbar model-effort" },
+    h("button", { class: "btn small", type: "button", disabled: pending, onclick: async () => {
+      const attempt = { status: "pending" };
+      S.modelProbes.set(key, attempt);
+      route();
+      let outcome;
+      try {
+        outcome = await api("/api/models/probe", { method: "POST", json: {
+          agent: agent.id, preset, reasoning_effort: effort,
+        } });
+      } catch (error) {
+        outcome = { detail: error.message };
+      }
+      if (S.modelProbes.get(key) !== attempt) return;
+      S.modelProbes.set(key, outcome);
+      if (current.page === "new" && S.wizard.step === 4 && selectedAgent()?.id === agent.id && S.wizard.model === preset) route();
+    } }, "验证模型"),
+    h("div", { role: "status", class: "muted small" },
+      `${status}${result?.http_status ? `（HTTP ${result.http_status}）` : ""}`,
+      routeDetails && h("div", { class: "mono" }, routeDetails),
+      !result && h("div", {}, "使用真实 API 请求，可能产生少量费用。")));
+}
+
 async function stepModel(body) {
   const w = S.wizard;
   const agent = selectedAgent();
@@ -555,6 +595,7 @@ async function stepModel(body) {
       h("div", { class: "segmented", role: "group", "aria-labelledby": "effort-label" },
         S.config.reasoning_efforts.map((e) => h("button", { class: w.effort === e ? "active" : "",
           "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; w.effortPicked = true; route(); } }, effortLabel(e))))),
+    w.model && method.channel === "tools" && agent.probes_presets && modelProbe(agent, w.model, method.fixed_effort || w.effort),
     agentOptions(agent));
 }
 

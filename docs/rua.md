@@ -84,7 +84,7 @@ when its frozen layout is available.
 .venv/bin/evoab run --integration robodojo --recipe rua_upstream \
   --rua-python "$RUA_PYTHON" --model "$RUA_MODEL" \
   --provider-url "$RUA_PROVIDER_URL" --provider-profile passthrough.responses \
-  --deploy local --container --task "$RUA_TASK" --recipe agentic \
+  --deploy local --container --task "$RUA_TASK" \
   --no-sam3 --no-depth --output-dir ./runs/rua --monitor --monitor-port 0
 ```
 
@@ -93,8 +93,8 @@ The command selects RGB with calibration through `--no-depth`. Add
 an already prepared episode, replace `--deploy local --container --no-depth`
 with `--env-url "$EPISODE_URL"`. Configure depth in the existing service.
 
-For Studio or `evoab runs launch --integration robodojo --method agentic
---recipe rua_upstream --task "$RUA_TASK" --model "$PRESET"`, export `EVOAB_RUA_PYTHON="$RUA_PYTHON"` before
+For Studio or `evoab runs launch --integration robodojo --method rua_upstream
+--task "$RUA_TASK" --model "$PRESET"`, export `EVOAB_RUA_PYTHON="$RUA_PYTHON"` before
 starting the launcher. Studio uses the selected preset's model ID, URL and
 key, plus the reasoning effort selected at launch. The optional turn limit
 maps to `--max-turns`. The shared HTTP preset resolver uses the provider
@@ -114,6 +114,11 @@ RUA cannot reuse the existing Codex credential through its HTTP adapter.
 An API-key Responses preset is usable when its endpoint grants access to the
 selected model. The resolver also reports catalog proxies, request overrides
 and credential-bearing base URLs as incompatible with this transport.
+
+In Studio's model step, **验证模型** sends a synthetic image and tool calls
+through the selected preset and reasoning effort. The check uses real model
+requests and can incur provider charges. It runs without starting RoboDojo and
+reports model API and tool-call compatibility for the fixture.
 
 For an explicitly configured RUA provider profile, use the single-episode CLI
 above. Set `EVOAB_RUA_PYTHON` for Studio when the interpreter is not `rua/venv`.

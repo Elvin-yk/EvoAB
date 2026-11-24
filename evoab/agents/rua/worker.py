@@ -61,7 +61,71 @@ def protect_model_transport():
         client.ModelTransport = transport
 
 
+def _probe_model(settings: dict) -> dict:
+    """Check the reference package's actual provider adapter and Responses transport."""
+    from httpx import RequestError, TimeoutException
+    from uni_robot_agent.provider.client import ModelClient
+    from uni_robot_agent.provider.protocols.responses import response_failure
+    from uni_robot_agent.provider.protocols.sse import decode_events
+    from uni_robot_agent.provider.registry import build_provider_adapter
+    from uni_robot_agent.services.errors import HttpCallError
+
+    fixture = settings["fixture"]
+    adapter = build_provider_adapter(settings["profile"], client_protocol="responses")
+    body = {"model": settings["model"], "instructions": fixture["instructions"],
+            "input": [{"role": "user", "content": [{"type": "input_text", "text": fixture["task"]}]}],
+            "tools": [{"type": "function", **tool} for tool in fixture["tools"]],
+            "parallel_tool_calls": False, "stream": True, "store": False,
+            "reasoning": {"effort": settings["effort"]}, "include": ["reasoning.encrypted_content"]}
+    headers = {"Authorization": f"Bearer {settings['api_key']}", "Content-Type": "application/json"}
+    with protect_model_transport():
+        client = ModelClient(settings["base_url"], adapter=adapter, request_timeout_s=38)
+        try:
+            observed_call_id = None
+            for expected in ("probe_observe", "probe_finish"):
+                response = client.request(body, headers=headers, request_path="/v1/responses")
+                if not 200 <= response.status < 300 or response_failure(response.body):
+                    return {"status": "provider_error", "http_status": response.status}
+                events, _ = decode_events(response.body) or ([], False)
+                output = next((event["response"].get("output", []) for event in events
+                               if event.get("type") == "response.completed"), [])
+                calls = [item for item in output if item.get("type") == "function_call"]
+                if len(calls) != 1 or calls[0].get("name") != expected or not calls[0].get("call_id"):
+                    return {"status": "tool_exchange_failed"}
+                call = calls[0]
+                if not any(event.get("type") == "response.output_item.done" and event.get("item") == call
+                           for event in events):
+                    return {"status": "tool_exchange_failed"}
+                if expected == "probe_finish":
+                    passed = (call["call_id"] != observed_call_id
+                              and json.loads(call.get("arguments", "{}")) == fixture["answer"])
+                    return {"status": "passed" if passed else "tool_exchange_failed"}
+                if json.loads(call.get("arguments", "{}")) != {}:
+                    return {"status": "tool_exchange_failed"}
+                observed_call_id = call["call_id"]
+                body["input"].extend(item for item in output if item.get("type") != "reasoning"
+                                     or item.get("encrypted_content") or settings["profile"] != "passthrough.responses")
+                body["input"].append({"type": "function_call_output", "call_id": call["call_id"], "output": [
+                    {"type": "input_text", "text": json.dumps({"nonce": fixture["answer"]["nonce"]})},
+                    {"type": "input_image", "image_url": f"data:image/png;base64,{fixture['image']}", "detail": "auto"},
+                ]})
+        except HttpCallError as error:
+            return {"status": "provider_error", "http_status": error.status}
+        except TimeoutException:
+            return {"status": "timeout"}
+        except RequestError:
+            return {"status": "provider_error"}
+        except (KeyError, TypeError, ValueError):
+            return {"status": "tool_exchange_failed"}
+        finally:
+            client.close()
+
+
 def main() -> None:
+    if sys.argv[1:] == ["--probe-model"]:
+        print(json.dumps(_probe_model(json.load(sys.stdin))))
+        return
+
     try:
         from uni_robot_agent.artifacts.run import read_result_json, write_json_atomic
         from uni_robot_agent.cli import build_parser

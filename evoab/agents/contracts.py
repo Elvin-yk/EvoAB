@@ -53,6 +53,7 @@ class AgentLaunch:
     model_help: str = ""
     tool_groups: Callable[[str, str], dict[str, list[str]]] | None = None
     tool_selection_flags: tuple[str, ...] = ("--visible-tools",)
+    probe_preset: Callable[[str, str], dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
