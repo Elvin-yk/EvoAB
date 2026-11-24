@@ -347,9 +347,10 @@ const TASK_CATEGORIES = [
 ];
 const VARIANT_LABEL = { standard: "标准布局", random: "随机布局" };
 
-function episodeChoice(task) {
+function episodeChoice(tasks) {
   const w = S.wizard;
-  const layouts = task.layouts_per_seed;
+  const task = tasks[0];
+  const layouts = Math.max(...tasks.map((t) => t.layouts_per_seed));
   const seeds = h("div", { class: "chips" }, task.seeds.map((seed) => h("button", {
     class: `chip-btn${w.seed === seed ? " active" : ""}`, onclick: () => { w.seed = seed; route(); } }, `种子 ${seed}`)));
   const layout = h("input", { class: "input", type: "number", min: 0, max: layouts - 1, step: 1, value: w.layoutId,
@@ -360,9 +361,17 @@ function episodeChoice(task) {
     } });
   return h("section", { class: "card episode-choice" },
     h("div", { class: "episode-row" }, h("b", {}, "评测场景"), seeds, h("label", { class: "episode-layout" }, "布局编号", layout,
-      h("span", { class: "faint small" }, `0–${layouts - 1}`))),
+      h("span", { class: "faint small" }, "泛化任务 0–24，其他 0–49"))),
     h("p", { class: "muted small" }, "种子是官方的 3 组固定评测场景（0、1、2）；布局编号是该组里的第几个场景，"
       + "一个布局就是一个回合的初始摆放。官方每组每个任务跑全部布局：泛化任务的标准和随机版本各 25 个，其余任务 50 个。"));
+}
+
+function chooseTask(task) {
+  const w = S.wizard;
+  w.task = task;
+  if (task.layouts_per_seed) w.layoutId = Math.min(w.layoutId, task.layouts_per_seed - 1);
+  w.step = 3;
+  route();
 }
 
 function categorizedTasks(tasks, list, renderTask) {
@@ -386,7 +395,7 @@ function categorizedTasks(tasks, list, renderTask) {
       const choices = Object.keys(b.variants).length > 1 ? h("span", { class: "variant-choice" },
         ["standard", "random"].filter((v) => b.variants[v]).map((v) => h("button", {
           class: `chip-btn${w.task && w.task.task === b.variants[v].task ? " active" : ""}`, title: b.variants[v].task,
-          onclick: (e) => { e.stopPropagation(); w.task = b.variants[v]; w.step = 3; route(); },
+          onclick: (e) => { e.stopPropagation(); chooseTask(b.variants[v]); },
         }, VARIANT_LABEL[v]))) : null;
       sections.push(renderTask(primary, b.base, choices, Object.values(b.variants).some((t) => w.task && w.task.task === t.task)));
     }
@@ -434,7 +443,7 @@ function stepCategorizedTask(body, tasks) {
   if (w.suite !== "all" && !counts[w.suite]) w.suite = "all";
   const list = h("div", { class: "list" });
   const renderTask = (t, base, choices, selected) => h("div", {
-    class: `list-item${selected ? " selected" : ""}`, onclick: () => { w.task = t; w.step = 3; route(); },
+    class: `list-item${selected ? " selected" : ""}`, onclick: () => chooseTask(t),
   }, h("div", { class: "t", title: t.task }, base), choices || h("span"),
     h("div", { class: "s", title: t.instruction }, [t.instruction || "（无说明）", `本体 ${t.embodiment}`].join(" · ")));
   const render = () => categorizedTasks(tasks, list, renderTask);
@@ -443,7 +452,7 @@ function stepCategorizedTask(body, tasks) {
   const chips = h("div", { class: "chips" }, [["all", `全部 ${total}`],
     ...TASK_CATEGORIES.filter(([id]) => counts[id]).map(([id, label]) => [id, `${label} ${counts[id].size}`])].map(([value, label]) =>
       h("button", { class: `chip-btn${w.suite === value ? " active" : ""}`, onclick: () => { w.suite = value; route(); } }, label)));
-  put(body, chips, episodeChoice(tasks[0]), h("div", { class: "toolbar" },
+  put(body, chips, episodeChoice(tasks), h("div", { class: "toolbar" },
     h("b", {}, w.suite === "all" ? "全部任务" : TASK_CATEGORIES.find(([id]) => id === w.suite)[1]),
     h("span", { class: "spacer" }), search), list);
   render();
@@ -588,7 +597,7 @@ function stepConfirm(body) {
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ...(w.task.category ? [["类别", (TASK_CATEGORIES.find(([id]) => id === w.task.category) || [, w.task.category])[1]]]
       : [["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`]]), ["任务", taskName(w.task.task)],
     ...(w.task.variant ? [["布局版本", VARIANT_LABEL[w.task.variant]]] : []),
-    ...(w.task.seeds ? [["评测场景", `种子 ${w.seed} · 布局 ${w.layoutId}`]] : []),
+    ...(w.task.seeds ? [["评测场景", `种子 ${w.seed} · 布局 ${w.layoutId}（该任务每组 ${w.task.layouts_per_seed} 个布局）`]] : []),
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(method.fixed_effort || w.effort)],
     ["Agent 运行时", agent.label],
@@ -1254,7 +1263,24 @@ async function refresh() {
 async function loadWorkspace() {
   [S.config] = await Promise.all([api("/api/config"), loadBenchmarks(), loadRuns()]);
   showBuild(S.config.build);
+  watchBuild(S.config.build?.commit);
   applyDefaults();
+}
+
+// A page left open across a redeploy keeps the old code; say so instead of silently mixing versions.
+function watchBuild(loaded) {
+  if (!loaded || S.buildWatch) return;
+  S.buildWatch = setInterval(async () => {
+    let served;
+    try { served = (await api("/api/config")).build?.commit; } catch { return; }
+    if (!served || served === loaded) return;
+    const badge = document.getElementById("buildBadge");
+    badge.textContent = `服务已更新到 ${served.slice(0, 7)}，请刷新页面`;
+    badge.className = "build-badge warn";
+    badge.style.cursor = "pointer";
+    badge.onclick = () => location.reload();
+    clearInterval(S.buildWatch);
+  }, 60000);
 }
 
 // Which commit this Studio runs, so an outdated or modified deployment is visible at a glance.
