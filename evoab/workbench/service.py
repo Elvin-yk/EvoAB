@@ -345,6 +345,22 @@ class Workbench:
                 presets.append(preset)
         return {**settings, "presets": presets, "incompatible_presets": incompatible}
 
+    def probe_model(self, agent: str, preset: str, reasoning_effort: str) -> dict[str, Any]:
+        if reasoning_effort not in REASONING_EFFORTS:
+            raise Invalid(f"reasoning effort must be one of {REASONING_EFFORTS}")
+        try:
+            launch_config = agent_launch(agent)
+        except ValueError as error:
+            raise Invalid(str(error)) from error
+        if launch_config is None or launch_config.probe_preset is None:
+            raise Invalid("Model verification is unavailable for this Agent.")
+        try:
+            return launch_config.probe_preset(preset, reasoning_effort)
+        except PresetCompatibilityError as error:
+            raise Invalid(str(error)) from None
+        except RuntimeError as error:
+            raise Unavailable("Could not prepare model verification.") from error
+
     def save_preset(self, fields: dict[str, Any], existing: str | None = None) -> dict[str, Any]:
         return self._catalog(lambda c: c.save_preset, fields, existing=existing)
 

@@ -48,7 +48,8 @@ def _agent_choice(name: str, launch: AgentLaunch) -> dict:
             "integrations": launch.integrations, "cli_flags": launch.cli_flags,
             "tool_selection_flags": launch.tool_selection_flags,
             "options": [asdict(option) for option in launch.options],
-            "filters_presets": launch.validate_preset is not None, "model_help": launch.model_help}
+            "filters_presets": launch.validate_preset is not None, "model_help": launch.model_help,
+            "probes_presets": launch.probe_preset is not None}
 
 
 def methods(integration: str | None = None) -> tuple[dict, ...]:

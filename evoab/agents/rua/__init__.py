@@ -9,6 +9,7 @@ import sys
 import subprocess
 
 from evoab.agents.contracts import AgentLaunch, EvaluatorPlan, LaunchIntegerOption
+from evoab.agents.model_probe import run_model_probe
 from evoab.provider.http_presets import resolve_http_preset, validate_http_provider_url
 
 
@@ -72,6 +73,19 @@ def _tool_groups(integration, profile):
     return json.loads(output.stdout)
 
 
+def probe_preset(name: str, effort: str) -> dict:
+    from evoab.provider.registry import validate_provider_profile
+
+    model, base_url, profile, api_key = preset_connection(name)
+    adapter = validate_provider_profile(profile, client_protocol="responses")
+    worker = Path(__file__).with_name("worker.py")
+    return run_model_probe(
+        [_runtime_python(), "-I", str(worker), "--probe-model"],
+        {"model": model, "base_url": base_url, "profile": profile, "api_key": api_key, "effort": effort},
+        {"model": model, "api": adapter.upstream_protocol, "adapter": profile},
+    )
+
+
 class RuaAgent:
     """RUA owns model calls, tool execution and episode finalization in its process."""
 
@@ -84,6 +98,7 @@ class RuaAgent:
         cli_flags=("--rua-model-preset",), validate_preset=preset_connection,
         model_help="支持使用 API Key 的标准 Responses 或 Chat Completions 预设。",
         options=(LaunchIntegerOption("max_turns", "--max-turns", "Agent 轮次上限", "留空或填 0 表示不限制轮次。"),),
+        probe_preset=probe_preset,
     )
 
     @classmethod

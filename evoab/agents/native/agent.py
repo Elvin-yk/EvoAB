@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from evoab.agents.contracts import AgentCapabilities, AgentLaunch, AgentResult
+from evoab.agents.model_probe import probe_native_preset
 from evoab.agents.registry import register_agent
 
 
@@ -38,6 +39,7 @@ class NativeAgent:
     workbench_launch = AgentLaunch(
         label="EvoAB 内置 Agent",
         description="使用 EvoAB 内置运行时与模型预设。",
+        probe_preset=probe_native_preset,
     )
 
     @classmethod

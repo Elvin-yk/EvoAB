@@ -129,6 +129,11 @@ def create_app(runs_root: Path) -> FastAPI:
     def model_settings(agent: str | None = None) -> dict[str, Any]:
         return bench.model_settings(agent)
 
+    @app.post("/api/models/probe")
+    def model_probe(agent: str = Body(...), preset: str = Body(...),
+                    reasoning_effort: str = Body(...)) -> dict[str, Any]:
+        return bench.probe_model(agent, preset, reasoning_effort)
+
     @app.post("/api/models/presets", status_code=201)
     def preset_create(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         return bench.save_preset(payload)
