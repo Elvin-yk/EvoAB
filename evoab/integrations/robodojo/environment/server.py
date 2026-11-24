@@ -86,7 +86,7 @@ def _serve(adapter, args, app, *, integration="robodojo"):
     owner = _OwnerThreadBackend(adapter)
     info = EpisodeInfo(episode_id=args.run_id, task=args.task, environment=owner.description,
                        integration=integration, capabilities=["motion", "capture", "joint_prefix", "preview"],
-                       metadata={"task_id": args.task, "seed": 0, "layout": str(args.layout),
+                       metadata={"task_id": args.task, "seed": args.seed, "layout": str(args.layout),
                                  "layout_sha256": args.layout_sha256,
                                  "instruction": adapter.read_state().metadata["instruction"],
                                  "skill_namespace": "robodojo"})
@@ -137,6 +137,7 @@ def main(argv=None, *, integration="robodojo", runtime=native_compat):
     parser.add_argument("--task", required=True)
     parser.add_argument("--layout", type=Path, required=True)
     parser.add_argument("--layout-sha256", required=True)
+    parser.add_argument("--seed", type=int, default=0, help="Evaluation set the layout comes from (recorded)")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")

@@ -208,6 +208,15 @@ def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
     return runtimes
 
 
+def _integration_task_metadata(integration: str, task: str) -> dict[str, Any]:
+    try:
+        from evoab.integrations import load_integration
+        describe = getattr(load_integration(integration), "task_metadata", None)
+    except Exception:  # noqa: BLE001 - a catalog without extra facts still lists its tasks.
+        return {}
+    return describe(task) if describe is not None else {}
+
+
 def _parse_runtime(record: Path) -> PreparedRuntime | None:
     known = sorted((b.integration for b in REGISTRY), key=len, reverse=True)
     try:
@@ -245,6 +254,9 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
         if selector:
             runtime_profile, task_name = launch_target(integration, profile, task_id)
             tasks[task_id].update(runtime_profile=runtime_profile, native_task=task_name)
+        # Integration-owned catalog facts (e.g. RoboDojo's capability dimension and layout variants).
+        tasks[task_id].update({key: value for key, value in _integration_task_metadata(integration, task_id).items()
+                               if value is not None or key not in tasks[task_id]})
     try:
         validation = json.loads((record.parent / "validation.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):

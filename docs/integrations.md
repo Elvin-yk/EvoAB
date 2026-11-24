@@ -39,7 +39,17 @@ setup/deploy recipe. Use SAM3 only where supported; otherwise pass `--no-sam3`.
 Depth localization requires paired depth and calibration; RGB triangulation
 requires at least two calibrated views.
 
-Studio lists RoboDojo tasks with a native task configuration and a frozen layout at index zero. To register an existing prepared checkout, run `evoab setup --integration robodojo --runtime-python /path/to/native/bin/python --native-root /path/to/RoboDojo` on the Studio host. Rerun the original setup command to refresh the catalog after adding layouts or upgrading an older installation. This also refreshes an existing isolated RoboDojo runtime without reinstalling it.
+Studio lists RoboDojo tasks with a native task configuration and a frozen layout at index zero.
+
+RoboDojo has 42 tasks in five capability dimensions (generalization 12, memory 6,
+precision 8, long-horizon 8, open 8); each generalization task also has a
+`<task>_random` config with a changed initial arrangement, so 54 configs run.
+`evoab/integrations/robodojo/tasks.py` records this catalog, and Studio groups
+tasks by dimension with a standard/random switch. An episode is one frozen layout
+`Assets/Eval_Layout/RoboDojo/arx_x5/<seed>/<task>_<layout>.json`: `--seed`
+(0, 1 or 2) picks the official evaluation set and `--layout-id` the scene within
+it (25 per generalization config, 50 otherwise). Both default to 0 and are
+recorded in the episode metadata. To register an existing prepared checkout, run `evoab setup --integration robodojo --runtime-python /path/to/native/bin/python --native-root /path/to/RoboDojo` on the Studio host. Rerun the original setup command to refresh the catalog after adding layouts or upgrading an older installation. This also refreshes an existing isolated RoboDojo runtime without reinstalling it.
 
 A registered RoboDojo runtime whose configs have no frozen layout at
 `Assets/Eval_Layout/RoboDojo/arx_x5/0/<task>_0.json` is marked in Studio as

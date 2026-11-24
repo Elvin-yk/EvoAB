@@ -142,6 +142,9 @@ def add_launch_arguments(parser, *, managed=False):
     if '--layout' not in parser._option_string_actions:
         parser.add_argument('--layout', type=Path)
     parser.add_argument('--layout-sha256')
+    if '--layout-id' not in parser._option_string_actions:
+        parser.add_argument('--layout-id', type=int,
+                            help='Index of the frozen layout within the seed\'s evaluation set (RoboDojo)')
     parser.add_argument('--task-dir', type=Path)
     if '--seed' not in parser._option_string_actions:
         parser.add_argument('--seed', type=int)

@@ -130,7 +130,7 @@ const S = {
   models: {}, // provider id -> {models, capabilities, recommended}
   agentModelSettings: new Map(),
   wizard: { step: 0, kind: null, bench: null, task: null, suite: "all", query: "", method: TEAM_METHOD, agent: null,
-            team: null, agentOptions: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
+            team: null, seed: 0, layoutId: 0, agentOptions: new Map(), effort: "low", provider: null, model: null, modelQuery: "" },
   history: { query: "", status: "all", bench: "all", model: "all", selected: new Set(), compare: false },
   replay: null,
 };
@@ -337,10 +337,68 @@ function suiteMatrix(suites, total) {
     h("p", { class: "small muted" }, "行是基础套件，列是扰动类型；单元格里的数字是可用任务数。"));
 }
 
+// Capability dimensions declared by the benchmark's task catalog (RoboDojo).
+const TASK_CATEGORIES = [
+  ["generalization", "泛化", "同一目标、换物体或摆放，检验泛化。每个任务有标准布局和随机布局两种版本。"],
+  ["memory", "记忆", "需要记住之前看到的信息或顺序。"],
+  ["precision", "精度", "精细对准、插入、按压等高精度操作。"],
+  ["long_horizon", "长程", "多步骤、长序列的任务。"],
+  ["open", "开放指令", "按语言或图片给出的开放式指令执行。"],
+];
+const VARIANT_LABEL = { standard: "标准布局", random: "随机布局" };
+
+function episodeChoice(task) {
+  const w = S.wizard;
+  const layouts = task.layouts_per_seed;
+  const seeds = h("div", { class: "chips" }, task.seeds.map((seed) => h("button", {
+    class: `chip-btn${w.seed === seed ? " active" : ""}`, onclick: () => { w.seed = seed; route(); } }, `种子 ${seed}`)));
+  const layout = h("input", { class: "input", type: "number", min: 0, max: layouts - 1, step: 1, value: w.layoutId,
+    style: "width:90px", onchange: (e) => {
+      const value = Math.round(Number(e.target.value));
+      w.layoutId = Number.isFinite(value) ? Math.min(layouts - 1, Math.max(0, value)) : 0;
+      e.target.value = w.layoutId;
+    } });
+  return h("section", { class: "card episode-choice" },
+    h("div", { class: "episode-row" }, h("b", {}, "评测场景"), seeds, h("label", { class: "episode-layout" }, "布局编号", layout,
+      h("span", { class: "faint small" }, `0–${layouts - 1}`))),
+    h("p", { class: "muted small" }, "种子是官方的 3 组固定评测场景（0、1、2）；布局编号是该组里的第几个场景，"
+      + "一个布局就是一个回合的初始摆放。官方每组每个任务跑全部布局：泛化任务的标准和随机版本各 25 个，其余任务 50 个。"));
+}
+
+function categorizedTasks(tasks, list, renderTask) {
+  const w = S.wizard;
+  const q = w.query.trim().toLowerCase();
+  const bases = new Map();
+  for (const t of tasks) {
+    if (!bases.has(t.base_task)) bases.set(t.base_task, { base: t.base_task, category: t.category, variants: {} });
+    bases.get(t.base_task).variants[t.variant || "standard"] = t;
+  }
+  const matches = (b) => !q || Object.values(b.variants).some((t) => t.task.toLowerCase().includes(q)
+    || (t.instruction || "").toLowerCase().includes(q));
+  const sections = [];
+  for (const [id, label, note] of TASK_CATEGORIES) {
+    if (w.suite !== "all" && w.suite !== id) continue;
+    const group = [...bases.values()].filter((b) => b.category === id && matches(b));
+    if (!group.length) continue;
+    sections.push(h("div", { class: "list-group" }, `${label} · ${group.length} 个任务 — ${note}`));
+    for (const b of group) {
+      const primary = b.variants.standard || Object.values(b.variants)[0];
+      const choices = Object.keys(b.variants).length > 1 ? h("span", { class: "variant-choice" },
+        ["standard", "random"].filter((v) => b.variants[v]).map((v) => h("button", {
+          class: `chip-btn${w.task && w.task.task === b.variants[v].task ? " active" : ""}`, title: b.variants[v].task,
+          onclick: (e) => { e.stopPropagation(); w.task = b.variants[v]; w.step = 3; route(); },
+        }, VARIANT_LABEL[v]))) : null;
+      sections.push(renderTask(primary, b.base, choices, Object.values(b.variants).some((t) => w.task && w.task.task === t.task)));
+    }
+  }
+  put(list, ...(sections.length ? sections : [h("div", { class: "empty" }, "没有匹配的任务")]));
+}
+
 async function stepTask(body) {
   const w = S.wizard;
   body.append(h("div", { class: "muted" }, "加载任务…"));
   const tasks = await loadTasks(w.bench, w.bench.profile);
+  if (tasks.length && tasks.every((t) => t.category && t.base_task)) return stepCategorizedTask(body, tasks);
   const suites = {};
   for (const t of tasks) suites[t.suite] = (suites[t.suite] || 0) + 1;
   const list = h("div", { class: "list" });
@@ -366,6 +424,29 @@ async function stepTask(body) {
   put(body, picker, h("div", { class: "toolbar" }, h("b", {}, w.suite === "all" ? "全部任务" : suiteLabel(w.suite)),
     h("span", { class: "spacer" }), search), list);
   renderList();
+}
+
+function stepCategorizedTask(body, tasks) {
+  const w = S.wizard;
+  const counts = {};
+  for (const t of tasks) (counts[t.category] ||= new Set()).add(t.base_task);
+  const total = new Set(tasks.map((t) => t.base_task)).size;
+  if (w.suite !== "all" && !counts[w.suite]) w.suite = "all";
+  const list = h("div", { class: "list" });
+  const renderTask = (t, base, choices, selected) => h("div", {
+    class: `list-item${selected ? " selected" : ""}`, onclick: () => { w.task = t; w.step = 3; route(); },
+  }, h("div", { class: "t", title: t.task }, base), choices || h("span"),
+    h("div", { class: "s", title: t.instruction }, [t.instruction || "（无说明）", `本体 ${t.embodiment}`].join(" · ")));
+  const render = () => categorizedTasks(tasks, list, renderTask);
+  const search = h("input", { class: "input", type: "search", placeholder: "搜索任务名或说明…", value: w.query, style: "width:260px",
+    oninput: (e) => { w.query = e.target.value; render(); } });
+  const chips = h("div", { class: "chips" }, [["all", `全部 ${total}`],
+    ...TASK_CATEGORIES.filter(([id]) => counts[id]).map(([id, label]) => [id, `${label} ${counts[id].size}`])].map(([value, label]) =>
+      h("button", { class: `chip-btn${w.suite === value ? " active" : ""}`, onclick: () => { w.suite = value; route(); } }, label)));
+  put(body, chips, episodeChoice(tasks[0]), h("div", { class: "toolbar" },
+    h("b", {}, w.suite === "all" ? "全部任务" : TASK_CATEGORIES.find(([id]) => id === w.suite)[1]),
+    h("span", { class: "spacer" }), search), list);
+  render();
 }
 
 const TOOL_GROUP_LABELS = { gripper: "机械臂", action_policy: "动作策略", scene: "场景观测", skills: "技能", episode: "任务", jobs: "后台作业", hybrid: "动作模型" };
@@ -489,6 +570,7 @@ function commandPreview() {
   for (const option of agent.options) {
     if (option.name in options) parts.push(`${option.flag} ${options[option.name]}`);
   }
+  if (w.task.seeds) parts.push(`--seed ${w.seed}`, `--layout-id ${w.layoutId}`);
   if (w.bench.container) parts.push("--container");
   return [...parts, "--monitor"].join(" \\\n  ");
 }
@@ -503,7 +585,10 @@ function stepConfirm(body) {
   const agent = selectedAgent();
   const options = w.agentOptions.get(agent.id) || {};
   const rows = [
-    ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`], ["任务", taskName(w.task.task)],
+    ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ...(w.task.category ? [["类别", (TASK_CATEGORIES.find(([id]) => id === w.task.category) || [, w.task.category])[1]]]
+      : [["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`]]), ["任务", taskName(w.task.task)],
+    ...(w.task.variant ? [["布局版本", VARIANT_LABEL[w.task.variant]]] : []),
+    ...(w.task.seeds ? [["评测场景", `种子 ${w.seed} · 布局 ${w.layoutId}`]] : []),
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(method.fixed_effort || w.effort)],
     ["Agent 运行时", agent.label],
@@ -530,6 +615,7 @@ async function launchRun(event) {
     await api("/api/runs", {
       method: "POST",
       json: { integration: w.bench.integration, profile: w.bench.profile, task: w.task.task,
+              ...(w.task.seeds ? { seed: w.seed, layout_id: w.layoutId } : {}),
               model: w.model, reasoning_effort: selectedMethod().fixed_effort || w.effort, method: w.method,
               ...(agent.id !== selectedMethod().agent ? { agent: agent.id } : {}),
               ...(selectedMethod().external_evaluator ? {} : { team: configuredTeam(w) }),

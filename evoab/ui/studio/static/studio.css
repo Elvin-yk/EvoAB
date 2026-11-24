@@ -687,3 +687,9 @@ details.sys.inner { margin: 6px 0; }
 .team-card .tool-picker-grid fieldset:disabled label { opacity: .65; cursor: not-allowed; }
 .build-badge { margin-left: 10px; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted); font: 12px/1.6 var(--mono); white-space: nowrap; }
 .build-badge.warn { background: var(--warn-soft); color: var(--warn); }
+.episode-choice { padding: 12px 14px; margin: 10px 0; }
+.episode-choice p { margin: 8px 0 0; }
+.episode-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.episode-row .chips { margin: 0; }
+.episode-layout { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.variant-choice { display: inline-flex; gap: 6px; }

@@ -10,6 +10,8 @@ class RobodojoOptions(GripperOptions):
 
 
 
+from evoab.integrations.robodojo.tasks import task_metadata  # noqa: E402 - Studio task catalog
+
 def add_cli_args(parser):
     from evoab.integrations.gripper import add_gripper_cli_args
 

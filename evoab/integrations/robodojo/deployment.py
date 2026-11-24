@@ -18,8 +18,11 @@ def recipe(args):
 
 
 def validate(args):
-    if getattr(args, 'seed', None) not in (None, 0):
-        raise ValueError('Official RoboDojo currently supports seed 0 with an explicit frozen layout')
+    from .tasks import SEEDS
+    if getattr(args, 'seed', None) not in (None, *SEEDS):
+        raise ValueError(f'RoboDojo evaluation seeds are {", ".join(map(str, SEEDS))}')
+    if getattr(args, 'layout_id', None) is not None and (args.layout_id < 0 or args.layout):
+        raise ValueError('--layout-id is a non-negative index and cannot be combined with --layout')
     if args.command != 'setup' and not args.task:
         raise ValueError('Local RoboDojo deployment requires --task')
     if getattr(args, 'camera_calibration', None) is False and getattr(args, 'depth', None) is not False:
@@ -181,15 +184,19 @@ def plan(args, runtime, output, run_id):
         raise ValueError('RoboDojo task must be a native task name')
     if not (native / 'task/RoboDojo/config' / (task + '.yml')).is_file():
         raise ValueError(f'Unknown RoboDojo task: {task}')
-    layout = (args.layout or assets / 'Eval_Layout/RoboDojo/arx_x5/0' / f'{task}_0.json').resolve()
+    from .tasks import layout_path
+    seed, layout_id = getattr(args, 'seed', None) or 0, getattr(args, 'layout_id', None) or 0
+    layout = (args.layout or layout_path(assets, task, seed, layout_id)).resolve()
     if not layout.is_file():
-        raise ValueError(f'Frozen layout not found: {layout}; prepare assets or pass --layout')
+        raise ValueError(f'Frozen layout not found: {layout} (seed {seed}, layout {layout_id}); '
+                         'prepare assets or pass --layout')
     digest = file_hash(layout)
     if args.layout_sha256 and digest != args.layout_sha256:
         raise ValueError('Layout SHA256 mismatch')
     port = args.port or 18760
     command = [runtime.python, '-m', 'evoab.integrations.robodojo.environment.server',
         '--native-root', str(native), '--task', task, '--layout', str(layout), '--layout-sha256', digest,
+        '--seed', str(seed),
         '--output-dir', str(output / 'environment'), '--run-id', run_id, '--host', args.host, '--port', str(port)]
     if args.depth is False:
         command.append('--no-depth')
@@ -198,4 +205,5 @@ def plan(args, runtime, output, run_id):
     connect_host = '127.0.0.1' if args.host == '0.0.0.0' else args.host
     return LaunchPlan(tuple(command), f'http://{connect_host}:{port}',
                       {'integration': 'robodojo', 'episode_id': run_id, 'task': task,
-                       'environment.metadata.layout_sha256': digest}, runtime.environment, output)
+                       'environment.metadata.layout_sha256': digest, 'metadata.seed': seed},
+                      runtime.environment, output)

@@ -38,6 +38,9 @@ class LaunchRequest:
     agent_options: dict[str, int] | None = None
     visible_tools: list[str] | None = None
     team: list[dict] | None = None
+    # Evaluation set and frozen layout index, for benchmarks whose tasks declare them (RoboDojo).
+    seed: int | None = None
+    layout_id: int | None = None
 
 
 def _agent_choice(name: str, launch: AgentLaunch) -> dict:
@@ -226,6 +229,10 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
     ]
     if request.visible_tools is not None:
         command.extend((*agent.tool_selection_flags, *request.visible_tools))
+    if request.seed is not None:
+        command.extend(("--seed", str(request.seed)))
+    if request.layout_id is not None:
+        command.extend(("--layout-id", str(request.layout_id)))
     runtime = benchmarks.runtime_for_launch(request.integration, request.profile)
     if runtime is not None and runtime.container:
         command.append("--container")
@@ -236,6 +243,22 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
     ]
 
 
+def _check_episode_choice(request: LaunchRequest, task: dict) -> None:
+    """Seed and layout must be ones the task declares (bool is not an index)."""
+    for name in ("seed", "layout_id"):
+        value = getattr(request, name)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            raise ValueError(f"{name} must be an integer")
+    if request.seed is None and request.layout_id is None:
+        return
+    if "seeds" not in task:
+        raise ValueError("This task has no selectable evaluation seeds or layouts")
+    if request.seed is not None and request.seed not in task["seeds"]:
+        raise ValueError(f"seed must be one of {task['seeds']}")
+    if request.layout_id is not None and not 0 <= request.layout_id < task["layouts_per_seed"]:
+        raise ValueError(f"layout_id must be between 0 and {task['layouts_per_seed'] - 1}")
+
+
 def validate(request: LaunchRequest) -> dict:
     request, method, agent = resolve_selection(request)
     benchmarks.launch_target(request.integration, request.profile, request.task)
@@ -244,6 +267,7 @@ def validate(request: LaunchRequest) -> dict:
         raise ValueError(f"task {request.task!r} is not prepared in {request.integration}/{request.profile}")
     if request.reasoning_effort not in REASONING_EFFORTS:
         raise ValueError(f"reasoning effort must be one of {REASONING_EFFORTS}")
+    _check_episode_choice(request, task)
     from evoab.provider import catalog
 
     if not isinstance(request.model, str) or not request.model:
