@@ -74,8 +74,9 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
         "sam3_url",
         "provider_url",
         "output_dir",
+        "obs_pipeline",
     ):
-        if getattr(args, name) is None:
+        if getattr(args, name, None) is None:
             setattr(args, name, runtime_env(name.upper()))
     args._api_key = getattr(args, "_api_key", None) or runtime_env("API_KEY")
     if hasattr(args, "_vla_review_api_key") and args._vla_review_api_key is None:
@@ -114,6 +115,12 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     if local:
         from evoab.services.deployment.config import validate_deployment
         validate_deployment(args)
+    if getattr(args, "obs_pipeline", None):
+        from evoab.observation.toolpackage.config import load_pipeline_config
+
+        obs_path = Path(args.obs_pipeline).expanduser().resolve()
+        load_pipeline_config(obs_path)
+        args.obs_pipeline = str(obs_path)
     if args.observation_profile != "none":
         if args.resource_scheduling != "per-resource":
             raise ValueError(
@@ -297,6 +304,7 @@ class SessionConfig(BaseModel):
     action_model_url: str | None = None
     sam3_url: str | None = None
     no_sam3: bool = False
+    obs_pipeline: Path | None = None
     output_dir: Path | None = None
     episode_timeout_s: int = Field(default=10800, ge=0)
     # Method id or recipe file; None uses the integration's default method.

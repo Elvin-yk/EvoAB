@@ -67,6 +67,7 @@ class SessionAssembly:
     entry_executor: ToolExecutor | None = None
     role_tools: dict[str, frozenset[str]] = field(default_factory=dict)
     delegation: "RoleDispatch | None" = None
+    obs_proxy: Any | None = None
 
 
 class RoleDispatch:
@@ -110,6 +111,7 @@ def assemble_session(args) -> SessionAssembly:
     session = None
     executor = None
     observation_profile = None
+    obs_proxy = None
     output_dir = args.output_dir or "outputs"
     session_id = (
         f"{args.integration}_{args.agent_backend or 'tools'}_{int(time.time())}_{uuid4().hex[:8]}"
@@ -133,6 +135,19 @@ def assemble_session(args) -> SessionAssembly:
         selected = _union_modules(compiled) if multi_role else compiled.entry.modules
         integration_mod = load_integration(args.integration)
         integration_spec = integration_mod.get_integration_spec()
+        if getattr(args, "obs_pipeline", None) and not getattr(args, "_obs_proxied", False):
+            from evoab.observation.toolpackage import ObservationProxyServer, load_pipeline_config
+
+            obs_proxy = ObservationProxyServer(
+                upstream_url=args.env_url,
+                config=load_pipeline_config(args.obs_pipeline),
+                archive_dir=session_dir / "obs_toolpackage",
+                default_sam3_url=getattr(args, "sam3_url", None),
+            )
+            obs_proxy.start()
+            args._upstream_env_url = args.env_url
+            args.env_url = obs_proxy.url
+            args._obs_proxied = True
         session = integration_spec.create_session(
             IntegrationContext(
                 args=args,
@@ -351,10 +366,11 @@ def assemble_session(args) -> SessionAssembly:
             entry_executor=entry_executor,
             role_tools=role_tools,
             delegation=dispatch,
+            obs_proxy=obs_proxy,
         )
     except BaseException as exc:
         # Stop producers and finish persistence before publishing even a failed startup.
-        for resource in (executor, observation_profile, session, telemetry):
+        for resource in (executor, observation_profile, session, obs_proxy, telemetry):
             close_resource(resource)
         artifact_storage = finish_artifacts(artifacts)
         try:
@@ -622,7 +638,7 @@ class Session:
                 self._agent_result, error, self._started, bus=self.events)
             return self.result
         finally:
-            for resource in (self._agent, assembly.integration_session, assembly.telemetry):
+            for resource in (self._agent, assembly.integration_session, assembly.obs_proxy, assembly.telemetry):
                 close_resource(resource)
 
     def close(self) -> None:
@@ -873,6 +889,7 @@ def run_tui(args) -> None:
             assembly.executor,
             assembly.observation_profile,
             assembly.integration_session,
+            assembly.obs_proxy,
             assembly.telemetry,
             subscriptions,
         ):

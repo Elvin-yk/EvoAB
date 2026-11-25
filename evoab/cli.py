@@ -141,6 +141,13 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     services.add_argument(
         "--no-sam3", action="store_true", help="Explicitly disable SAM3"
     )
+    services.add_argument(
+        "--obs-pipeline",
+        "--obs_pipeline",
+        dest="obs_pipeline",
+        metavar="PATH",
+        help="Path to an external observation enhancement pipeline YAML/JSON (or EVOAB_OBS_PIPELINE)",
+    )
     from evoab.agents.runtime import add_model_arguments
     add_model_arguments(common)
     parser.agent_options = {}
@@ -202,6 +209,13 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     _add_doctor_arguments(doctor)
+    from evoab.observation.toolpackage.cli import add_ob_proxy_arguments
+    ob_proxy = subparsers.add_parser(
+        "ob-proxy",
+        help="Run a standalone observation-enhancement proxy in front of an environment service",
+        allow_abbrev=False,
+    )
+    add_ob_proxy_arguments(ob_proxy)
     setup = subparsers.add_parser("setup", help="Prepare an isolated runtime and resources", allow_abbrev=False)
     target = setup.add_mutually_exclusive_group(required=True)
     target.add_argument("--integration")
@@ -251,6 +265,9 @@ def main(argv=None, *, _supervised=False) -> None:
     # it needs no integration, model or credential and must not import runtimes.
     if argv and argv[0] == "doctor":
         raise SystemExit(_run_doctor(argv[1:]))
+    if argv and argv[0] == "ob-proxy":
+        from evoab.observation.toolpackage.cli import main as ob_proxy_main
+        raise SystemExit(ob_proxy_main(argv[1:]))
     # Same operations as Studio; they need no integration or run configuration.
     if argv and argv[0] in WORKBENCH_COMMANDS:
         from evoab.workbench.cli import main as workbench_main

@@ -1,0 +1,41 @@
+# Minimal zero-config SAM3 + depth-3D visual observation pipeline.
+# Automatically extracts object prompts from the episode instruction
+# (hybrid: VLM when configured, deterministic rule fallback offline)
+# and renders mask contours, 2D boxes, numbered labels, and a bottom HUD
+# onto every camera frame while preserving exact (H, W) resolution.
+schema_version: 1
+
+auto_prompt:
+  enabled: true
+  strategy: hybrid
+  max_targets: 6
+  include_first_frame: true
+  # Optional: uncomment to use an OpenAI-compatible VLM once at episode start.
+  # vlm_base_url: "https://api.openai.com/v1"
+  # vlm_model: "gpt-4o-mini"
+  # vlm_api_key_env: "EVOAB_API_KEY"
+
+plugins:
+  - type: sam3
+    enabled: true
+    fail_open: true
+    options:
+      # Uses EVOAB_SAM3_URL or --sam3-url automatically when endpoint is omitted.
+      min_score: 0.25
+      compute_depth_geometry: true
+
+render:
+  enabled: true
+  draw_mask_fill: true
+  mask_fill_alpha: 0.18
+  draw_mask_contour: true
+  draw_bbox: true
+  draw_labels: true
+  draw_centroid_3d: true
+  draw_hud: true
+  hud_position: bottom
+
+inject_metadata: true
+dedup_iou_threshold: 0.55
+enhance_step_snapshots: false
+archive_images: true
