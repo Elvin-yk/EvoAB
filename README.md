@@ -26,9 +26,12 @@ it with a VLA or world-action model.
 - **Agent runtimes.** Codex and Claude Code, plus experimental OpenCode, Gemini
   CLI and Antigravity adapters. The model gateway converts between Responses,
   Chat Completions and Messages, so one agent can use many model endpoints.
-- **Realistic by default.** Agents see RGB, proprioception, calibration and robot
-  descriptions; simulator depth and task-verifier feedback stay hidden unless
-  enabled.
+- **Realistic evaluation.** The paper's observation setting uses RGB,
+  proprioception, camera calibration and robot descriptions. RoboDojo captures
+  depth by default. To use the paper's RGB-only observations, start the RoboDojo
+  environment with `--no-depth`. Task-verifier outcomes are recorded for
+  evaluation and withheld from the agent. See
+  [observation settings](docs/integrations.md#realistic-observation-settings).
 - **Run records and replay.** Every episode saves its configuration, tool calls,
   frames, outcome and SFT-ready trajectories. A local web monitor replays them.
 
