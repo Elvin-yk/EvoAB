@@ -53,7 +53,9 @@ def task_metadata(task: str, native_root: str | Path | None = None) -> dict:
              "variant": ("random" if random else "standard") if category == "generalization" else None,
              "seeds": list(SEEDS), "layouts_per_seed": 25 if category == "generalization" else 50}
     if native_root is not None:
-        facts.update(source_facts(Path(native_root) / "task/RoboDojo/tasks" / f"{task}.py"))
+        source = source_facts(Path(native_root) / "task/RoboDojo/tasks" / f"{task}.py")
+        # Tasks that build their instruction per scene (language, image, random goals) have no fixed text.
+        facts.update({"instruction": "(varies by scene)", **source} if source else {})
     return facts
 
 
