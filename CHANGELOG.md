@@ -12,8 +12,7 @@
   `evoab stop`; `evoab tools list|call` call them by hand and any MCP client
   (Claude Code, Cursor) can be the agent (#44). It replaces `evoab tui`, which is
   removed with the Textual dependency and its file tools.
-- `evoab replay RUN…` replaces `evoab monitor --run-dir`; `evoab replay demo`
-  downloads published example runs (#45).
+- `evoab replay RUN…` replaces `evoab monitor --run-dir` (#45).
 
 ### Plain recipes and a clearer command line
 

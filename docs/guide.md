@@ -224,8 +224,7 @@ Each run writes a directory under `--output-dir`: `result.json` (configuration,
 recipe, outcome), `recipe.json`, `effective_prompt.md` and `tools.json` (exactly
 what the agent saw), `trajectory.jsonl`, content-addressed `images/` and
 `artifacts/`, `roles/NNN_<role>/` for delegations and `direct/` for action-chunk
-requests. `evoab replay ./runs` replays saved runs in the browser without a model;
-`evoab replay demo` downloads published example runs.
+requests. `evoab replay ./runs` replays saved runs in the browser without a model.
 
 ## Python SDK
 

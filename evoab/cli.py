@@ -184,8 +184,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     replay = subparsers.add_parser(
         "replay", allow_abbrev=False,
         help="Replay recorded runs step by step in the browser; no GPU, model or environment needed")
-    replay.add_argument("run_dir", nargs="+", metavar="RUN",
-                        help="A run directory, a directory of runs, or `demo` for the published example runs")
+    replay.add_argument("run_dir", nargs="+", type=Path, metavar="RUN",
+                        help="A run directory or a directory of runs")
     replay.add_argument("--host", default="127.0.0.1")
     replay.add_argument("--port", type=int, default=8765)
     replay.add_argument("--no-browser", action="store_true", help="Print the address instead of opening it")
@@ -282,11 +282,9 @@ def main(argv=None, *, _supervised=False) -> None:
         raise SystemExit(1)
     if args.command == "replay":
         from evoab.ui.web.runtime import serve_directories
-        from evoab.ui.web.demo import demo_runs
         try:
             if not 0 <= args.port <= 65535:
                 raise ValueError("--port must be between 0 and 65535")
-            args.run_dir = [demo_runs() if str(path) == "demo" else Path(path) for path in args.run_dir]
             serve_directories(args)
         except (ValueError, OSError, RuntimeError) as error:
             parser.exit(1, f"{error}\n")

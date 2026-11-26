@@ -18,18 +18,13 @@ under the same environments and evaluation.
 
 ## Quickstart
 
-Linux with Python 3.11. Watch recorded episodes first: no GPU, no model, no key.
+Linux with Python 3.11. MetaWorld needs no GPU.
 
 ```bash
 git clone https://github.com/Elvin-yk/EvoAB.git && cd EvoAB
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e '.[agent]'
-evoab replay demo                        # step through what the agent saw, did and spent
-```
 
-Then run one yourself. MetaWorld needs no GPU:
-
-```bash
 # One OpenAI-compatible provider and one model preset (the key is read from the environment).
 export MY_API_KEY=...
 evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_KEY
@@ -38,7 +33,7 @@ evoab models add-preset my-model --provider my_api --model MODEL_ID
 evoab setup --integration metaworld
 evoab run --integration metaworld --task reach-v3 \
   --recipe agentic --model my-model --output-dir ./runs
-evoab replay ./runs
+evoab replay ./runs                      # step through what the agent saw, did and spent
 ```
 
 Drive the robot from your own agent instead: `evoab serve` starts an episode and
