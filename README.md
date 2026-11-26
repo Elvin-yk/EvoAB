@@ -52,7 +52,7 @@ evaluators bring their own agent.
 
 | Method | Paradigm | How it acts |
 |---|---|---|
-| `agentic` | orchestrate | Tool calls: skills, scene, motion, finish; the [RUA](https://arxiv.org/abs/2611.01560) harness setting |
+| `agentic` | orchestrate | Tool calls: skills, scene, motion, finish |
 | `clean` | orchestrate | Four tools, compact results |
 | `direct_policy` | direct | One action chunk per stateless inference ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/) Direct) |
 | `code_as_policy` | code | Python programs against the robot API |

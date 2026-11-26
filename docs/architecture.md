@@ -13,7 +13,7 @@ method as a **recipe** over them:
 | Axis | Choices | Examples |
 |---|---|---|
 | What the model sees | Multi-view RGB, proprioception, calibration; optional depth and perception | RUA RGB-only, SAM3 localization |
-| How it acts | Tool calls, code, or direct action chunks; end-effector targets with host-side IK, or joints | RUA (`agentic`, tools), PyRUA-Lean (code), Astranomy Direct (chunks) |
+| How it acts | Tool calls, code, or direct action chunks; end-effector targets with host-side IK, or joints | `agentic` (tools), PyRUA-Lean (code), Astranomy Direct (chunks) |
 | Policies | A VLA/WAM or other policy as one callable tool, or none | `agent_policy` |
 | Roles | One agent, or roles that delegate to each other | `planner_direct`, Agent team |
 | Experience | Skills or programs carried across episodes | `code_iterate` |
