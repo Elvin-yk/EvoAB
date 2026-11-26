@@ -1,0 +1,77 @@
+# Full SAM3 + FoundationPose 6D-pose observation pipeline example.
+# Combines explicit per-task target prompts / CAD meshes with automatic
+# instruction-based prompt extraction for unlisted tasks.
+schema_version: 1
+
+# Optional: restrict enhancement to specific cameras (omit to process all cameras).
+# cameras:
+#   - head_camera
+#   - left_camera
+#   - right_camera
+
+targets:
+  by_task:
+    stack_bowls:
+      - label: bowl
+        prompt: "bowl"
+        color: "#00E5FF"
+        # Optional 3D mesh for FoundationPose (relative paths resolve from this file):
+        # mesh_path: "./meshes/bowl.obj"
+        # mesh_id: "bowl_01"
+      - label: plate
+        prompt: "plate"
+        color: "#FFC400"
+    put_apple_in_basket:
+      - label: apple
+        prompt: "red apple"
+        color: "#FF4081"
+      - label: basket
+        prompt: "woven basket"
+        color: "#76FF03"
+
+auto_prompt:
+  enabled: true
+  strategy: hybrid
+  max_targets: 6
+  include_first_frame: true
+
+plugins:
+  - type: sam3
+    enabled: true
+    fail_open: true
+    options:
+      endpoint_env: EVOAB_SAM3_URL
+      min_score: 0.25
+      compute_depth_geometry: true
+
+  - type: foundationpose
+    enabled: true
+    fail_open: true
+    options:
+      endpoint_env: EVOAB_FOUNDATIONPOSE_URL
+      route: /estimate_pose
+      require_mask: true
+      require_mesh: false
+      timeout_s: 60.0
+
+render:
+  enabled: true
+  draw_mask_fill: true
+  mask_fill_alpha: 0.16
+  draw_mask_contour: true
+  contour_width: 2
+  draw_bbox: true
+  bbox_width: 2
+  draw_labels: true
+  draw_centroid_3d: true
+  draw_pose_axes: true
+  pose_axis_length_m: 0.06
+  draw_bbox_3d: true
+  draw_hud: true
+  hud_position: bottom
+  hud_max_items: 6
+
+inject_metadata: true
+dedup_iou_threshold: 0.55
+enhance_step_snapshots: false
+archive_images: true

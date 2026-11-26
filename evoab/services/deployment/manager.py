@@ -144,6 +144,7 @@ def run_evaluation(args):
     args._session_dir = str(output)
     child = None
     monitor = None
+    obs_proxy = None
     service = Deployment(args, adapter, output, run_id) if adapter is not None else None
     evaluator_plan = getattr(get_agent_backend(args.agent_backend), 'evaluator_plan', None)
     status = dict(state='deploying', episode_exit_code=None)
@@ -161,6 +162,20 @@ def run_evaluation(args):
                 args.env_url = service.url
                 args._episode_identity = service.info
                 args._deployment = dict(manifest='deployment.json', owned=True, runtime=service.record['runtime'])
+            if getattr(args, 'obs_pipeline', None) and not getattr(args, '_obs_proxied', False):
+                from evoab.observation.toolpackage import ObservationProxyServer, load_pipeline_config
+
+                obs_proxy = ObservationProxyServer(
+                    upstream_url=args.env_url,
+                    config=load_pipeline_config(args.obs_pipeline),
+                    archive_dir=output / 'obs_toolpackage',
+                    default_sam3_url=getattr(args, 'sam3_url', None),
+                )
+                obs_proxy.start()
+                args._upstream_env_url = args.env_url
+                args.env_url = obs_proxy.url
+                args._obs_proxied = True
+                status['obs_proxy_url'] = obs_proxy.url
             if monitor is not None:
                 monitor.attach(args.env_url)
             if evaluator_plan is None:
@@ -212,6 +227,8 @@ def run_evaluation(args):
                 if child is not None:
                     child.close(sig=signal.SIGINT)
             finally:
+                if obs_proxy is not None:
+                    obs_proxy.close()
                 if service is not None:
                     service.close()
                 status['episode_exit_code'] = code
