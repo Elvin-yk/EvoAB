@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### RUA folded into the core
+
+- RUA (arXiv 2611.01560) is EvoAB's own harness, so it is no longer a separate
+  method or agent. The `rua` method was identical to `agentic`; its card (paper
+  setting and numbers) moved to `agentic`. Removed the `rua_upstream` external
+  evaluator, the `rua` agent adapter (`evoab/agents/rua/`), the `rua/` directory
+  and `AgentLaunch.tool_groups`, which only that adapter used. Use
+  `--recipe agentic` where `--recipe rua` was used; to run the original
+  uni-robot-agent package, install it on its own.
+
 ### Documentation
 
 - Documentation is now four files: `README.md`, `docs/guide.md` (install, models,

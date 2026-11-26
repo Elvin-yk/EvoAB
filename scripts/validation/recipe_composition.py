@@ -71,7 +71,7 @@ class RecipeValidation(unittest.TestCase):
         from types import SimpleNamespace
         from evoab.composition.compiler import apply_to_args
         spec = load_integration("robolab").get_integration_spec()
-        for method in ("agentic", "code_as_policy", "direct_policy", "planner_direct", "code_iterate", "rua"):
+        for method in ("agentic", "code_as_policy", "direct_policy", "planner_direct", "code_iterate"):
             recipe = get_method(method).recipe
             self.assertTrue(all(role.brain.agent is None for role in recipe.roles.values()), method)
             for agent in ("native", "codex", "claude_code", "opencode"):
@@ -81,7 +81,7 @@ class RecipeValidation(unittest.TestCase):
         apply_to_args(args, compile_recipe(get_method("direct_policy").recipe, spec), explicit={"--agent"})
         self.assertEqual(args.agent_backend, "native")  # the action channel has no agent loop
         with self.assertRaisesRegex(ValueError, "external evaluator"):
-            apply_to_args(SimpleNamespace(agent_backend="rua", model="m"),
+            apply_to_args(SimpleNamespace(agent_backend="q0_preview", model="m"),
                           compile_recipe(get_method("agentic").recipe, spec), explicit={"--agent"})
 
     def test_run_program_tool(self):
@@ -166,7 +166,7 @@ class RecipeValidation(unittest.TestCase):
     def test_method_library(self):
         ids = {method.id for method in list_methods()}
         self.assertTrue({"agentic", "clean", "direct_policy", "code_as_policy", "agent_policy",
-                         "planner_direct", "code_iterate", "rua"} <= ids)
+                         "planner_direct", "code_iterate"} <= ids)
         for method in list_methods():
             self.assertTrue(method.card.startswith("# "), method.id)
         with tempfile.TemporaryDirectory() as directory:
@@ -194,11 +194,11 @@ class RecipeValidation(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "global-serial"):
             compile_recipe(Recipe.model_validate(data), spec)
         with tempfile.TemporaryDirectory() as directory:
-            Path(directory, "rua").mkdir()
+            Path(directory, "agentic").mkdir()
             cwd = os.getcwd()
             os.chdir(directory)
             try:
-                self.assertEqual(get_method("rua").source, "builtin")
+                self.assertEqual(get_method("agentic").source, "builtin")
             finally:
                 os.chdir(cwd)
         text = with_overrides(get_method("direct_policy").recipe, {"custom_prompt": '"Red" cup first'})

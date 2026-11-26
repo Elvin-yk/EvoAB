@@ -15,8 +15,7 @@ PUBLIC_DIRECTORIES = ('evoab', 'docs', 'scripts', 'examples', 'assets', '.github
 EXCLUDED_INTEGRATIONS = {'robodojo_internal', 'efe', 'franka_robotiq',
                          'franka_sharpa', '_franka', 'dexterous_hand', 'dexterous_hand.py'}
 SOURCE_FILES = ('README.md', 'CHANGELOG.md', 'AGENTS.md',
-                'CLAUDE.md', 'LICENSE', 'MANIFEST.in', 'pyproject.toml', 'pyrightconfig.json',
-                'rua/.gitignore', 'rua/README.md')
+                'CLAUDE.md', 'LICENSE', 'MANIFEST.in', 'pyproject.toml', 'pyrightconfig.json')
 SOURCE_SUFFIXES = {'.py', '.md', '.toml', '.json', '.sh', '.txt', '.png', '.pdf',
                    '.html', '.css', '.js', '.ts', '.urdf', '.npz', '.npy', '.typed', '.yml',
                    # Native driver sources an integration builds on the robot host (C++, ROS 2).
@@ -78,7 +77,7 @@ def compare(label: str, expected: dict[str, bytes], actual: dict[str, bytes]) ->
     for name in actual:
         if EXCLUDED_INTEGRATIONS.intersection(PurePosixPath(name).parts):
             errors.append(f'{label}: excluded integration content {name}')
-        if name.split('/')[0] in (*PUBLIC_DIRECTORIES, 'rua', '.reference') and name not in expected:
+        if name.split('/')[0] in (*PUBLIC_DIRECTORIES, '.reference') and name not in expected:
             errors.append(f'{label}: unexpected file {name}')
     return errors
 

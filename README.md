@@ -52,7 +52,7 @@ evaluators bring their own agent.
 
 | Method | Paradigm | How it acts |
 |---|---|---|
-| `agentic` | orchestrate | Tool calls: skills, scene, motion, finish |
+| `agentic` | orchestrate | Tool calls: skills, scene, motion, finish; the [RUA](https://arxiv.org/abs/2611.01560) harness setting |
 | `clean` | orchestrate | Four tools, compact results |
 | `direct_policy` | direct | One action chunk per stateless inference ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/) Direct) |
 | `code_as_policy` | code | Python programs against the robot API |
@@ -60,8 +60,6 @@ evaluators bring their own agent.
 | `planner_direct` | orchestrate + direct | A planner delegates sub-goals to a Direct controller |
 | `tool_team` | orchestrate | Studio agent cards: roles, tools and delegation |
 | `code_iterate` | code | Programs carried across episodes |
-| `rua` | orchestrate | Paper setting of [RUA](https://arxiv.org/abs/2611.01560), native |
-| `rua_upstream` | orchestrate | The original uni-robot-agent package as an external evaluator |
 | `q0_preview_upstream` | orchestrate | Qoo Tech's Q0-Preview as an external evaluator |
 
 ```bash

@@ -79,7 +79,7 @@ def methods(integration: str | None = None) -> tuple[dict, ...]:
         def usable(name, launch):
             if integration is not None and launch.integrations is not None and integration not in launch.integrations:
                 return False
-            # External evaluators (RUA, Q0-Preview) run only their own method. Everything else Studio
+            # External evaluators (Q0-Preview) run only their own method. Everything else Studio
             # launches runs on the built-in agent; other runtimes stay available from the CLI (--agent).
             if is_evaluator(name) or entry.brain.agent and is_evaluator(entry.brain.agent):
                 return name == entry.brain.agent
@@ -174,10 +174,7 @@ def tool_groups(integration: str, method_id: str, agent_id: str) -> dict[str, li
     _, method, agent = resolve_selection(request)
     if method["channel"] == "action" or len(method["roles"]) > 1:
         raise ValueError("Tool selection applies to one-role tools or code methods")
-    if agent.tool_groups is not None:
-        # External evaluators list their own tools (RUA's harness still uses its direct profile).
-        groups = agent.tool_groups(integration, "direct")
-    elif method.get("external_evaluator"):
+    if method.get("external_evaluator"):
         raise ValueError(f"Agent {agent.label!r} owns its own tools and does not support tool selection")
     else:
         entry = get_method(method_id)

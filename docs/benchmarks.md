@@ -171,10 +171,6 @@ validated with.
 Some methods run another project's complete agent against an EvoAB episode; the
 recipe cannot change their roles or tools.
 
-- **`rua_upstream`**: the original uni-robot-agent 0.2.0 on RoboDojo. Put the
-  upstream source in `rua/source/`, create `rua/venv` and
-  `pip install -e rua/source` into it (or set `EVOAB_RUA_PYTHON`). Studio checks
-  the model preset before launching. The paper setting runs natively as `rua`.
 - **`q0_preview_upstream`**: Qoo Tech's Q0-Preview on RoboDojo. Setup, credentials
   and validation evidence are in its
   [card](../evoab/methods/q0_preview_upstream/CARD.md).
