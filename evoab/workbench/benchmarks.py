@@ -78,8 +78,6 @@ REGISTRY: tuple[BenchmarkInfo, ...] = (
                   "auto", "Experimental mobile manipulation (Hybrid Pi0.5)"),
     BenchmarkInfo("isaaclab_arena", "IsaacLab Arena", "simulation", "Isaac Lab", "G1 humanoid",
                   "auto", "Experimental humanoid loco-manipulation (Hybrid GR00T)"),
-    BenchmarkInfo("navila", "NaVILA-Bench", "simulation", "Isaac Lab", "Go2 quadruped",
-                  "auto", "Experimental quadruped navigation (Hybrid NaVILA)"),
     BenchmarkInfo("custom", "Custom benchmark", "simulation", "—", "—", "custom",
                   "User-defined Gym-style benchmark registered with a manifest", task_selector="profile"),
     BenchmarkInfo("arx_one", "ARX ONE", "real", "—", "Dual ARX X5 + RealSense D405",

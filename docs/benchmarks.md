@@ -18,7 +18,6 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 | `dexjoco` | Panda/Allegro, MuJoCo | Native + actor | Policy only | `pick_bucket` |
 | `behavior` | R1Pro mobile manipulation | Adopt native | Policy only | Experimental |
 | `isaaclab_arena` | G1 humanoid | Adopt native | Policy only | Experimental |
-| `navila` | Go2 navigation | Native + actor bridge | Policy only | Experimental |
 | `arx_one`, `piper_x` | Real dual-arm robots | Operator setup | Motion | See [real robots](#real-robots) |
 
 ## Preparing a runtime
@@ -161,8 +160,6 @@ tools, and default to `agent_policy`.
   adopt a prepared installation, `turning_on_radio` with the official Pi0.5 example.
 - **IsaacLab Arena** (experimental): G1 `galileo_g1_locomanip_pick_and_place` with
   a GR00T N1.6 actor (`arena_g1_gr00t`); simulator and actor use separate runtimes.
-- **NaVILA** (experimental): Go2 navigation on NaVILA-Bench; episodes are
-  `episode:<index>`; profiles `isaac41` (default) and `isaac51`.
 
 Each integration's `SOURCE.md` pins the sources, assets and weights it was
 validated with.

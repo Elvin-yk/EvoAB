@@ -80,24 +80,23 @@ One `evoab run` is one episode. The split is strict:
 - **The command line says which run**: integration, task and scene, where the
   environment and services run, which model, and where output goes.
 
+EvoAB starts the benchmark's container for the episode and stops it afterwards;
+you never start environments or pass their addresses yourself.
+
 ```bash
-# EvoAB starts the environment from a prepared runtime
-evoab run --integration robodojo --deploy local --task stack_bowls \
+evoab run --integration robodojo --task stack_bowls \
   --recipe agentic --model my-model --output-dir ./runs --monitor
 
 # the same method, RGB only and with the environment's task supplements
-evoab run --integration robodojo --deploy local --task stack_bowls \
-  --recipe agentic --model my-model --set inputs.depth=false --set inputs.task_supplements=true
-
-# connect to an environment that is already running
-evoab run --integration robodojo --env-url http://127.0.0.1:18760 --recipe agentic --model my-model
+evoab run --integration robodojo --task stack_bowls --recipe agentic --model my-model \
+  --set inputs.depth=false --set inputs.task_supplements=true
 ```
 
 | Flag | Selects |
 |---|---|
 | `--integration`, `--recipe`, `--set` | The environment adapter, the method (id, directory or file), recipe overrides |
 | `--task`, `--seed`, `--layout-id`, `--layout`, `--instruction` | The episode and scene |
-| `--deploy local`, `--container`, `--env-url`, `--env-gpu` | Where the environment runs |
+| `--env-gpu` | Which GPU the environment uses |
 | `--sam3-url`, `--action-model-url`, `--action-model-checkpoint-sha256` | Where perception and policy services run, and which checkpoint |
 | `--agent`, `--model`, `--model-preset`, `--reasoning-effort` | Which agent runtime and model |
 | `--episode-timeout-s`, `--output-dir`, `--experience-dir`, `--monitor` | Wall-clock budget, outputs, live console |
@@ -108,7 +107,7 @@ evoab run --integration robodojo --env-url http://127.0.0.1:18760 --recipe agent
 agent runtimes are installed (`--agent-python`, `--opencode-binary`, …), model
 transport timeouts and Claude Code's `--claude-max-budget-usd` cost cap. None of
 these changes the prompt or tools: every agent gets the same robot prompt and only
-the recipe's tools. `evoab tui` runs one task interactively against an `--env-url`.
+the recipe's tools.
 
 **Outcomes.** Tool success, agent completion and task success are separate. The
 agent ends with `finish`, which returns an acknowledgement; the environment
@@ -143,7 +142,7 @@ execution: {return_mode: immediate}
 
 | Part | Settings |
 |---|---|
-| `inputs` | `depth`, `calibration` (applied by `--deploy local`, checked against a connected environment), `task_supplements` (environments that publish them) |
+| `inputs` | `depth`, `calibration` (applied when EvoAB starts the environment), `task_supplements` (environments that publish them) |
 | Role `channel` | `tools` (tool calls), `code` (Python programs against the robot API: Codex and Claude Code in their own terminal, every other agent through `run_program`), `action` (one stateless request per action chunk: `abs_eef`, `delta_eef`, `joint_abs`) |
 | Role `capabilities` | Tool modules, optionally narrowed (`tools`) and configured (`options`); `{id: X, optional: true}` is skipped where missing. `scene` has `segmentation` (SAM3 for `locate`); `hybrid`, the policy tool, has `binding` and `review` |
 | Role `context`, `prompt`, `max_turns`, `brain` | History policy (`identity`, `sliding_window`, `observation_window`), method instructions, turn budget, an optional pinned model or effort |

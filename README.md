@@ -31,7 +31,7 @@ evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_K
 evoab models add-preset my-model --provider my_api --model MODEL_ID
 
 evoab setup --integration metaworld
-evoab run --integration metaworld --deploy local --task reach-v3 \
+evoab run --integration metaworld --task reach-v3 \
   --recipe agentic --model my-model --output-dir ./runs
 evoab studio --runs-root ./runs          # open http://127.0.0.1:8770 to replay
 ```
@@ -64,7 +64,7 @@ evaluators bring their own agent.
 
 ```bash
 evoab methods list --integration robodojo     # ids and where each method.yaml lives
-evoab run --integration robodojo --deploy local --task stack_bowls \
+evoab run --integration robodojo --task stack_bowls \
   --recipe planner_direct --model my-model --set roles.controller.action.max_calls=4
 ```
 
@@ -73,7 +73,7 @@ evoab run --integration robodojo --deploy local --task stack_bowls \
 | Type | Integrations |
 |---|---|
 | Simulation | RoboDojo, MetaWorld, LIBERO / LIBERO-Plus / LIBERO-PRO, RoboTwin 2.0, RMBench, CALVIN, RoboLab, DexJoCo |
-| Experimental | BEHAVIOR (R1Pro), IsaacLab Arena (G1), NaVILA (Go2) |
+| Experimental | BEHAVIOR (R1Pro), IsaacLab Arena (G1) |
 | Real robot | ARX ONE, Piper-X |
 
 Benchmarks with a container recipe deploy as Docker runtimes in one step

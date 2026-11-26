@@ -4,6 +4,12 @@
 
 ### Plain recipes and a clearer command line
 
+- `evoab run` starts the benchmark's environment itself by default (`--deploy
+  local` is implied). `--env-url` still connects to a running environment but is
+  an internal and developer path and is no longer shown in help or the guide.
+- NaVILA (Go2 navigation) is removed: the integration, its actor backend and
+  profile, prompts, skills and examples.
+
 - `direct_policy` is renamed `direct_action` ("policy" means a VLA-style tool).
   Use `--recipe direct_action`.
 - Recipe `parameters` (named shortcuts such as `--set horizon=3:10`) are removed.

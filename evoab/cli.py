@@ -117,8 +117,11 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     )
     agent.add_argument("--model", help="Model ID or preset for the entry role (unless the recipe pins one)")
     services = common.add_argument_group("Services")
-    for name in ("env-url", "sam3-url"):
-        services.add_argument("--" + name, "--" + name.replace("-", "_"))
+    # EvoAB starts the environment's container itself; connecting to an already running
+    # environment service by URL is an internal and developer path, so it is not advertised.
+    services.add_argument("--env-url", "--env_url", dest="env_url", help=argparse.SUPPRESS)
+    services.add_argument("--sam3-url", "--sam3_url", dest="sam3_url",
+                          help="Address of a running SAM3 service, for recipes that enable scene segmentation")
     services.add_argument("--action-model-url", "--action_model_url", dest="action_model_url"
     )
     services.add_argument(
@@ -172,7 +175,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         help="Agent episode wall clock budget; excludes managed environment startup; 0 disables",
     )
     from evoab.services.deployment.config import add_runtime_arguments, add_launch_arguments
-    run.add_argument("--deploy", choices=("local",))
+    # Kept for scripts; a run without --env-url always starts its own environment.
+    run.add_argument("--deploy", choices=("local",), help=argparse.SUPPRESS)
     add_runtime_arguments(run)
     add_launch_arguments(run, managed=True)
     run.add_argument("--monitor", action="store_true", help="Serve a local live Web console")
@@ -277,6 +281,8 @@ def main(argv=None, *, _supervised=False) -> None:
         return
     if args.command == "run" and not 0 <= args.monitor_port <= 65535:
         parser.error("--monitor-port must be between 0 and 65535")
+    if args.command == "run" and args.deploy is None and not (args.env_url or os.environ.get("EVOAB_ENV_URL")):
+        args.deploy = "local"  # the default: start the prepared environment, run, and stop it
     if args.command in ("setup", "deploy"):
         from evoab.services.deployment.config import validate_deployment
         try:

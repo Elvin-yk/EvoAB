@@ -94,7 +94,6 @@ namespaces = false
 "evoab.integrations.dexjoco" = ["deployment.toml", "SOURCE.md"]
 "evoab.integrations.behavior" = ["deployment.toml", "SOURCE.md"]
 "evoab.integrations.isaaclab_arena" = ["deployment.toml", "SOURCE.md"]
-"evoab.integrations.navila" = ["deployment.toml", "SOURCE.md"]
 "evoab.integrations.robodojo" = ["deployment.toml", "container.toml", "SOURCE.md", "UPSTREAM_LICENSE", "environment/*.urdf"]
 
 # Native sources, ROS packages, models and templates travel with the integration. Local
