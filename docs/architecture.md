@@ -14,13 +14,29 @@ method as a **recipe** over them:
 |---|---|---|
 | What the model sees | Multi-view RGB, proprioception, calibration; optional depth and perception | RUA RGB-only, SAM3 localization |
 | How it acts | Tool calls, code, or direct action chunks; end-effector targets with host-side IK, or joints | RUA (tools), PyRUA-Lean (code), Astranomy Direct (chunks) |
-| Action models | A VLA/WAM as one callable tool, or none | `agent_policy` |
+| Policies | A VLA/WAM or other policy as one callable tool, or none | `agent_policy` |
 | Roles | One agent, or roles that delegate to each other | `planner_direct`, Agent team |
 | Experience | Skills or programs carried across episodes | `code_iterate` |
 | Context | Full history, sliding window, recent observations | per role |
 
 If a paper does not fit, the missing component is added to EvoAB rather than
 special-cased in the method.
+
+Two rules hold everywhere:
+
+1. **An agent controls a body in exactly three ways**, the channels: `tools`
+   (it calls tools), `code` (its programs call the same tools), and `action`
+   (the model itself emits action chunks). There is no fourth way.
+2. **Everything else is a tool.** Motion primitives (`move`, `grasp`), perception
+   (`locate`) and **policies** are tools reached through the `tools` or `code`
+   channel; motion tools are not "direct control". A policy (a VLA, a world-action
+   model, a scripted or learned controller) maps observations and an instruction
+   to actions behind one actor-service interface (`services/actor/`), and agents
+   call it as a tool. Adding a policy to an environment means a binding and a
+   checkpoint, never environment-specific tool code. Users can add their own tools
+   the same way.
+
+New capabilities land in the CLI, recipes and SDK first; Studio follows later.
 
 ## Layers
 
@@ -67,7 +83,7 @@ checked against:
   | `scene` | `view_env_state`, `capture_scene`, `locate` |
   | `skills` | `list_skills`, `read_skill`, optional `write_skill` |
   | `episode` | `finish` |
-  | `hybrid` | `actor_act` (VLA actor with optional reviewer) |
+  | `hybrid` | `actor_act`: run a policy (VLA/WAM) from the actor service, with optional reviewer |
   | `delegate` | `delegate_<role>` (harness) |
   | `observation` | observation sidecar profile (harness) |
 
