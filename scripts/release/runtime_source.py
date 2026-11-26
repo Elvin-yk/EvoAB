@@ -17,7 +17,7 @@ def stage_runtime(root: Path, destination: Path) -> None:
     project = metadata['project']
     excluded = metadata['tool']['evoab']['runtime']['exclude-dependencies']
     project['name'] = 'evoab-runtime'
-    project['readme'] = 'docs/pypi-runtime.md'
+    project['readme'] = 'README.md'
     project['description'] = 'Native service runtime for evoab; install in a separate environment'
     project['dependencies'] = [requirement for requirement in project['dependencies']
                                if re.split(r'[<>=!~\[; ]', requirement)[0] not in excluded]

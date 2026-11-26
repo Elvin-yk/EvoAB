@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Connect to a prepared RoboDojo episode and a matching Pi0.5 actor service.
-# Deploy services separately using docs/deployment.md; this script does not own them.
-# Configure provider credentials in your shell, as in examples/README.md.
+# Deploy services separately using docs/benchmarks.md; this script does not own them.
+# Configure provider credentials in your shell, as in docs/guide.md#models.
 # Pass the actual checkpoint SHA-256 advertised by the actor service:
 #   bash examples/robodojo_hybrid.sh --model "$MODEL" \
 #     --action-model-checkpoint-sha256 "$CHECKPOINT_SHA256"

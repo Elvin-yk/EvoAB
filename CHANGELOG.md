@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Documentation
+
+- Documentation is now four files: `README.md`, `docs/guide.md` (install, models,
+  Studio, running, methods and recipes, results, SDK), `docs/architecture.md`
+  (layers, components, protocol, scheduling, extension points, validation) and
+  `docs/benchmarks.md` (preparing every environment and robot). The 36 former
+  pages, `CONTRIBUTING.md` and `examples/README.md` were merged into them or
+  removed where obsolete (platform design notes, release procedure details).
+  Upstream `SOURCE.md` provenance files, method cards and the real-robot
+  manuals stay beside their code. Both wheels use `README.md` as their readme.
+
 - Add the Q0-Preview reproduction for simulated RoboDojo X5 episodes, with calibrated RGB observations, single-step receipts and native outcome recording. On an RTX 4090 D, GPT-6.2 Astra through Codex CLI completed the frozen `stack_bowls` task in 483 steps.
 
 - **Recipes replace interaction modes and tool profiles (breaking).** A run's
@@ -70,7 +81,7 @@
   supplied by each adapter. `evoab runs launch --method agentic --agent rua`
   and its legacy `--method rua` alias start the same evaluator. RUA runs on the
   host and connects to EvoAB's prepared Docker episode. See
-  [RUA on RoboDojo](docs/rua.md) for configuration and verification.
+  RUA on RoboDojo for configuration and verification.
 
 - Studio serves the nanobot settings UI as versioned, cacheable assets. Benchmark
   registration and manifest management have been removed from Studio, the HTTP
@@ -296,7 +307,7 @@ separate environments. `minimal` remains an alias for `clean`.
   smoke runner. OpenCode `1.19.5` and the patched Gemini CLI
   `0.69.0-nightly.20261104.g89e9d25d6` passed live image/tool smoke runs with
   `qwen3.8-flash`; the pinned Gemini source also passed its full build and
-  type-check. See [tested versions and limits](docs/external-cli-backends.md).
+  type-check. See tested versions and limits.
 - Reject incomplete Chat tool generations and emit complete Responses text events.
   Preserve Codex's Qwen thinking default while disabling it for the new adapters.
 - Add a Direct RoboTwin 2.0 adapter with dual-arm TCP control, measured gripper
@@ -316,7 +327,7 @@ separate environments. `minimal` remains an alias for `clean`.
   still require explicit compatibility validation.
 - Upgrade scalar environment protocol to 4 and tool schema to 8. Hybrid uses
   `active_groups` and capability-specific `constraints`; retain unknown device
-  receipts to prevent replay. See [migration](docs/hybrid.md).
+  receipts to prevent replay. See migration.
 
 - Add opt-in `code_as_policy` interaction for Codex and Claude Code: run ordinary
   Python programs against the registered robot tools, with completed feedback,
@@ -427,7 +438,7 @@ Claude Code.
 
 - Include official RoboDojo and RoboUse runtime recipes; LIBERO tasks use RoboUse.
   Other included adapters retain their existing connection workflows and stated
-  validation limits. See [integrations](docs/integrations.md).
+  validation limits. See integrations.
 - Include SDK type information, prompts, skills and local monitoring resources,
   plus a standalone installation/configuration validator.
 - Use `evoab` for the distribution/CLI and `evoab` for imports.

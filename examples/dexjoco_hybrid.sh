@@ -5,7 +5,7 @@ set -euo pipefail
 : "${ACTOR_URL:?Set the OpenPI actor URL}"
 : "${ACTOR_CHECKPOINT_SHA256:?Set the verified actor checkpoint SHA256}"
 
-# Start the independent services first; see docs/dexjoco.md for setup and ports.
+# Start the independent services first; see docs/benchmarks.md for setup and ports.
 # Extra arguments select the planner model, provider and reviewer configuration.
 exec evoab run \
   --integration dexjoco \

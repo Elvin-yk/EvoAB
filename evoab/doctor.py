@@ -383,7 +383,7 @@ def check_integrations(*, requested: str | None = None) -> list[Check]:
             hint = (
                 f"Install this integration's dependencies or check the name; available: {', '.join(KNOWN_INTEGRATIONS)}."
                 if required
-                else "Install the adapter's optional dependencies (see docs/getting-started.md#integration-extras) to use it."
+                else "Install the adapter's optional dependencies (see the extras table in docs/guide.md#install) to use it."
             )
             checks.append(
                 Check(

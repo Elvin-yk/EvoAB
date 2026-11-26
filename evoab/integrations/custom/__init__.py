@@ -1,6 +1,8 @@
 """User-defined benchmarks: a Gym-style environment described by a manifest.
 
-See ``docs/custom-benchmarks.md`` for the interface and the manifest format.
+Existing manifests keep running; Studio and the CLI no longer register new ones.
+The environment is ``make(task_id, seed)`` returning a Gym-style env; see
+``examples/benchmarks/libero_gym.py`` for a wrapper and ``manifest.py`` for the format.
 """
 
 

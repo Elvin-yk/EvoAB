@@ -86,7 +86,7 @@ def _probe_integration_name(argv: list[str] | None = None) -> str | None:
 def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="evoab",
-        description="evoab — A robot agent built on Codex and Claude Code", allow_abbrev=False
+        description="evoab — an open platform for robot-use agents", allow_abbrev=False
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command")

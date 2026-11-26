@@ -9,7 +9,7 @@ if (( $# )); then shift; fi
 
 case "$mode" in
   serve)
-    : "${SIM_PYTHON:?Set SIM_PYTHON to the prepared RoboLab/Isaac Python interpreter; see docs/robolab.md}"
+    : "${SIM_PYTHON:?Set SIM_PYTHON to the prepared RoboLab/Isaac Python interpreter; see docs/benchmarks.md}"
     exec "$SIM_PYTHON" -m evoab.integrations.robolab.environment.server \
       --task BananaInBowlTask --seed 0 --instruction-type default \
       --headless --device cuda:0 --host 127.0.0.1 --port 18770 "$@"
@@ -27,8 +27,8 @@ Usage (two terminals):
     --output-dir /path/to/new/environment-directory
   bash examples/robolab.sh run --model YOUR_MODEL [CLI options]
 
-Prepare the pinned RoboLab/Isaac runtime and assets using docs/robolab.md.
-Set provider credentials in the planner terminal; see examples/README.md.
+Prepare the pinned RoboLab/Isaac runtime and assets using docs/benchmarks.md.
+Set provider credentials in the planner terminal; see docs/guide.md#models.
 Wait until the service is ready before running the planner. Restart serve with
 a new output directory for each episode; stop the service with Ctrl-C afterward.
 Options after the mode are forwarded unchanged and override example defaults:

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# First prepare the two independent runtimes; see docs/isaaclab_arena.md.
+# First prepare the two independent runtimes; see docs/benchmarks.md.
 # Terminal 1:
 # evoab deploy actor --profile arena_g1_gr00t --port 18762
 # Terminal 2:

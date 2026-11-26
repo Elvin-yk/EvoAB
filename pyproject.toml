@@ -2,7 +2,7 @@
 name = "evoab"
 version = "0.2.0"
 description = "A unified harness for robot-use agents, with CLI, Python SDK, and live monitoring"
-readme = "docs/pypi.md"
+readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]

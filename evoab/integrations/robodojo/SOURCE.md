@@ -136,4 +136,4 @@ checks these asset digests before publishing a runtime manifest.
 
 Hybrid orchestration is shared in `tools/hybrid/`; the integration binding only
 converts the declared actor and native contracts. Native control and upstream
-provenance remain integration-owned. See [Hybrid design](../../../docs/hybrid.md).
+provenance remain integration-owned. See [Hybrid design](../../../docs/benchmarks.md).

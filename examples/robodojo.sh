@@ -23,7 +23,7 @@ Usage:
   bash examples/robodojo.sh run --model YOUR_MODEL [CLI options]
 
 Prepare once on a supported Linux GPU host with Python 3.11 available.
-Set provider credentials in your shell; see examples/README.md.
+Set provider credentials in your shell; see docs/guide.md#models.
 Run starts one stack_bowls episode and cleans up its owned environment.
 Options after the mode are forwarded unchanged and override example defaults:
   --task TASK              Select another RoboDojo task

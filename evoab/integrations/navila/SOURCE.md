@@ -37,7 +37,7 @@ validates source and generated-code digests, the migration implementation,
 dataset digest and location, and Go2 asset digests. Missing datasets or scene
 directories fail preparation; changed inputs fail loading. The worker verifies
 the selected Isaac version, IsaacLab revision and native module import paths.
-See [the preparation and launch commands](../../../docs/navila.md).
+See [the preparation and launch commands](../../../docs/benchmarks.md).
 
 The migration updates native package interfaces and preserves the scene's
 original coordinates through raw USD references. A dedicated collision mesh
@@ -60,7 +60,7 @@ using Torch 2.7.0+cu128 and FlashAttention 2.8.3 has passed pinned-weight loadin
 and native server inference. With the explicit `isaac51` simulator profile, one
 end-to-end Hybrid validation (`episode:0`, seed 42, Qwen3.8-Flash without reviewer,
 harness commit `000d4cf`) also achieved native task success after the planner's
-explicit finish. See [validation details](../../../docs/navila.md#observation-execution-and-evaluation).
+explicit finish. See [validation details](../../../docs/benchmarks.md).
 This single episode does not establish an aggregate success rate or equivalence
 to original Isaac 4.1 benchmark scores. Keep model and simulator dependencies in
 separate environments.

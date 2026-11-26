@@ -9,10 +9,9 @@ do not treat this document as a request to edit code during the episode.
 
 - Check the checkout, branch, status, and relevant diff. Preserve other work;
   stage only task-owned changes when a commit is requested.
-- Read [the architecture and diagram](docs/architecture.md), then
-  [development boundaries](docs/development.md) for the affected layer.
-- For environment work, also read [integration contracts](docs/integrations.md).
-  For planner SDK work, read [agent integration](docs/agents.md).
+- Read [architecture](docs/architecture.md) for the affected layer and where
+  each kind of extension belongs. For environment or robot work, also read
+  [benchmarks](docs/benchmarks.md).
 - Identify the owner of each new behavior before implementing it. Existing
   code is evidence, not permission to copy a boundary violation.
 
@@ -78,9 +77,9 @@ families are examples of this architecture, not a closed list of allowed tools.
   tool completion, agent completion and environment task success.
 - Use English for code comments, docstrings, model-facing text, and repository
   documentation. Prefer explicit types and small functions; avoid speculative
-  compatibility layers. Follow [Contributing](CONTRIBUTING.md) for setup.
+  compatibility layers. Set up with the [guide](docs/guide.md#install).
 - Run relevant validation and report failures/skips honestly. Follow
-  [the validation matrix](docs/development.md#validation-and-review) and add focused
+  [validation](docs/architecture.md#validation) and add focused
   tests for new behavior. CPU checks are not evidence of real-hardware success.
 - Do not put credentials, machine-specific deployment paths, or experiment
   outputs in source. Preserve upstream attribution and native resource formats.
@@ -95,5 +94,8 @@ to shared contracts for affected callers and migration, not for conformity to
 an immutable tool list. For migrations, account for retained, replaced and
 deliberately removed features.
 
-Maintain shared rules here. `CLAUDE.md` only imports this file. Keep detailed
-extension recipes in `docs/development.md` and update them with the contracts.
+Maintain shared rules here. `CLAUDE.md` only imports this file. Human
+documentation is four files: `README.md`, `docs/guide.md` (using EvoAB),
+`docs/architecture.md` (how it is built and extended) and `docs/benchmarks.md`
+(preparing environments). Update the one that owns a changed contract; do not
+add new documentation files.

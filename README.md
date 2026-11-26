@@ -2,177 +2,106 @@
 
 <p align="center"><b>Evolving Agents with Bodies</b> — an open platform for robot-use agents</p>
 
-EvoAB brings agent-based robot manipulation methods together so they can be run,
-reproduced and compared under the same environments, tools and evaluation
-protocols. These methods use a general-purpose model as the policy, or combine
-it with a VLA or world-action model.
+**Any LLM-agent robotics method becomes a short recipe that runs with any model,
+on any simulator or real robot, and composes freely with other methods.**
 
-> **Status: pre-alpha.** See [docs/PLATFORM_DESIGN.md](docs/PLATFORM_DESIGN.md)
-> for the platform design and milestones. Interfaces will change.
+Robot-use agents keep a frozen general-purpose model and differ in the harness
+around it: what the model sees, whether it acts through tool calls, code or
+direct action chunks, whether a VLA or world-action model is one of its tools,
+and whether experience is kept across episodes. EvoAB turns those choices into
+composable building blocks, so methods can be reproduced, compared and combined
+under the same environments and evaluation.
 
-## Features
+> **Status: pre-alpha.** Interfaces change. Planned work is on the
+> [task board](https://github.com/Elvin-yk/EvoAB/issues/11) and the
+> [method roadmap](https://github.com/Elvin-yk/EvoAB/issues/34).
 
-- **Composable methods.** A method is a recipe: roles (each with a brain, a
-  channel, capabilities and a context policy) connected by a loop. Three channels
-  mix freely — *tools* (orchestrate skills, perception, motion, an action model),
-  *action* (emit end-effector or joint chunks directly) and *code* (write and run
-  programs). Roles delegate to each other, and episodes can carry learned skills
-  or programs forward. Methods do not depend on the agent: any agent (and any
-  model configured in settings) runs any method. See [composition](docs/composition.md).
-- **Method library.** Built-in and reproduced methods with reproduction cards:
-  Agentic, Clean, Direct Policy, Code as Policy, Agent + Policy, RUA, Planner +
-  Direct controller, code iteration across episodes. `evoab methods list`;
-  add your own with [docs/methods.md](docs/methods.md).
-- **Agent runtimes.** Codex and Claude Code, plus experimental OpenCode, Gemini
-  CLI and Antigravity adapters. The model gateway converts between Responses,
-  Chat Completions and Messages, so one agent can use many model endpoints.
-- **Realistic evaluation.** The paper's observation setting uses RGB,
-  proprioception, camera calibration and robot descriptions. RoboDojo captures
-  depth by default. To use the paper's RGB-only observations, start the RoboDojo
-  environment with `--no-depth`. Task-verifier outcomes are recorded for
-  evaluation and withheld from the agent. See
-  [observation settings](docs/integrations.md#realistic-observation-settings).
-- **Run records and replay.** Every episode saves its configuration, tool calls,
-  frames, outcome and SFT-ready trajectories. A local web monitor replays them.
+## Quickstart
 
-## Environments
+Linux with Python 3.11. MetaWorld needs no GPU and no Docker.
 
-| Type | Integration | Notes |
-|---|---|---|
-| Simulation | RoboDojo | Dual-arm manipulation; Direct tools or Hybrid Pi0.5 |
-| Simulation | LIBERO-Plus / PRO | Official perturbation suites |
-| Simulation | RoboTwin 2.0, RMBench, CALVIN, RoboLab, DexJoCo | See [docs/integrations.md](docs/integrations.md) |
-| Simulation | BEHAVIOR, IsaacLab Arena, NaVILA-Bench | Experimental mobile, humanoid and quadruped |
-| Real robot | ARX ONE, Piper-X | Dual-arm platforms with RealSense cameras |
+```bash
+git clone https://github.com/Elvin-yk/EvoAB.git && cd EvoAB
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -e '.[agent]'
 
-## Install
+# One OpenAI-compatible provider and one model preset (the key is read from the environment).
+export MY_API_KEY=...
+evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_KEY
+evoab models add-preset my-model --provider my_api --model MODEL_ID
 
-Let your coding agent install it. Paste this into Claude Code, Codex or a similar
-agent on the target machine:
+evoab setup --integration metaworld
+evoab run --integration metaworld --deploy local --task reach-v3 \
+  --recipe agentic --model my-model --no-sam3 --output-dir ./runs
+evoab studio --runs-root ./runs          # open http://127.0.0.1:8770 to replay
+```
+
+Prefer a coding agent? Paste this into Claude Code, Codex or similar on the target machine:
 
 ```text
-Install EvoAB on this machine by following
-https://github.com/Elvin-yk/EvoAB/blob/main/docs/install.md
+Install EvoAB on this machine by following the "Install" section of
+https://github.com/Elvin-yk/EvoAB/blob/main/docs/guide.md
 Ask me before any command that needs sudo, and tell me the Studio URL when done.
 ```
 
-The agent installs EvoAB, Docker GPU support and Studio, then you add a model
-provider and deploy benchmarks from the Studio page.
+## Methods
 
-## Direct policies and the built-in agent
+A method is a directory with `method.yaml` (the recipe) and `CARD.md` (paper,
+setting, results). Any agent and any model preset runs any method; only external
+evaluators bring their own agent.
 
-`--agent native` is EvoAB's built-in agent (`pip install 'evoab[agent]'`).
-`--model` names a model preset; presets, providers and recorded usage live in
-`~/.config/evoab/agent/` and are managed in Studio (设置 → 模型) or with
-`evoab models`.
-
-`--recipe direct_policy` makes the model the controller: each
-inference is one independent request (prompt pack + task + a short window of
-observations) that must return exactly one action-chunk tool call, such as
-`emit_eef_actions` with 3–15 absolute grasp-point poses `[x, y, z, qw, qx, qy,
-qz, gripper]`. The chunk is validated and step-limited completely, then the
-benchmark's own controller executes one row per control step; malformed output
-is re-requested on the unchanged observation, and if every attempt fails the
-run ends without consuming a control step. Single-arm actions keep their numeric
-row format. In a multi-arm environment each row is an object keyed by every
-declared arm name, with one numeric action per arm. Both absolute and delta
-representations execute all arms together. The environment supplies its base
-prompt (or the policy uses the generic description). Bundled prompt packs
-(`evoab/resources/prompts/direct/`) describe the embodiment and frames; timing,
-gripper geometry and camera geometry are generated from what the environment
-reports, and `action.blocks` / `action.robot_prompt_file` choose or replace
-them. Records go to `direct/` in the run directory, and Studio replays them step
-by step with every inference's request, reply, latency and cost.
+| Method | Paradigm | How it acts |
+|---|---|---|
+| `agentic` | orchestrate | Tool calls: skills, scene, motion, finish |
+| `clean` | orchestrate | Four tools, compact results |
+| `direct_policy` | direct | One action chunk per stateless inference ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/) Direct) |
+| `code_as_policy` | code | Python programs against the robot API |
+| `agent_policy` | orchestrate + policy | Tool calls plus a VLA actor |
+| `planner_direct` | orchestrate + direct | A planner delegates sub-goals to a Direct controller |
+| `tool_team` | orchestrate | Studio agent cards: roles, tools and delegation |
+| `code_iterate` | code | Programs carried across episodes |
+| `rua` | orchestrate | Paper setting of [RUA](https://arxiv.org/abs/2611.01560), native |
+| `rua_upstream` | orchestrate | The original uni-robot-agent package as an external evaluator |
+| `q0_preview_upstream` | orchestrate | Qoo Tech's Q0-Preview as an external evaluator |
 
 ```bash
-evoab run --integration libero_pro --deploy local --runtime-profile libero_object \
-  --task pick_up_the_cream_cheese_and_place_it_in_the_basket --no-sam3 \
-  --agent native --model gpt-6-astra --recipe direct_policy \
-  --set representation=abs_eef --set horizon=3:15 --set history=15:7
-```
-
-`--set representation=joint_abs` emits absolute joint positions instead, for
-environments whose arms accept joint commands.
-
-With a tools-channel method (the default `agentic`), `--agent native` runs an
-agent loop with only EvoAB's robot tools registered, consolidating the transcript
-when it outgrows the model's context window.
-
-## Methods and composition
-
-```bash
-evoab methods list --integration robodojo     # methods usable on RoboDojo
-evoab methods show planner_direct             # card, recipe, parameters
-evoab methods validate my_recipe.yaml --integration libero_pro
+evoab methods list --integration robodojo
+evoab methods show planner_direct
 evoab run --integration robodojo --deploy local --task stack_bowls --no-sam3 \
-  --recipe planner_direct --model gpt-6-astra --set controller_calls=4
+  --recipe planner_direct --model my-model --set controller_calls=4
 ```
 
-Studio's method step shows each method's component graph and parameters; a run's
-detail page shows the same graph annotated with how often each capability and
-delegated role was called.
+## Environments
+
+| Type | Integrations |
+|---|---|
+| Simulation | RoboDojo, MetaWorld, LIBERO / LIBERO-Plus / LIBERO-PRO, RoboTwin 2.0, RMBench, CALVIN, RoboLab, DexJoCo |
+| Experimental | BEHAVIOR (R1Pro), IsaacLab Arena (G1), NaVILA (Go2) |
+| Real robot | ARX ONE, Piper-X |
 
 Benchmarks with a container recipe deploy as Docker runtimes in one step
-(Studio: 设置 → 评测集 → 部署, or `evoab benchmarks prepare
-INTEGRATION --container`): public upstream images are pulled by digest and
-others are built locally; nothing is hosted by EvoAB. See
-[container runtimes](docs/containers.md).
+(Studio: 设置 → 评测集 → 部署).
 
-## Studio
+## Documentation
 
-EvoAB Studio is a local web page for launching prepared LIBERO-PRO tasks,
-tracking running jobs, and reviewing run outcomes, token usage, and replays.
-The Benchmark page lists other integrations and their setup requirements.
+| Document | For |
+|---|---|
+| [Guide](docs/guide.md) | Install, models, Studio, running from the command line, methods and recipes, results, Python SDK |
+| [Architecture](docs/architecture.md) | How EvoAB is built and how to extend it: components, tools, environments, robots, agents |
+| [Benchmarks](docs/benchmarks.md) | Preparing each simulator and real robot |
+| [AGENTS.md](AGENTS.md) | Development rules for people and coding agents working on this repository |
 
-```bash
-evoab studio --runs-root ./runs --port 8770
-```
+## Contributing
 
-Everything Studio does is also a command, backed by the same code
-(`evoab/workbench/`). Add `--json` for the exact payload the Studio API
-returns; the HTTP API is described at `/openapi.json`.
-
-```bash
-evoab benchmarks tasks libero_pro --suite libero_object
-evoab models                        # model presets and providers
-evoab runs launch --task libero_object/pick_up_the_alphabet_soup_and_place_it_in_the_basket \
-  --method direct_policy --model gpt-6-astra --set representation=abs_eef
-evoab runs list
-evoab runs trace 721e018e          # rounds, tool calls, results and why the run ended
-evoab runs trace 721e018e --round 4   # full input and output of one model request
-evoab runs stop 721e018e
-evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_KEY
-evoab models add-preset my-model --provider my_api --model some-model --effort medium
-evoab usage
-```
-
-Settings (设置) has three pages: 概览 (token and request usage of every model
-call), 模型 (model presets and the providers they call; keys stay on the
-server, mode 600 under `~/.config/evoab/agent/`) and 评测集 (benchmark runtimes,
-including previously registered Gym benchmarks). The CLI reads keys only from standard input or an
-environment variable, never from arguments.
-
-## Repository layout
-
-```text
-evoab/composition/   recipes, component catalog, method library, compiler, graphs
-evoab/methods/       built-in methods: method.yaml + CARD.md per method
-evoab/agents/        agent runtimes (Codex, Claude Code, ...)
-evoab/provider/      model gateway and protocol conversion
-evoab/execution/     scheduling: serial, parallel, replanning, code as policy
-evoab/tools/         shared robot tools (gripper, scene, skills, episode, hybrid, delegation)
-evoab/services/      environment, actor and perception services
-evoab/integrations/  environment and robot adapters
-evoab/ui/web/        run monitor and replay
-docs/                user, developer and platform documentation
-```
-
-## Third-party components
-
-Third-party code, fonts, external assets and models retain their respective
-licenses, for example
-[evoab/integrations/robodojo/UPSTREAM_LICENSE](evoab/integrations/robodojo/UPSTREAM_LICENSE).
+Tasks are posted as issues on the [task board](https://github.com/Elvin-yk/EvoAB/issues/11);
+anyone can claim one. Read [AGENTS.md](AGENTS.md) first. Develop from a source
+checkout with `pip install -e '.[dev,agent]'`, add focused tests for new
+behavior, and open pull requests against current `main` that link their issue.
+Report bugs with the command, `evoab doctor --json` output and the run
+directory's `result.json`; never paste credentials.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). Third-party code, assets and models keep their own
+licenses, for example [RoboDojo](evoab/integrations/robodojo/UPSTREAM_LICENSE);
+provenance is recorded in each integration's `SOURCE.md`.

@@ -5,9 +5,9 @@ description: Add or reproduce an agent method in EvoAB as a recipe with a reprod
 
 # Add an EvoAB method
 
-A method is `evoab/methods/<id>/method.yaml` (a recipe) plus `CARD.md`. Read
-`docs/composition.md` for the recipe format and `docs/methods.md` for the
-library before starting.
+A method is `evoab/methods/<id>/method.yaml` (a recipe) plus `CARD.md`. Read the
+"Methods and recipes" section of `docs/guide.md` and the "Components" section
+of `docs/architecture.md` before starting.
 
 ## Steps
 

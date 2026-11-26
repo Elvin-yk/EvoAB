@@ -14,7 +14,7 @@ import zipfile
 PUBLIC_DIRECTORIES = ('evoab', 'docs', 'scripts', 'examples', 'assets', '.github')
 EXCLUDED_INTEGRATIONS = {'robodojo_internal', 'efe', 'franka_robotiq',
                          'franka_sharpa', '_franka', 'dexterous_hand', 'dexterous_hand.py'}
-SOURCE_FILES = ('README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'AGENTS.md',
+SOURCE_FILES = ('README.md', 'CHANGELOG.md', 'AGENTS.md',
                 'CLAUDE.md', 'LICENSE', 'MANIFEST.in', 'pyproject.toml', 'pyrightconfig.json',
                 'rua/.gitignore', 'rua/README.md')
 SOURCE_SUFFIXES = {'.py', '.md', '.toml', '.json', '.sh', '.txt', '.png', '.pdf',

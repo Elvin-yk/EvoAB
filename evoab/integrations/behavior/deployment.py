@@ -30,7 +30,7 @@ def external_data(args):
 
 
 def prepare(context):
-    raise ValueError("Install the pinned BEHAVIOR runtime and assets using its native setup, then adopt it with --runtime-python and --native-root; see docs/behavior.md")
+    raise ValueError("Install the pinned BEHAVIOR runtime and assets using its native setup, then adopt it with --runtime-python and --native-root; see docs/benchmarks.md")
 
 
 def verify(runtime):

@@ -34,7 +34,7 @@ def external_data(args):
 
 def prepare(context):
     raise ValueError("Arena requires a prepared official Isaac Sim 5.1 / Lab 2.3 runtime. "
-                     "Supply --runtime-python and --native-root; see docs/isaaclab_arena.md.")
+                     "Supply --runtime-python and --native-root; see docs/benchmarks.md.")
 
 
 def verify(runtime):
