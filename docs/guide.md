@@ -181,12 +181,14 @@ with the `user_tools` capability; it works with any environment and channel.
 
 ```python
 from evoab import tool
+from evoab.tools.gripper.pose import quaternion_to_rpy
 
 @tool
 def lift_by(robot, arm: str, height_m: float = 0.05) -> str:
     """Raise one arm's grasp site straight up by height_m metres, keeping its orientation."""
-    pose = robot.view_env_state()["state"]["arms"][arm]["control_pose"]
-    robot.move(targets=[{"arm": arm, "pose": [pose[0], pose[1], pose[2] + height_m, *pose[3:]]}])
+    pose = robot.view_env_state()["state"]["arms"][arm]["control_pose"]   # position + wxyz quaternion
+    x, y, z = pose["position"]
+    robot.move(targets=[{"arm": arm, "pose": [x, y, z + height_m, *quaternion_to_rpy(pose["quaternion"])]}])
     return "lifted"
 ```
 
