@@ -40,7 +40,6 @@ REQUIRED_MODULES = (
 
 KNOWN_INTEGRATIONS = (
     "robodojo",
-    "robolab",
     "robotwin",
     "libero",
     "libero_plus",

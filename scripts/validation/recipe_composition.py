@@ -71,7 +71,7 @@ class RecipeValidation(unittest.TestCase):
     def test_every_method_runs_on_the_built_in_agent(self):
         from types import SimpleNamespace
         from evoab.composition.compiler import apply_to_args
-        spec = load_integration("robolab").get_integration_spec()
+        spec = load_integration("robodojo").get_integration_spec()
         for method in ("agentic", "code_as_policy", "direct_action", "planner_direct", "code_iterate"):
             args = SimpleNamespace(model="preset")
             apply_to_args(args, compile_recipe(get_method(method).recipe, spec))
@@ -100,12 +100,12 @@ class RecipeValidation(unittest.TestCase):
                          "http://127.0.0.1:18762")
         # Without segmentation the SAM3 address is ignored: the recipe, not the command line, decides.
         self.assertIsNone(SessionConfig(**base, sam3_url="http://127.0.0.1:18762").resolve().sam3_url)
-        policy = SessionConfig(integration="robolab", env_url=base["env_url"], recipe="agent_policy",
+        policy = SessionConfig(integration="robodojo", env_url=base["env_url"], recipe="agent_policy",
                                action_model_url="http://127.0.0.1:18761",
                                integration_options={"task": "t", "action_model_checkpoint_sha256": "a" * 64},
                                recipe_overrides={"roles.main.capabilities.hybrid.options":
-                                                 {"binding": "robolab_droid_joint", "review": False}}).resolve()
-        self.assertEqual((policy.action_model_binding, policy.vla_review), ("robolab_droid_joint", False))
+                                                 {"binding": "robodojo_x5_joint", "review": False}}).resolve()
+        self.assertEqual((policy.action_model_binding, policy.vla_review), ("robodojo_x5_joint", False))
 
         def described(depth, calibration=True):
             camera = SimpleNamespace(has_depth=depth, has_calibration=calibration)
@@ -167,7 +167,7 @@ class RecipeValidation(unittest.TestCase):
                 list_methods()
 
     def test_review_regressions(self):
-        spec = load_integration("robolab").get_integration_spec()
+        spec = load_integration("robodojo").get_integration_spec()
         serial = with_overrides(get_method("planner_direct").recipe,
                                 {"execution.resource_scheduling": "global-serial"})
         compile_recipe(serial, spec)  # an action delegate steps the environment itself
@@ -429,10 +429,10 @@ class Experience(unittest.TestCase):
             experience.prepare(args, run)
             staged = Path(args.skills_root)
             self.assertTrue((staged / "general").is_dir())
-            (staged / "robolab").mkdir(exist_ok=True)
-            (staged / "robolab" / "learned.md").write_text("lesson\n")
+            (staged / "metaworld").mkdir(exist_ok=True)
+            (staged / "metaworld" / "learned.md").write_text("lesson\n")
             experience.persist(args, run, False)
-            self.assertEqual((root / "exp" / "skills" / "robolab" / "learned.md").read_text(), "lesson\n")
+            self.assertEqual((root / "exp" / "skills" / "metaworld" / "learned.md").read_text(), "lesson\n")
 
 
 if __name__ == "__main__":

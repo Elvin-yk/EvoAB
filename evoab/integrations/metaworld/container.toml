@@ -1,0 +1,10 @@
+# MetaWorld has no published image; setup builds `Dockerfile` (in this package)
+# locally: a slim Python with Meta-World 3.1.1 and software (OSMesa) rendering,
+# so the quickstart needs neither a GPU nor the NVIDIA Container Toolkit.
+dockerfile = "Dockerfile"
+python = "/usr/local/bin/python"
+gpu = false
+
+[environment]
+MUJOCO_GL = "osmesa"
+PYOPENGL_PLATFORM = "osmesa"

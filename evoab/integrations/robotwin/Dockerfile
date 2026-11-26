@@ -1,4 +1,4 @@
-# RoboTwin 2.0 simulator image, built locally by `evoab setup --integration robotwin --container`.
+# RoboTwin 2.0 simulator image, built locally by `evoab setup --integration robotwin`.
 #
 # Adapted from docker/Dockerfile.robotwin in allenai/vla-evaluation-harness
 # (Apache-2.0). Their published image pins an older RoboTwin revision and a

@@ -226,9 +226,9 @@ class Workbench:
                     return path
         raise NotFound("expert preview is not installed")
 
-    def prepare(self, integration: str, profile: str = "default", container: bool = False,
+    def prepare(self, integration: str, profile: str = "default",
                 accept_license: str | None = None, image_archive: str | None = None) -> dict[str, Any]:
-        """Prepare a runtime; ``container`` pulls or builds the benchmark's Docker image instead."""
+        """Prepare a runtime: pull or build the benchmark's Docker image."""
         with _admission:
             try:
                 directory = None
@@ -237,12 +237,12 @@ class Workbench:
                     # Resolved once, here: the setup child receives this path and later setting
                     # edits cannot redirect a job that is already queued.
                     directory = import_directory(directory=self.settings().get("image_import_dir"))
-                pid = benchmarks.start_setup(self.runs_root, integration, profile, None, container=container,
+                pid = benchmarks.start_setup(self.runs_root, integration, profile, None,
                                              environment=build_mirrors(), accept_license=accept_license,
                                              image_archive=image_archive, image_directory=directory)
             except ValueError as error:
                 raise Conflict(str(error)) from error
-        return {"pid": pid, "integration": integration, "profile": profile, "container": container}
+        return {"pid": pid, "integration": integration, "profile": profile, "container": True}
 
     def uninstall(self, integration: str, profile: str = "default") -> dict[str, Any]:
         """Remove one prepared Docker deployment's records and local runtime image.

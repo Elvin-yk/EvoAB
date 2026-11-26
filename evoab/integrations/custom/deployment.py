@@ -1,8 +1,9 @@
-"""Run a registered custom benchmark in its own interpreter.
+"""Run a registered custom benchmark in the user's own Docker image.
 
 The runtime profile is the benchmark name; ``evoab setup --integration custom
---runtime-profile NAME --runtime-python PYTHON`` records its tasks after
-checking that the interpreter imports both the benchmark and the EvoAB runtime.
+--runtime-profile NAME`` adds EvoAB's service layer to the manifest's image,
+records its tasks and checks that the image imports both the benchmark and the
+EvoAB runtime.
 """
 import hashlib
 import json
@@ -36,19 +37,41 @@ def _environment(manifest):
     return {key: str(value) for key, value in manifest.environment.items()}
 
 
-def external_data(args):
+def container_spec(args):
+    """The user's image is the base; EvoAB's service layer is built on top of it."""
+    from evoab.services.deployment.container import ContainerSpec
     manifest = _manifest(args)
-    data = manifest.model_dump(mode="json")
-    if manifest.tasks:
-        tasks = data["tasks"]
-    else:
-        result = query_python(manifest.python, _LIST, json.dumps(data), environment=_environment(manifest))
-        tasks = result if isinstance(result, list) else []
-    if not tasks:
-        raise ValueError("The benchmark declares no tasks")
-    return {"manifest": data, "tasks": {t["id"]: {"spec": {
+    text = manifests.path_for(manifest.name).read_text(encoding="utf-8")
+    return ContainerSpec(integration=f"custom-{manifest.name}", package=__package__, python=manifest.python,
+                         image=manifest.image, gpu=manifest.gpu, environment=_environment(manifest), source=text)
+
+
+def _tasks(manifest, tasks):
+    return {t["id"]: {"spec": {
         "backend": manifest.name, "robots": [manifest.embodiment], "scenario": {"title": t["instruction"]},
-        "max_steps": t.get("max_steps") or manifest.max_steps}} for t in tasks}}
+        "max_steps": t.get("max_steps") or manifest.max_steps}} for t in tasks}
+
+
+def container_data(args, root, report):
+    """Host side: the manifest, its declared tasks, and the host directories mounted into the container."""
+    from pathlib import Path
+    manifest = _manifest(args)
+    mounts = [str(Path(path).expanduser().resolve()) for path in ([manifest.path] if manifest.path else []) + manifest.mounts]
+    missing = [path for path in mounts if not Path(path).is_dir()]
+    if missing:
+        raise ValueError(f"Custom benchmark directories not found: {', '.join(missing)}")
+    data = manifest.model_dump(mode="json")
+    return {"manifest": data, "tasks": _tasks(manifest, data["tasks"]) if manifest.tasks else {}, "mounts": mounts}
+
+
+def container_finalize(python, data, report):
+    """List ``tasks_from`` inside the built image."""
+    manifest = manifests.Manifest.model_validate(data["manifest"])
+    if not manifest.tasks:
+        result = query_python(python, _LIST, json.dumps(data["manifest"]), environment=_environment(manifest))
+        data["tasks"] = _tasks(manifest, result if isinstance(result, list) else [])
+    if not data["tasks"]:
+        raise ValueError("The benchmark declares no tasks")
 
 
 _VERIFY = ("import json, sys; from evoab.integrations.custom.adapter import resolve; from evoab.services import hosting; "

@@ -44,7 +44,7 @@ def main():
     parser.add_argument("--config", type=Path)
     parser.add_argument("--backend", choices=backend_names())
     parser.add_argument("--runtime")
-    parser.add_argument("--profile", help="Named actor deployment recipe")
+    parser.add_argument("--profile", help="Named actor recipe (services/actor/recipes)")
     parser.add_argument("--model-config", dest="model_config_name")
     parser.add_argument("--checkpoint")
     parser.add_argument("--checkpoint-sha256")

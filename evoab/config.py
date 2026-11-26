@@ -74,7 +74,7 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     if not args.segmentation:
         args.sam3_url = None
     elif not args.sam3_url:
-        raise ValueError("the recipe enables scene segmentation: start SAM3 (evoab deploy sam3) and pass --sam3-url")
+        raise ValueError("the recipe enables scene segmentation: run a SAM3 service and pass --sam3-url")
     from urllib.parse import urlsplit
 
     for name in ("env_url", "action_model_url", "sam3_url"):

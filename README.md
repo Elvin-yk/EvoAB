@@ -18,7 +18,8 @@ under the same environments and evaluation.
 
 ## Quickstart
 
-Linux with Python 3.11. MetaWorld needs no GPU.
+Linux with Python 3.11 and Docker. Environments run in containers; MetaWorld
+needs no GPU, and `evoab setup` builds its small image once.
 
 ```bash
 git clone https://github.com/Elvin-yk/EvoAB.git && cd EvoAB
@@ -71,12 +72,12 @@ evoab run --integration robodojo --task stack_bowls \
 
 | Type | Integrations |
 |---|---|
-| Simulation | RoboDojo, MetaWorld, LIBERO / LIBERO-Plus / LIBERO-PRO, RoboTwin 2.0, RMBench, CALVIN, RoboLab, DexJoCo |
-| Experimental | BEHAVIOR (R1Pro), IsaacLab Arena (G1) |
+| Simulation | RoboDojo, MetaWorld, LIBERO / LIBERO-Plus / LIBERO-PRO, RoboTwin 2.0, CALVIN, your own image |
 | Real robot | ARX ONE, Piper-X |
 
-Benchmarks with a container recipe deploy as Docker runtimes in one step
-(Studio: 设置 → 评测集 → 部署).
+Environments and model services run only in Docker containers, like Harbor:
+an upstream image (or yours) plus EvoAB's service layer, deployed in one step
+(`evoab setup`, or Studio: 设置 → 评测集 → 部署).
 
 ## Documentation
 

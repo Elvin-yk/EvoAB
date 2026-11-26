@@ -1,4 +1,4 @@
-"""Launch prepared services with explicit ownership and bounded cleanup."""
+"""Launch prepared service containers with explicit ownership and bounded cleanup."""
 from __future__ import annotations
 
 import json
@@ -43,12 +43,11 @@ class Deployment:
             runtime = runtime_for(self.args, recipe, self.adapter)
             self.adapter.verify(runtime)
             plan = self.adapter.plan(self.args, runtime, self.output, self.run_id)
-            from .container import is_container, wrap_plan
-            if is_container(runtime.python):
-                self.container = f"evoab-{self.run_id}"[:63]
-                self.container_python = runtime.python
-                plan = wrap_plan(plan, runtime, gpu_index=self.args.deploy_gpu, name=self.container)
-                self.record.update(container=self.container, image=runtime.data["container"]["image"])
+            from .container import wrap_plan
+            self.container = f"evoab-{self.run_id}"[:63]
+            self.container_python = runtime.python
+            plan = wrap_plan(plan, runtime, gpu_index=self.args.deploy_gpu, name=self.container)
+            self.record.update(container=self.container, image=runtime.data["container"]["image"])
             self.url = plan.url
             require_free_port(plan.url)
             self.record.update(runtime=runtime.name, recipe_digest=runtime.recipe_digest,
@@ -97,9 +96,9 @@ class Deployment:
 
 
 def start_deployment(config: DeploymentConfig) -> Deployment:
-    """Start a prepared local service; the caller owns close() or its context manager."""
+    """Start a prepared service container; the caller owns close() or its context manager."""
     args = config.resolve()
-    output, run_id = output_directory(args, args.service)
+    output, run_id = output_directory(args, 'env')
     return Deployment(args, adapter_for(args), output, run_id).start()
 
 
@@ -112,7 +111,7 @@ def output_directory(args, role):
 
 
 def deploy(args, adapter):
-    output, run_id = output_directory(args, args.service)
+    output, run_id = output_directory(args, 'env')
     with cancellation_signals(), Deployment(args, adapter, output, run_id) as service:
         print(json.dumps(dict(url=service.url, run_id=run_id, output_dir=str(output))), flush=True)
         if getattr(args, 'check', False):

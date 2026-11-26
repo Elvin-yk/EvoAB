@@ -621,7 +621,6 @@ function commandPreview() {
     if (option.name in options) parts.push(`${option.flag} ${options[option.name]}`);
   }
   if (w.task.seeds) parts.push(`--seed ${w.seed}`, `--layout-id ${w.layoutId}`);
-  if (w.bench.container) parts.push("--container");
   return [...parts, "--monitor"].join(" \\\n  ");
 }
 
@@ -815,7 +814,7 @@ function projectLinks(bench) {
 
 function selectBenchmark(bench, p) {
   Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile,
-    title: bench.title, container: !!p.image }, team: null, task: null, suite: "all", query: "" });
+    title: bench.title }, team: null, task: null, suite: "all", query: "" });
   selectMethod(availableMethods().find((m) => m.id === TEAM_METHOD), S.wizard.agent);
   loadMethods(bench.integration).then(() => {
     if (S.wizard.bench?.integration !== bench.integration) return;
@@ -829,7 +828,7 @@ function startWith(bench, p, task = null) {
   location.hash = "#new";
 }
 
-// One deploy action per benchmark: its Docker recipe when it has one, else its native setup recipe.
+// One deploy action per benchmark: pull or build its Docker image.
 async function deploy(bench, p, button) {
   const what = benchmarkName(bench, p.profile);
   const docker = bench.deploy === "container" ? bench.container : null;
@@ -837,7 +836,7 @@ async function deploy(bench, p, button) {
   if (!confirm(`部署 ${what}？完成后即可发起任务。${license}`)) return;
   button.disabled = true;
   try {
-    const query = docker ? `?container=true${docker.license ? `&accept_license=${encodeURIComponent(docker.license)}` : ""}` : "";
+    const query = docker?.license ? `?accept_license=${encodeURIComponent(docker.license)}` : "";
     await api(`/api/benchmarks/${bench.integration}/${p.profile}/setup${query}`, { method: "POST" });
     toast(`已开始部署 ${what}，进度见下方日志`);
   } catch (error) {
@@ -862,7 +861,7 @@ async function uninstall(bench, p, button) {
       ? "；镜像仍被其他部署使用，已保留"
       : result.image_action === "missing" ? "；镜像此前已不在本机" : "，运行镜像已移除";
     const remaining = result.remaining
-      ? `；仍有${result.remaining.kind === "container" ? " Docker " : "本机 "}部署（${result.remaining.profile}）可用`
+      ? `；仍有 Docker 部署（${result.remaining.profile}）可用`
       : "";
     toast(`已卸载 ${what}${image}${remaining}`);
   } catch (error) {
@@ -1135,7 +1134,7 @@ function imageImportPanel() {
         if (!confirm(`导入 ${archive.value} 并验证 ${selected.bench.title}？${license}`)) return;
         submit.disabled = true;
         try {
-          const params = new URLSearchParams({ container: "true", image_archive: archive.value });
+          const params = new URLSearchParams({ image_archive: archive.value });
           if (docker.license) params.set("accept_license", docker.license);
           await api(`/api/benchmarks/${selected.bench.integration}/${selected.profile.profile}/setup?${params}`, { method: "POST" });
           toast("已开始导入和验证，进度见对应仿真的日志");
@@ -1224,32 +1223,25 @@ function settingsBenchmarks(body) {
 }
 
 function benchmarkCards() {
-  // Report an installed runtime's actual kind; before installation, name the method Studio
-  // will use, so a native benchmark never implies a Docker deployment.
-  const deployKind = (bench, p) => {
-    const kind = p.installed ? p.runtime_kind || bench.deploy : bench.deploy;
-    return kind === "container" ? "Docker 容器" : kind === "native" ? "本机安装（无 Docker）" : null;
-  };
+  // Every environment runs in a Docker container.
+  const deployKind = (bench) => (bench.deploy === "container" ? "Docker 容器" : null);
   const profileRow = (bench, p) => {
     // A runtime that registered no tasks is not usable: show it as a failed deployment to redo.
     const status = p.status === "ready" && !p.launchable ? "setup_failed" : p.status;
     const dockerMissing = bench.deploy === "container" && !bench.container?.docker;
-    const kind = deployKind(bench, p);
+    const kind = deployKind(bench);
     // 部署 until the runtime is ready, then a disabled 已部署 (runs start from 发起任务).
     const action = status === "ready"
       ? h("button", { class: "btn small", disabled: true },
-          p.runtime_kind === "container" ? "已部署（Docker）" : p.runtime_kind === "native" ? "已安装（本机）" : "已部署")
+          "已部署（Docker）")
       : h("button", { class: "btn small primary", disabled: dockerMissing || status === "preparing",
           title: dockerMissing ? "需要 Docker，见上方部署条件" : "",
           onclick: (e) => deploy(bench, p, e.currentTarget) },
-        bench.deploy === "container" ? "部署（Docker）" : bench.deploy === "native" ? "本机安装" : "部署");
-    // Only a Docker deployment can be removed; an adopted native runtime, a running
-    // setup or a missing Docker client leaves 卸载 disabled (the backend refuses too).
-    const nativeRuntime = p.installed && p.runtime_kind !== "container";
+        "部署（Docker）");
+    // A running setup or a missing Docker client leaves 卸载 disabled (the backend refuses too).
     const removal = bench.deploy === "container"
-      ? h("button", { class: "btn small", disabled: !p.installed || nativeRuntime || dockerMissing || status === "preparing",
-          title: nativeRuntime ? "当前是本机安装，不是 Docker 部署"
-            : dockerMissing ? "需要 Docker，见上方部署条件" : p.installed ? "" : "尚未部署",
+      ? h("button", { class: "btn small", disabled: !p.installed || dockerMissing || status === "preparing",
+          title: dockerMissing ? "需要 Docker，见上方部署条件" : p.installed ? "" : "尚未部署",
           onclick: (e) => uninstall(bench, p, e.currentTarget) }, "卸载")
       : null;
     const detail = status === "ready"

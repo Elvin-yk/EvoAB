@@ -1,15 +1,15 @@
-"""Adopt a pinned LIBERO-Plus installation for local episodes."""
+"""Run LIBERO-Plus episodes in the locally built image of the pinned revision."""
 import re
 
 from evoab.services.deployment.config import Recipe
 from evoab.services.deployment.runtime import check_python, query_python
-from .local import episode_plan, refresh_catalog, task_catalog
+from .local import episode_plan, task_catalog
 from .server import BUDGETS, REVISION
 
 empty_catalog_hint = (
     "LIBERO-Plus lists only tasks with the official BDDL under "
-    "<native-root>/libero/libero/bddl_files/<suite>/ and the matching initial state under "
-    "<native-root>/libero/libero/init_files/<suite>/ (new-object perturbations use "
+    "the image's libero/libero/bddl_files/<suite>/ and the matching initial state under "
+    "the image's libero/libero/init_files/<suite>/ (new-object perturbations use "
     "init_files/libero_newobj/<suite>/). Unpack the official assets under libero/libero/assets "
     "and add those files, then rerun the same setup command."
 )
@@ -22,8 +22,6 @@ def recipe(args):
 def validate(args):
     if args.runtime_profile is not None and args.runtime_profile not in BUDGETS:
         raise ValueError("Unknown LIBERO-Plus suite")
-    if args.command == "setup" and not getattr(args, "container", False) and not (args.runtime_python and args.native_root):
-        raise ValueError("Adopting LIBERO-Plus requires --runtime-python and --native-root, or --container")
 
 
 def _state_path(root, suite, name):
@@ -41,17 +39,13 @@ def _state_path(root, suite, name):
     return None
 
 
-def external_data(args):
+def image_data(args):
     return task_catalog(args, BUDGETS, _state_path)
 
 
-def refresh_external_data(args, runtime):
-    """Rescan the installation recorded by setup; an empty result disables its tasks."""
-    return refresh_catalog(args, runtime, BUDGETS, _state_path)
-
 
 def verify(runtime):
-    # The native interpreter must run this checkout's evoab distribution.
+    # The image's interpreter must run this checkout's evoab distribution.
     check_python(runtime.python, environment=runtime.environment)
     code = (
         "import json, sys; from pathlib import Path; from importlib.metadata import version; "

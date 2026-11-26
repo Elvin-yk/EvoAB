@@ -316,8 +316,7 @@ def _benchmarks(bench, args) -> None:
             print(f"\nScenes: --seed {seeds[0]}..{seeds[-1]} picks the evaluation set, --layout-id the scene in it "
                   f"(0..{layouts[0] - 1} for generalization tasks, 0..{layouts[-1] - 1} for the others).")
     elif args.action == "prepare":
-        _print_json(bench.prepare(args.integration, args.profile, container=args.container,
-                                  accept_license=args.accept_license))
+        _print_json(bench.prepare(args.integration, args.profile, accept_license=args.accept_license))
     elif args.action == "check":
         result = bench.system_check()
         if args.json:
@@ -452,8 +451,6 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "tasks":
             p.add_argument("--suite")
         else:
-            p.add_argument("--container", action="store_true",
-                           help="Pull or build the benchmark's Docker image instead of a native installation")
             p.add_argument("--accept-license", metavar="NAME", help="Accept the licence the container recipe names")
         p.set_defaults(handler=_benchmarks)
 

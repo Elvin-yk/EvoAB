@@ -44,7 +44,6 @@ dev = ["build>=1", "twine>=6", "tomli-w>=1"]
 # OpenCV 5 removed calibrateHandEye, which the ARX ONE hand-eye solvers use.
 arx_one = ["scipy>=1.10", "opencv-python-headless>=4.8,<5", "pyyaml>=6"]
 piper_x = ["scipy>=1.10", "opencv-python-headless>=4.8,<5", "python-fcl>=0.7,<0.8", "pyrealsense2>=2.55,<3; sys_platform == 'linux'"]
-robolab = ["scipy>=1.10", "trimesh>=4,<5", "python-fcl>=0.7,<0.8"]
 robodojo = [
     "trimesh>=4,<5",
     "imageio>=2.0",
@@ -73,17 +72,13 @@ namespaces = false
 "evoab" = ["py.typed"]
 "evoab.methods" = ["*/method.yaml", "*/CARD.md", "*/prompts/*.md"]
 "evoab.resources" = ["prompts/**/*.md", "prompts/robodojo/task_requirements.json", "prompts/robodojo/instruction_supplements.json", "skills/**/*.md"]
-"evoab.integrations.robolab" = ["SOURCE.md"]
 "evoab.integrations.piper_x" = ["templates/*.json", "SOURCE.md", "README.md"]
 "evoab.integrations.libero" = ["deployment.toml", "container.toml"]
 "evoab.integrations.libero_plus" = ["deployment.toml", "container.toml", "Dockerfile"]
 "evoab.integrations.libero_pro" = ["deployment.toml", "container.toml", "previews/sources.json", "previews/NOTICE", "previews/LICENSE"]
-"evoab.integrations.metaworld" = ["deployment.toml"]
+"evoab.integrations.metaworld" = ["deployment.toml", "container.toml", "Dockerfile"]
 "evoab.integrations.calvin" = ["deployment.toml", "container.toml"]
 "evoab.integrations.robotwin" = ["deployment.toml", "container.toml", "Dockerfile"]
-"evoab.integrations.dexjoco" = ["deployment.toml", "SOURCE.md"]
-"evoab.integrations.behavior" = ["deployment.toml", "SOURCE.md"]
-"evoab.integrations.isaaclab_arena" = ["deployment.toml", "SOURCE.md"]
 "evoab.integrations.robodojo" = ["deployment.toml", "container.toml", "SOURCE.md", "UPSTREAM_LICENSE", "environment/*.urdf"]
 
 # Native sources, ROS packages, models and templates travel with the integration. Local
@@ -94,7 +89,6 @@ namespaces = false
     "**/LICENSE", "**/NOTICE",
 ]
 "evoab.services.actor" = ["recipes/*.toml"]
-"evoab.services.perception" = ["recipes/*.toml"]
 
 [tool.setuptools.exclude-package-data]
 "evoab.integrations.arx_one" = [

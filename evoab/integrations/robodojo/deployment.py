@@ -1,4 +1,4 @@
-"""Prepare the pinned official runtime and resolve one frozen RoboDojo episode."""
+"""Build the pinned official RoboDojo image and resolve one frozen episode in it."""
 from pathlib import Path
 
 from evoab.integrations.simulation import materialized_asset
@@ -40,61 +40,6 @@ def catalog_tasks(data):
             if materialized_asset(config) and materialized_asset(layouts / f'{config.stem}_0.json')}
 
 
-def external_data(args):
-    if not args.native_root:
-        raise ValueError('An external RoboDojo runtime requires --native-root')
-    native = args.native_root.expanduser().resolve()
-    assets = (args.assets_dir or native / 'Assets').expanduser().resolve()
-    return dict(native_root=str(native), assets_dir=str(assets))
-
-
-def prepare(context):
-    config = context.recipe.settings
-    native = Path(context.step('source', lambda: context.git(config['repository'], config['revision'],
-                                                           context.root / 'source', submodules=True)))
-    if context.args.assets_dir:
-        assets = context.args.assets_dir.expanduser().resolve()
-    else:
-        download = Path(context.step('assets', lambda: context.snapshot(config['asset_repository'],
-            config['asset_revision'], context.root / 'assets', patterns=['Assets/**'])))
-        assets = download / 'Assets'
-    def initialize_assets():
-        from .assets import asset_overlay, verify_robot_configs
-        prepared = asset_overlay(assets, context.root / 'build/Assets')
-        context.command([context.python, native / 'utils/update_embodiment_config_path.py'],
-                        cwd=prepared.parent)
-        verify_robot_configs(prepared)
-        return str(prepared)
-    context.data['asset_source_dir'] = str(assets)
-    assets = Path(context.step('robot-configs', initialize_assets))
-    link = native / 'Assets'
-    if not link.exists():
-        link.symlink_to(assets, target_is_directory=True)
-    elif link.resolve() != assets:
-        raise ValueError('Native Assets path differs from the prepared asset directory')
-    context.step('torch', lambda: context.pip(*config['torch'], options=['--index-url', config['torch_index']]))
-    context.step('isaacsim', lambda: context.pip('isaacsim[all,extscache]==5.1.0',
-                                              options=['--extra-index-url', 'https://pypi.nvidia.com']))
-    context.step('dependencies', lambda: context.pip('-r', native / 'scripts/requirements.txt', *config['packages']))
-    context.step('build-tools', lambda: context.pip(*config['build_tools']))
-    def install_isaaclab():
-        from .build_compat import isaaclab_source
-        source = isaaclab_source(native, context.root / 'build/IsaacLab')
-        # Match the upstream base install: the app loads these extensions and
-        # core environment imports also require their declared dependencies.
-        packages = [item for name in config['isaaclab_extensions']
-                    for item in ('--editable', source / 'source' / name)]
-        context.pip(*packages, options=['--no-build-isolation'])
-    context.step('isaaclab', install_isaaclab)
-    context.data['isaaclab_build_compat'] = config['isaaclab_build_compat']
-    context.step('curobo', lambda: context.pip(str(native / 'third_party/curobo') + '[cu12]',
-                                            options=['--no-build-isolation']))
-    context.data.update(native_root=str(native), assets_dir=str(assets))
-    context.environment.update(XDG_CACHE_HOME=str(context.root / 'cache'),
-                               XDG_DATA_HOME=str(context.root / 'data'),
-                               XDG_CONFIG_HOME=str(context.root / 'config'))
-
-
 def container_data(args, root, report):
     """Host side of a container runtime: pinned checkout (the build context) and prepared assets.
 
@@ -102,10 +47,10 @@ def container_data(args, root, report):
     at the same paths, so task, layout and asset checks read the files the
     container service uses.
     """
-    from evoab.services.deployment.setup import Preparation
+    from evoab.services.deployment.setup import HostPreparation
     from .assets import asset_overlay
     settings = recipe(args).settings
-    context = Preparation(args, recipe(args), root, report=report)
+    context = HostPreparation(args, recipe(args), root, report=report)
     native = Path(context.step('source', lambda: context.git(settings['repository'], settings['revision'],
                                                            root / 'source', submodules=True)))
     if args.assets_dir:
@@ -130,7 +75,7 @@ def container_data(args, root, report):
 
 
 def container_finalize(python, data, report):
-    """Initialize the robot configurations with the image's interpreter, as native setup does."""
+    """Initialize the robot configurations with the image's interpreter (upstream's own setup step)."""
     import subprocess
     from evoab.services.deployment.container import options, parse, run_prefix
     from .assets import verify_robot_configs

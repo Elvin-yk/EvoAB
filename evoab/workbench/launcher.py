@@ -216,9 +216,6 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         command.extend(("--seed", str(request.seed)))
     if request.layout_id is not None:
         command.extend(("--layout-id", str(request.layout_id)))
-    runtime = benchmarks.runtime_for_launch(request.integration, request.profile)
-    if runtime is not None and runtime.container:
-        command.append("--container")
     return command + [
         "--output-dir", str(output_root),
         # Port 0 picks a free port; the CLI then prints the run directory at start.

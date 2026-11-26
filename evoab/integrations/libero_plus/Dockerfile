@@ -1,4 +1,4 @@
-# LIBERO-Plus simulator image, built locally by `evoab setup --integration libero_plus --container`.
+# LIBERO-Plus simulator image, built locally by `evoab setup --integration libero_plus`.
 #
 # Adapted from docker/Dockerfile.libero_plus in allenai/vla-evaluation-harness
 # (Apache-2.0), whose published image is not publicly pullable. The base image is
