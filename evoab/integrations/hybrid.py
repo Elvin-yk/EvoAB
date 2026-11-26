@@ -12,7 +12,7 @@ from evoab.integrations.base import IntegrationOptions
 from evoab.integrations.composition import ToolModule
 from evoab.provider.registry import list_provider_profiles, validate_provider_profile
 from evoab.services.actor.client import ActorClient
-from evoab.tools.hybrid.provider import NAMES as HYBRID_NAMES, HybridTools, unavailable_tools, tool_policies
+from evoab.tools.hybrid.provider import NAMES as HYBRID_NAMES, HybridTools, tool_policies
 from evoab.tools.hybrid.reviewer import ChunkReviewer
 
 
@@ -116,5 +116,4 @@ def configure_hybrid(session, selection=None):
 
 HYBRID_MODULE = ToolModule("hybrid", configure_hybrid, tool_policies(), tools=HYBRID_NAMES, options=PolicyToolOptions,
     label="Action model (Hybrid)", description="Ask a VLA / world-action model for bounded, reviewed action chunks.",
-    runtime_prompts=("hybrid.md",),
-    declare_unavailable=lambda session: unavailable_tools(session.episode))
+    runtime_prompts=("hybrid.md",))

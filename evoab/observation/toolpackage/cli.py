@@ -45,11 +45,7 @@ def add_ob_proxy_arguments(parser: argparse.ArgumentParser) -> None:
         help="Optional FoundationPose endpoint override for the foundationpose plugin",
     )
     parser.add_argument("--timeout-s", type=float, default=120.0, help="Upstream HTTP timeout in seconds")
-    parser.add_argument(
-        "--log-level",
-        choices=("DEBUG", "INFO", "WARNING", "ERROR"),
-        default="INFO",
-    )
+    parser.add_argument("--debug", action="store_true", help="Debug logging")
     parser.add_argument(
         "--print-config",
         action="store_true",
@@ -73,7 +69,7 @@ def build_proxy_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_proxy_parser()
     args = parser.parse_args(argv)
-    configure_logging(args.log_level)
+    configure_logging("DEBUG" if args.debug else "INFO")
 
     try:
         config = load_pipeline_config(args.config)

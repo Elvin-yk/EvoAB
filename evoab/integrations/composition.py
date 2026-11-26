@@ -48,7 +48,6 @@ class ToolModule:
     label: str = ""
     description: str = ""
     runtime_prompts: tuple[str, ...] = ()
-    declare_unavailable: Callable[[Any], list[ToolDef]] | None = None
     model_view: Callable[[dict[str, Any]], dict[str, Any]] | None = None
     prompt_contributions: tuple | None = None
     # Replaces the provider's own contributions under the compact style.
@@ -135,17 +134,6 @@ class ToolAssembly:
     @property
     def runtime_prompts(self) -> tuple[str, ...]:
         return tuple(path for module in self.modules for path in module.runtime_prompts)
-
-    def debug_catalog(self, session: Any, modules: tuple[ToolModule, ...]):
-        """Declare unavailable features without starting their services."""
-        tools = [tool for provider in self.providers for tool in provider.get_declared_tools()]
-        policies = self.policies
-        active = {module.name for module in self.modules}
-        for module in modules:
-            if module.name not in active and module.declare_unavailable is not None:
-                tools.extend(module.declare_unavailable(session))
-                policies.update(module.policies)
-        return tools, policies
 
 
 def validate_modules(modules) -> None:

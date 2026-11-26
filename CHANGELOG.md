@@ -24,7 +24,12 @@ The recipe says how the agent works; the command line only selects the run
   | `--no-vla-review`, `--action-model-binding X` | `--set roles.<role>.capabilities.hybrid.options.review=false`, `….binding=X` |
   | `--max-turns N` | `--set roles.<role>.max_turns=N` |
   | `--visible-tools …` | narrow `roles.<role>.capabilities.<id>.tools` |
-  | SDK `no_sam3`, `visible_tools`, `AgentConfig.max_turns`, `integration_options` `include_extra_task_requirements`, `vla_review`, `action_model_binding` | `recipe_overrides` with the paths above |
+  | `--model-parallel-tool-calls`, `--mcp-parallel-dispatch` | `execution.parallel_tool_calls` in the recipe; Codex always delivers calls one at a time to EvoAB's executor |
+  | `--codex-base-prompt`, `--codex-web-search` | nothing: every agent gets the assembled robot prompt and only the recipe's tools (Codex web search is off) |
+  | `--claude-effort` | `--reasoning-effort` (Claude Code accepts none, low, medium, high, max) |
+  | `--log-level`, `--telemetry debug` | `--debug` (`--telemetry off\|standard` stays) |
+  | `--tool-debug`, `--tools` | narrow capabilities in the recipe; the declared-but-unavailable tool catalog is removed |
+  | SDK `no_sam3`, `visible_tools`, `AgentConfig.max_turns`, `integration_options` `include_extra_task_requirements`, `vla_review`, `action_model_binding`, `tool_debug`, `tools`, `model_parallel_tool_calls`, `codex_*`, `mcp_parallel_dispatch`, `claude_effort`; `telemetry="debug"` | `recipe_overrides` with the paths above; `debug=True` |
 
 ### RUA folded into the core
 

@@ -102,10 +102,6 @@ class ToolProvider:
     def get_tools(self) -> list[ToolDef]:
         raise NotImplementedError
 
-    def get_declared_tools(self) -> list[ToolDef]:
-        """Declare selectable bindings without enabling optional backends or permissions."""
-        return self.get_tools()
-
 
 class Toolkit:
     """Register tools, expose schemas, and dispatch calls."""

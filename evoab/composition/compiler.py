@@ -251,16 +251,16 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
     args.tool_return_mode = execution.return_mode
     args.resource_scheduling = execution.resource_scheduling
     args.execution_mode = execution.mode
+    args.model_parallel_tool_calls = execution.parallel_tool_calls
     args.observation_profile = entry.observation_profile if entry.observation_profile != "none" \
         else execution.observation_profile
     if args.tool_style == "compact":
         # The compact style is the four-tool baseline contract: completed results only.
         if execution.return_mode != "immediate":
             raise ValueError("the compact tool style requires execution.return_mode: immediate")
-        if args.observation_profile != "none" or args.skill_writing or getattr(args, "tool_debug", False) \
-                or entry.channel != "tools":
-            raise ValueError("the compact tool style requires the tools channel without observation, "
-                             "skill writing or tool debugging")
+        if args.observation_profile != "none" or args.skill_writing or entry.channel != "tools":
+            raise ValueError("the compact tool style requires the tools channel without observation "
+                             "or skill writing")
 
 
 def check_inputs(inputs: Any, description: Any) -> None:

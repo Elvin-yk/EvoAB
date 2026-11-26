@@ -24,7 +24,7 @@ from evoab.tools.toolkit import Toolkit
 
 logger = get_logger("codex")
 
-from .config import CodexConfig, REASONING_EFFORTS, BASE_PROMPTS, validate_agent_python
+from .config import CodexConfig, REASONING_EFFORTS, validate_agent_python
 from .events import CodexAgentEventAdapter, CodexEventSource, _get, _unwrap
 from .model_binding import CodexResponsesBinding
 from .artifacts import finalize_model_records
@@ -45,15 +45,10 @@ class CodexAgent(CodexConfig):
         cwd: str | None = None,
         api_key: str | None = None,
         mcp_timeout_s: int | None = 10800,
-        mcp_parallel_dispatch: bool = False,
-        base_prompt: str = "robot",
-        web_search: str | None = None,
         agent_python: str | None = None,
     ):
         if reasoning_effort not in REASONING_EFFORTS:
             raise ValueError(f"unsupported reasoning effort: {reasoning_effort}")
-        if base_prompt not in BASE_PROMPTS:
-            raise ValueError(f"unsupported Codex base prompt: {base_prompt}")
         self._model = model
         self._timeout_s = timeout_s
         self._deadline = None if timeout_s is None else time.monotonic() + timeout_s
@@ -61,9 +56,6 @@ class CodexAgent(CodexConfig):
         self._cwd = cwd or "."
         self._api_key = api_key
         self._mcp_timeout_s = mcp_timeout_s
-        self._mcp_parallel_dispatch = mcp_parallel_dispatch
-        self._base_prompt = base_prompt
-        self._web_search = web_search
         self._agent_python = validate_agent_python(agent_python)
         self._sdk_events = CodexAgentEventAdapter()
         self._state: dict[str, Any] = {}
@@ -131,8 +123,8 @@ class CodexAgent(CodexConfig):
                 stop_reason="wall_time_limit",
                 message="Episode deadline reached during startup",
             )
-        if self._base_prompt == "robot" and not (prompt.system or "").strip():
-            raise ValueError("robot base prompt requires a nonempty Prompt.system")
+        if not (prompt.system or "").strip():
+            raise ValueError("Codex replaces its built-in instructions with the robot prompt, which is empty")
         try:
             import openai_codex
         except ImportError:
@@ -159,26 +151,23 @@ class CodexAgent(CodexConfig):
             mcp_url,
             self._reasoning_effort,
             self._mcp_timeout_s,
-            mcp_parallel_dispatch=self._mcp_parallel_dispatch,
-            web_search=self._web_search,
         )
-        turn_input = prompt.flatten()
-        if self._base_prompt == "robot":
-            if session_dir is None:
-                if self._instructions_dir is None:
-                    self._instructions_dir = TemporaryDirectory(prefix="evoab-codex-")
-                instructions_dir = Path(self._instructions_dir.name)
-            else:
-                instructions_dir = Path(session_dir)
-                instructions_dir.mkdir(parents=True, exist_ok=True)
-            instructions = instructions_dir / "codex_base_instructions.md"
-            instructions.write_text(prompt.system, encoding="utf-8")
-            turn_input = prompt.user
-            (instructions_dir / "codex_user_input.md").write_text(turn_input, encoding="utf-8")
-            # Preserve assembled roles: system replaces SDK instructions; user contains only the task input.
-            config_overrides.append(
-                f"model_instructions_file={json.dumps(str(instructions.resolve()))}"
-            )
+        # Every agent sees the same assembled robot prompt: it replaces Codex's built-in instructions.
+        if session_dir is None:
+            if self._instructions_dir is None:
+                self._instructions_dir = TemporaryDirectory(prefix="evoab-codex-")
+            instructions_dir = Path(self._instructions_dir.name)
+        else:
+            instructions_dir = Path(session_dir)
+            instructions_dir.mkdir(parents=True, exist_ok=True)
+        instructions = instructions_dir / "codex_base_instructions.md"
+        instructions.write_text(prompt.system, encoding="utf-8")
+        turn_input = prompt.user
+        (instructions_dir / "codex_user_input.md").write_text(turn_input, encoding="utf-8")
+        # Preserve assembled roles: system replaces SDK instructions; user contains only the task input.
+        config_overrides.append(
+            f"model_instructions_file={json.dumps(str(instructions.resolve()))}"
+        )
         if prompt.images:
             from base64 import b64encode
             turn_input = [openai_codex.TextInput(text=turn_input), *(
@@ -540,15 +529,12 @@ def _sdk_config_overrides(
     mcp_url: str,
     reasoning_effort: str,
     mcp_timeout_s: int | None = None,
-    *,
-    mcp_parallel_dispatch: bool = False,
-    web_search: str | None = None,
 ) -> list[str]:
     """Return provider-independent Codex runtime configuration."""
     overrides = [
         f'mcp_servers.evoab.url="{mcp_url}"',
-        # Control only Codex dispatch; model batching and background execution have separate owners.
-        f"mcp_servers.evoab.supports_parallel_tool_calls={str(mcp_parallel_dispatch).lower()}",
+        # Codex delivers calls one at a time; ordering and concurrency belong to EvoAB's executor.
+        "mcp_servers.evoab.supports_parallel_tool_calls=false",
         f'model_reasoning_effort="{reasoning_effort}"',
         # The robot agent's context is the assembled episode prompt only. Codex would otherwise
         # add AGENTS.md files found from its working directory (developer instructions of
@@ -556,9 +542,9 @@ def _sdk_config_overrides(
         "project_doc_max_bytes=0",
         "skills.bundled.enabled=false",
         "skills.include_instructions=false",
+        # Tools come from the recipe for every agent; Codex's own web search is not one of them.
+        'web_search="disabled"',
     ]
-    if web_search is not None:
-        overrides.append(f"web_search={json.dumps(web_search)}")
     if mcp_timeout_s is not None:
         if mcp_timeout_s <= 0:
             raise ValueError("mcp_timeout_s must be positive")

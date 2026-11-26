@@ -116,15 +116,6 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         help="Override the entry role's agent runtime (default: the recipe's)",
     )
     agent.add_argument("--model", help="Model ID or preset for the entry role (unless the recipe pins one)")
-    visibility = common.add_argument_group("Tool visibility debugging (developers)")
-    visibility.add_argument(
-        "--tool-debug", action="store_true",
-        help="Select the exact agent tool set with --tools; preserve modes, prompts and scheduling",
-    )
-    visibility.add_argument(
-        "--tools", nargs="*", default=[], metavar="SELECTOR",
-        help="Debug only: tool names or @skills, @scene, @motion, @workspace, @observation, @jobs; empty exposes none",
-    )
     services = common.add_argument_group("Services")
     for name in ("env-url", "sam3-url"):
         services.add_argument("--" + name, "--" + name.replace("-", "_"))
@@ -151,11 +142,11 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         help="Archive model requests/responses; disabling releases temporary inputs after successful training export, retaining images and diagnostics",
     )
     output.add_argument(
-        "--telemetry", choices=("off", "standard", "debug"), default="standard"
-    )
+        "--telemetry", choices=("off", "standard"), default="standard",
+        help="Record traces and diagnostics in the run directory (default: standard)")
     output.add_argument(
-        "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="INFO"
-    )
+        "--debug", action="store_true",
+        help="Debug logging and raw model requests in the run record; never changes what the agent sees or does")
     output.add_argument(
         "--print-config",
         action="store_true",

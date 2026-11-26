@@ -101,11 +101,14 @@ evoab run --integration robodojo --env-url http://127.0.0.1:18760 --recipe agent
 | `--sam3-url`, `--action-model-url`, `--action-model-checkpoint-sha256` | Where perception and policy services run, and which checkpoint |
 | `--agent`, `--model`, `--model-preset`, `--reasoning-effort` | Which agent runtime and model |
 | `--episode-timeout-s`, `--output-dir`, `--experience-dir`, `--monitor` | Wall-clock budget, outputs, live console |
+| `--debug` | Verbose logs and raw model requests in the run record; never changes what the agent sees or does |
 | `--validate-config`, `--print-config` | Check or print the resolved configuration offline |
 
-`evoab run --integration X --help` lists everything, including agent-runtime and
-transport options. `--tool-debug --tools …` exposes arbitrary tool sets for
-developers. `evoab tui` runs one task interactively against an `--env-url`.
+`evoab run --integration X --help` lists everything, including where external
+agent runtimes are installed (`--agent-python`, `--opencode-binary`, …), model
+transport timeouts and Claude Code's `--claude-max-budget-usd` cost cap. None of
+these changes the prompt or tools: every agent gets the same robot prompt and only
+the recipe's tools. `evoab tui` runs one task interactively against an `--env-url`.
 
 **Outcomes.** Tool success, agent completion and task success are separate. The
 agent ends with `finish`, which returns an acknowledgement; the environment
@@ -147,7 +150,7 @@ parameters:
 | Role `capabilities` | Tool modules, optionally narrowed (`tools`) and configured (`options`); `{id: X, optional: true}` is skipped where missing. `scene` has `segmentation` (SAM3 for `locate`); `hybrid`, the policy tool, has `binding` and `review` |
 | Role `context`, `prompt`, `max_turns`, `brain` | History policy (`identity`, `sliding_window`, `observation_window`), method instructions, turn budget, an optional pinned model or effort |
 | `loop` | Entry role; `episodes.repeat`, `carry: [skills]` or `[programs]`, `keep: success\|always` |
-| `execution` | Return mode, resource scheduling, replanning ([architecture](architecture.md#scheduling)) |
+| `execution` | Return mode, resource scheduling, replanning, `parallel_tool_calls` ([architecture](architecture.md#scheduling)) |
 | `parameters` | Named shortcuts for `--set` and Studio |
 
 `delegate` exposes other roles as `delegate_<role>(instruction)`: the role runs

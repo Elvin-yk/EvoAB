@@ -253,38 +253,17 @@ class CompositionChecks(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "compact tool style requires execution.return_mode"):
             config(profile="clean", tool_return_mode="background").resolve()
 
-    def test_debug_visibility_and_disabled_features(self):
-        for mode, selectors in (("background", ["finish"]), ("immediate", ["finish", "@jobs"]),
-                                ("background", [])):
-            cfg = config(tool_return_mode=mode, tool_debug=True, tools=selectors)
-            with assembled(cfg, self.directory) as (assembly, *_):
-                expected = ({"finish"} if selectors else set()) | (JOBS if "@jobs" in selectors else set())
-                self.assertEqual(surface(assembly), expected)
-                self.assertFalse(assembly.executor.call("list_skills", {}).output.success)
-                self.assertEqual(json.loads((self.directory / "tool_selection.json").read_text())["visible"],
-                                 [item["name"] for item in assembly.executor.get_tool_schemas()])
-        cfg = config(tool_return_mode="immediate", tool_debug=True,
-                     tools=["actor_act", "write_skill", "capture_observation"])
-        with assembled(cfg, self.directory) as (assembly, _, _, actor):
-            for name, arguments in (
-                ("actor_act", {"instruction": "test", "active_groups": ["arm"]}),
-                ("write_skill", {"path": "robolab/test.md", "content": "test"}),
-                ("capture_observation", {}),
-            ):
-                self.assertFalse(assembly.executor.call(name, arguments).output.success)
-            actor.assert_not_called()
-        cfg = config(tool_debug=True, tools=["unknown"])
-        with self.assertRaisesRegex(ValueError, "Unknown tool"):
-            with assembled(cfg, self.directory):
-                pass
-
-    def test_debug_preserves_configured_prompt(self):
-        for profile in ("direct", "hybrid"):
-            with assembled(config(profile=profile), self.directory) as (assembly, *_):
-                normal = assembly.build_prompt("Fixture").flatten()
-            with assembled(config(profile=profile, tool_debug=True, tools=[]),
-                           self.directory) as (assembly, *_):
-                self.assertEqual(normal, assembly.build_prompt("Fixture").flatten())
+    def test_recipe_narrows_visibility(self):
+        for mode, jobs in (("background", None), ("background", ["wait_for_tool"])):
+            overrides = {"roles.main.capabilities": [{"id": "episode"}]}
+            if jobs is not None:
+                overrides["roles.main.job_tools"] = jobs
+            with assembled(config(tool_return_mode=mode, overrides=overrides), self.directory) as (assembly, *_):
+                visible = {item["name"] for item in assembly.entry_executor.get_tool_schemas()}
+                self.assertEqual(visible - JOBS, {"finish"})
+                if jobs is not None:
+                    self.assertEqual(visible & JOBS, set(jobs))
+                self.assertFalse(assembly.entry_executor.call("list_skills", {}).output.success)
 
     def test_cli_recipe_and_set(self):
         from evoab.cli import build_parser

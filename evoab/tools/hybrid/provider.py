@@ -53,16 +53,6 @@ def tool_specs(binding=None, reviewer=None):
     return [spec]
 
 
-def unavailable_tools(episode):
-    """Declare the disabled tool for explicit visibility ablations only."""
-    def unavailable(**arguments):
-        from evoab.services.environment.contracts import RequestRejected
-        episode.require_active()
-        raise RequestRejected("actor_act is unavailable without a configured actor and binding")
-    return bind_tools(tool_specs(), provider_id="hybrid",
-                      handlers={"actor_act": unavailable}, invoke=episode.invoke)
-
-
 class HybridTools(ToolProvider):
     provider_id = "hybrid"
 

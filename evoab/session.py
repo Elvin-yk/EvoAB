@@ -45,8 +45,6 @@ from evoab.telemetry import TelemetrySession, create_telemetry
 from evoab.telemetry.logging import get_logger
 from evoab.tools.toolkit import Toolkit
 from evoab.execution.views import ToolView, waits_for_output
-from evoab.tools.observation import ObservationTools
-from evoab.tools.selection import select_tools
 from evoab.tools.workspace import WorkspaceProvider
 
 
@@ -226,17 +224,7 @@ def assemble_session(args) -> SessionAssembly:
         # Workspace (TUI) and observation-profile tools belong to the entry role.
         role_tools[entry_name] = role_tools[entry_name] | frozenset(extra_entry)
 
-        # Debug tool filtering does not change prompt guidance for the configured modes.
         prompt_tool_names = tuple(sorted(role_tools[entry_name]))
-        selection = None
-        if getattr(args, "tool_debug", False):
-            declared, policies = assembly.debug_catalog(session, integration_spec.debug_modules)
-            declared.extend(workspace.get_declared_tools())
-            declared.extend(observation_profile.tools if observation_profile is not None
-                            else ObservationTools(None).get_declared_tools())
-            selection = select_tools(declared, getattr(args, "tools", ()))
-        if selection is not None:
-            tools = list(selection.tools)
 
         toolkit = Toolkit()
         # Preserve tool order so provider composition does not change model-visible schema order.
@@ -251,20 +239,15 @@ def assemble_session(args) -> SessionAssembly:
             execution_mode, toolkit, policies, listeners=listeners, tracer=telemetry.tracer,
             tool_return_mode=args.tool_return_mode,
             resource_scheduling=args.resource_scheduling,
-            control_tool_names=None if selection is None else selection.control_names,
         )
         entry_executor = executor
-        if (multi_role or compiled.entry.role.job_tools is not None) and not getattr(args, "tool_debug", False):
+        if multi_role or compiled.entry.role.job_tools is not None:
             entry_executor = ToolView(executor, role_tools[entry_name],
                                       registered=toolkit.get_tool_names(), job_tools=compiled.entry.role.job_tools, role=entry_name)
         schemas = entry_executor.get_tool_schemas()
         (session_dir / "tools.json").write_text(
             json.dumps(schemas, indent=2, allow_nan=False) + "\n"
         )
-        if selection is not None:
-            (session_dir / "tool_selection.json").write_text(
-                json.dumps(selection.record(schemas), indent=2, allow_nan=False) + "\n"
-            )
 
         # The callback is internal bookkeeping; finish returns only a submission receipt.
         toolkit.set_solved_fn(session.task_succeeded)

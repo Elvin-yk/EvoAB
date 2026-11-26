@@ -7,6 +7,9 @@ import math
 from urllib.parse import urlsplit
 
 
+CLAUDE_EFFORTS = ("none", "low", "medium", "high", "max")
+
+
 class ClaudeConfig:
     model_protocol = "messages"
     # Channels this runtime can drive (see evoab/composition).
@@ -23,12 +26,10 @@ class ClaudeConfig:
         group = parser.add_argument_group("Claude Code SDK")
         group.add_argument("--claude-max-budget-usd", type=float, default=argparse.SUPPRESS,
                            help="Optional SDK cost ceiling; unset disables the SDK budget cap")
-        group.add_argument("--claude-effort", choices=("low", "medium", "high", "max"), default=argparse.SUPPRESS)
 
     @classmethod
     def resolve_defaults(cls, args):
         args.claude_max_budget_usd = getattr(args, "claude_max_budget_usd", None)
-        args.claude_effort = getattr(args, "claude_effort", None)
         if args.reasoning_effort is None:
             args.reasoning_effort = "none"
         if args.provider_url is None:
@@ -37,12 +38,10 @@ class ClaudeConfig:
 
     @classmethod
     def validate_config(cls, args, explicit):
-        if "--codex-base-prompt" in explicit:
-            raise ValueError("--codex-base-prompt requires --agent codex")
-        if explicit & {"--mcp-parallel-dispatch", "--no-mcp-parallel-dispatch", "--mcp-timeout-s"}:
-            raise ValueError("Codex MCP dispatch options require --agent codex")
-        if args.reasoning_effort != "none":
-            raise ValueError("Use --claude-effort for Claude Code reasoning configuration")
+        if "--mcp-timeout-s" in explicit:
+            raise ValueError("--mcp-timeout-s requires --agent codex")
+        if args.reasoning_effort not in CLAUDE_EFFORTS:
+            raise ValueError(f"Claude Code supports --reasoning-effort {', '.join(CLAUDE_EFFORTS)}")
         if args.context_policy != "identity":
             raise ValueError("Claude Code currently supports only identity context policy")
         if not args.provider_url:
@@ -56,5 +55,6 @@ class ClaudeConfig:
 
     @classmethod
     def config_options(cls, args):
-        return {"api_key": args._api_key, "max_budget_usd": args.claude_max_budget_usd,
-                "effort": args.claude_effort}
+        # The shared --reasoning-effort; "none" leaves the SDK's effort unset.
+        effort = None if args.reasoning_effort == "none" else args.reasoning_effort
+        return {"api_key": args._api_key, "max_budget_usd": args.claude_max_budget_usd, "effort": effort}

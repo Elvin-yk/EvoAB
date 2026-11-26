@@ -65,9 +65,6 @@ class SkillTools(ToolProvider):
         tools = self._bind_tools(skill_writing=self.skill_writing)
         return tools if self.names is None else [tool for tool in tools if tool.name in self.names]
 
-    def get_declared_tools(self):
-        return self._bind_tools(skill_writing=True)
-
     def _bind_tools(self, *, skill_writing):
         return bind_tools(tool_specs(self.namespace, skill_writing=skill_writing), provider_id=self.provider_id,
                           handlers={"list_skills": self.list_skills, "read_skill": self.read_skill,

@@ -58,4 +58,4 @@ def build_gripper_spec(*, name, create_session, tool_modules=DIRECT_TOOL_MODULES
                        validate_cli=validate_gripper_cli, config_model=GripperOptions):
     return IntegrationSpec(name=name, create_session=create_session,
         add_cli_args=add_cli_args, tool_modules=tool_modules,
-        debug_modules=(HYBRID_MODULE,), validate_cli=validate_cli, config_model=config_model)
+        validate_cli=validate_cli, config_model=config_model)

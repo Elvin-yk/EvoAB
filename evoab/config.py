@@ -50,6 +50,11 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     """Resolve one runtime configuration without parsing arguments or exiting."""
     explicit = set(explicit)
     from evoab.agents.registry import get_agent_backend
+    # One debug switch: verbose logs and raw model requests; the agent's inputs and tools are unchanged.
+    args.debug = bool(getattr(args, "debug", False))
+    args.log_level = "DEBUG" if args.debug else "INFO"
+    if args.debug:
+        args.telemetry = "debug"
     resolve_recipe(args, integration_spec, explicit=explicit)
     if not agent_enabled:
         args.agent_backend, args.model = None, None
@@ -267,19 +272,14 @@ class AgentConfig(BaseModel):
     provider_timeout_s: int = Field(default=600, gt=0)
     provider_retries: int = Field(default=2, ge=0)
     provider_retry_backoff_s: int = Field(default=5, ge=0)
-    model_parallel_tool_calls: bool = True
     agent_python: str | None = None
     opencode_binary: str = "opencode"
     opencode_version: str | None = None
     gemini_binary: str = "gemini"
     gemini_version: str | None = None
     gemini_bridge_manifest: str | None = None
-    codex_base_prompt: Literal["default", "robot"] = "robot"
-    codex_web_search: Literal["disabled", "cached", "live"] | None = None
-    mcp_parallel_dispatch: bool = False
     mcp_timeout_s: int | None = Field(default=None, gt=0)
     claude_max_budget_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
-    claude_effort: Literal["low", "medium", "high", "max"] | None = None
 
 
 class SessionConfig(BaseModel):
@@ -301,10 +301,9 @@ class SessionConfig(BaseModel):
     # Dotted recipe paths or declared parameter names, e.g. {"horizon": "3:10"}.
     recipe_overrides: dict[str, Any] = Field(default_factory=dict)
     experience_dir: Path | None = None
-    tool_debug: bool = False
-    tools: list[str] = Field(default_factory=list)
     save_exchanges: bool = True
-    telemetry: Literal["off", "standard", "debug"] = "standard"
+    telemetry: Literal["off", "standard"] = "standard"
+    debug: bool = False
 
     def resolve(self):
         """Validate offline and return the internal shared runtime settings."""
@@ -341,7 +340,7 @@ class SessionConfig(BaseModel):
                                   ("claude_", "claude_code")):
                 if backend != owner and any(name.startswith(prefix) for name in agent.model_fields_set):
                     raise ValueError(f"{prefix.rstrip('_').title()} settings require agent_backend={owner!r}")
-            if backend != "codex" and any(name == "agent_python" or name.startswith(("codex_", "mcp_"))
+            if backend != "codex" and any(name == "agent_python" or name.startswith("mcp_")
                                           for name in agent.model_fields_set):
                 raise ValueError("Codex settings require agent_backend='codex'")
         return resolved

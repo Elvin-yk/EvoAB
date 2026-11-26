@@ -135,6 +135,7 @@ submission order; background calls return job handles (`wait_for_tool`,
 |---|---|
 | `execution.return_mode` | `immediate`, `background` |
 | `execution.resource_scheduling` | `per-resource`, `global-serial` |
+| `execution.parallel_tool_calls` | `true` (default): the model may request several tool calls per response |
 | `execution.mode` | `parallel`, or `replanning`: after a failed world-changing action, queued actions are cancelled and new ones are refused until the result is read, the stop is confirmed and a fresh `capture_scene` is taken |
 
 Tools report what an action did in `ToolOutput.action` (`executed` none/some/unknown,

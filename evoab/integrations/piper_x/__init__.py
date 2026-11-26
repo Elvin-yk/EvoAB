@@ -28,4 +28,4 @@ def get_integration_spec():
     spec = build_gripper_spec(name="piper_x", create_session=create_session,
         add_cli_args=add_cli_args,
         validate_cli=validate_cli, config_model=PiperOptions)
-    return replace(spec, execution_mode="replanning", allow_automatic_retry=False, debug_modules=())
+    return replace(spec, execution_mode="replanning", allow_automatic_retry=False)

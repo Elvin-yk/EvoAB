@@ -136,9 +136,6 @@ class GripperTools(ToolProvider):
     def get_tools(self):
         return self._bind_tools()
 
-    def get_declared_tools(self):
-        return self._bind_tools()
-
     def _bind_tools(self):
         metadata = self.episode.description.environment.metadata
         specs = tool_specs([arm.name for arm in self.episode.description.environment.arms],

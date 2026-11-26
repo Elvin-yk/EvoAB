@@ -15,7 +15,6 @@ class ModelRuntime:
 
 def add_model_arguments(parser):
     """Shared transport options, independent of installed agent SDKs."""
-    import argparse
     from evoab.config import _nonnegative, _positive
     from evoab.provider.registry import list_provider_profiles
     options = parser.add_argument_group("Model transport and context")
@@ -49,9 +48,4 @@ def add_model_arguments(parser):
         help="Additional attempts for a main agent HTTP request",
     )
     options.add_argument("--provider-retry-backoff-s", type=_nonnegative, default=5)
-    options.add_argument(
-        "--model-parallel-tool-calls",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Allow multiple model tool calls per response",
-    )
+

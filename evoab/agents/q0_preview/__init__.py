@@ -89,7 +89,7 @@ class Q0PreviewAgent:
     def validate_config(cls, args, explicit):
         role = args.recipe.entry
         if (args.command != "run" or args.integration != "robodojo" or args.channel != "tools"
-                or args.tool_modules or len(args.compiled_recipe.roles) != 1 or args.tool_debug
+                or args.tool_modules or len(args.compiled_recipe.roles) != 1
                 or role.prompt.append or role.prompt.files or role.job_tools is not None or role.initial_observation
                 or args.instruction or args.task_supplements or args.context_policy != "identity"
                 or args.max_turns or args.action_model_url):

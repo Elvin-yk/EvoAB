@@ -188,6 +188,8 @@ class ExecutionSpec(Spec):
     # None selects the integration's mode (IntegrationSpec.execution_mode).
     mode: Literal["parallel", "replanning"] | None = None
     observation_profile: str = "none"
+    # Whether the model may request several tool calls in one response.
+    parallel_tool_calls: bool = True
 
 
 class Inputs(Spec):

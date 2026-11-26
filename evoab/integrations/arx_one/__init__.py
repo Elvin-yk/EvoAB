@@ -22,4 +22,4 @@ def get_integration_spec():
     spec = build_gripper_spec(name="arx_one", create_session=create_session, validate_cli=validate_cli)
     # A failed physical action stops the queued plan until a fresh capture (replanning mode), and
     # a physical action is never replayed by retrying the episode.
-    return replace(spec, execution_mode="replanning", allow_automatic_retry=False, debug_modules=())
+    return replace(spec, execution_mode="replanning", allow_automatic_retry=False)
