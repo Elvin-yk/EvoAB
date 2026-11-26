@@ -33,7 +33,6 @@ HYBRID = ("robodojo", "robolab")
 BASE_TOOLS = {"list_skills", "read_skill", "view_env_state", "capture_scene",
               "locate", "move", "grasp", "release", "hold", "finish"}
 JOBS = set(TOOL_GROUPS["@jobs"])
-WORKSPACE = set(TOOL_GROUPS["@workspace"])
 
 
 class Environment:
@@ -162,7 +161,7 @@ def snapshots(directory):
     for integration in INTEGRATIONS:
         for profile in (("direct", "hybrid") if integration in HYBRID else ("direct",)):
             for mode in ("immediate", "background"):
-                for command in ("run", "tui"):
+                for command in ("run", "serve"):
                     key = f"{integration}/{profile}/{mode}/{command}"
                     cfg = config(integration, profile, tool_return_mode=mode)
                     with assembled(cfg, directory, command=command) as (assembly, *_):
@@ -203,13 +202,12 @@ class CompositionChecks(unittest.TestCase):
         for integration in INTEGRATIONS:
             for profile in (("direct", "hybrid") if integration in HYBRID else ("direct",)):
                 for mode in ("immediate", "background"):
-                    for command in ("run", "tui"):
+                    for command in ("run", "serve"):
                         with self.subTest(integration=integration, profile=profile, mode=mode, command=command):
                             cfg = config(integration, profile, tool_return_mode=mode)
                             with assembled(cfg, self.directory, command=command) as (assembly, _, owned, actor):
                                 expected = BASE_TOOLS | ({"actor_act"} if profile == "hybrid" else set())
                                 expected |= JOBS if mode == "background" else set()
-                                expected |= WORKSPACE if command == "tui" else set()
                                 self.assertEqual(surface(assembly), expected)
                                 self.assertEqual(actor.call_count, int(profile == "hybrid"))
                                 self.assertEqual(len(owned), 2 if profile == "hybrid" else 0)
@@ -227,9 +225,6 @@ class CompositionChecks(unittest.TestCase):
                                 else:
                                     self.assertIsNotNone(result.job_id)
                                     self.assertTrue(assembly.executor.job_result(result.job_id, 5).output.success)
-                                file_result = assembly.executor.call("write_text_file",
-                                    {"path": str(self.directory / "probe.txt"), "content": "ok"})
-                                self.assertEqual(file_result.output.success, command == "tui")
 
     def test_method_validation(self):
         for integration in INTEGRATIONS:
@@ -252,6 +247,35 @@ class CompositionChecks(unittest.TestCase):
             config(overrides={"roles.main.capabilities.gripper.tools": ["teleport"]}).resolve()
         with self.assertRaisesRegex(ValueError, "compact tool style requires execution.return_mode"):
             config(profile="clean", tool_return_mode="background").resolve()
+
+    def test_user_tools(self):
+        self.directory.mkdir(parents=True, exist_ok=True)
+        file = self.directory / "my_tools.py"
+        file.write_text(
+            "from evoab import tool\n"
+            "@tool\n"
+            "def greet(robot, name: str, times: int = 1) -> str:\n"
+            "    \"\"\"Say hello.\"\"\"\n"
+            "    return 'hello ' * times + name\n"
+            "@tool\n"
+            "def look(robot) -> str:\n"
+            "    \"\"\"Read the environment state through another tool.\"\"\"\n"
+            "    return str(robot.view_env_state(cameras=['missing']))\n")
+        capabilities = [{"id": "scene"}, {"id": "episode"}, {"id": "user_tools", "options": {"file": str(file)}}]
+        cfg = config(tool_return_mode="immediate", overrides={"roles.main.capabilities": capabilities})
+        with assembled(cfg, self.directory) as (assembly, *_):
+            schemas = {item["name"]: item for item in assembly.executor.get_tool_schemas()}
+            self.assertEqual(schemas["greet"]["description"].split("\n")[0], "Say hello.")
+            self.assertEqual(schemas["greet"]["input_schema"]["required"], ["name"])
+            self.assertEqual(assembly.executor.call("greet", {"name": "arm", "times": 2}).output.extra,
+                             {"result": "hello hello arm"})
+            self.assertFalse(assembly.executor.call("greet", {"times": 2}).output.success)  # schema checked
+            nested = assembly.executor.call("look", {}).output
+            self.assertFalse(nested.success)  # the inner tool's failure reaches the model as this tool's error
+            self.assertIn("view_env_state failed", nested.error)
+        with self.assertRaisesRegex(ValueError, "first parameter must be `robot`"):
+            file.write_text("from evoab import tool\n@tool\ndef bad(x: int) -> str:\n    \"\"\"Doc.\"\"\"\n")
+            config(overrides={"roles.main.capabilities": capabilities}).resolve()
 
     def test_recipe_narrows_visibility(self):
         for mode, jobs in (("background", None), ("background", ["wait_for_tool"])):

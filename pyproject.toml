@@ -31,7 +31,6 @@ dependencies = [
     "uvicorn>=0.29,<1",
     "openai-codex==0.147.0",
     "claude-agent-sdk==0.2.165",
-    "textual>=0.70.0",
 ]
 
 [project.urls]
@@ -45,7 +44,6 @@ agent = ["nanobot-ai==0.4.1", "scipy>=1.10"]
 benchmarks = ["scipy>=1.10", "PyYAML>=6,<7"]
 xpolicylab = ["websockets>=14,<18", "msgpack>=1,<2", "msgpack-numpy==0.4.8"]
 # Compatibility extras: the base package already includes these features.
-tui = []
 codex = []
 claude = []
 dev = ["build>=1", "twine>=6", "tomli-w>=1"]

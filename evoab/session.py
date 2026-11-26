@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import threading
 import time
 from collections.abc import Callable
@@ -28,7 +27,7 @@ from evoab.config import resolve_context_config, resolve_agent_model_config, run
 from evoab.context.prompt import PromptContext, assemble_prompt, get_prompt_builder
 from evoab.events import ErrorEvent, EventBus, AgentRunFinished, Event
 from evoab.observation import load_observation_profile
-from evoab.agents import AgentResult, create_agent, get_agent_backend
+from evoab.agents import create_agent, get_agent_backend
 from evoab.agents.contracts import AgentInterrupted, CodePolicyContext
 from evoab.integrations import load_integration
 from evoab.integrations.base import (
@@ -45,7 +44,6 @@ from evoab.telemetry import TelemetrySession, create_telemetry
 from evoab.telemetry.logging import get_logger
 from evoab.tools.toolkit import Toolkit
 from evoab.execution.views import ToolView, waits_for_output
-from evoab.tools.workspace import WorkspaceProvider
 
 
 @dataclass
@@ -189,10 +187,6 @@ def assemble_session(args) -> SessionAssembly:
             dispatch = RoleDispatch()
             tools.extend(DelegationTools(targets, dispatch).get_tools())
             policies.update(delegation_policies(targets))
-        workspace = WorkspaceProvider()
-        # File helpers remain TUI-only unless explicitly selected for an ablation.
-        if getattr(args, "command", "run") != "run" and args.tool_style != "compact":
-            tools.extend(workspace.get_tools())
 
         profile_name = getattr(args, "observation_profile", "none")
         if profile_name != "none":
@@ -240,6 +234,9 @@ def assemble_session(args) -> SessionAssembly:
             tool_return_mode=args.tool_return_mode,
             resource_scheduling=args.resource_scheduling,
         )
+        for provider in assembly.providers:
+            if hasattr(provider, "bind_executor"):  # tools that call other tools (user @tool functions)
+                provider.bind_executor(executor)
         entry_executor = executor
         if multi_role or compiled.entry.role.job_tools is not None:
             entry_executor = ToolView(executor, role_tools[entry_name],
@@ -821,133 +818,62 @@ def _finalize_run(assembly, subscriptions, args, result, error_msg, started, *, 
     return RunResult(assembly.session_dir, record, exit_code)
 
 
-def run_tui(args) -> None:
-    """Start the single-task TUI."""
-    try:
-        from evoab.ui.textual.app import EvoABApp
-    except ImportError:
-        print("TUI dependencies are missing. Reinstall evoab with pip or uv tool.", file=sys.stderr)
-        sys.exit(1)
+SERVE_STATE = Path(os.environ.get("EVOAB_STATE_DIR", Path.home() / ".cache" / "evoab")) / "serve.json"
+
+
+def serve(args) -> None:
+    """Serve one episode's tools over MCP until stopped; no agent runs inside EvoAB.
+
+    Any MCP client (Claude Code, Cursor, ``evoab tools``) becomes the agent. Tool
+    calls go through the same executor, scheduling and records as ``evoab run``.
+    """
+    import signal
+    from evoab.services.mcp.http import HttpMcpServer
+    from evoab.events.subscribers import EventJsonlSubscriber
 
     if args.channel == "action" or len(args.compiled_recipe.roles) > 1:
-        print("The TUI runs one-role tool or code recipes; use evoab run for this method.", file=sys.stderr)
-        sys.exit(2)
-    agent_options = get_agent_backend(args.agent_backend).config_options(args)
-    agent_options["channel"] = args.channel
-    agent_options["model_config"] = resolve_agent_model_config(args)
-    agent_options["context_config"] = resolve_context_config(args)
-    agent_options["save_raw_request"] = args.telemetry == "debug"
-    agent_options["save_exchanges"] = args.save_exchanges
-
+        raise SystemExit("evoab serve exposes the tools of a one-role tools or code recipe "
+                         f"({args.recipe_id!r} is not one)")
     assembly = assemble_session(args)
-
     bus = EventBus()
     subscriptions = EventSubscriptions(bus)
-
+    server = None
+    stop = threading.Event()
+    previous = signal.signal(signal.SIGTERM, lambda *_: stop.set())
     try:
         subscriptions.add(EventJsonlSubscriber(assembly.session_dir, artifacts=assembly.artifacts))
         assembly.toolkit.set_event_bus(bus)
-        app = EvoABApp(
-            integration_name=args.integration,
-            agent_backend=args.agent_backend,
-            model=args.model,
-            agent_options=agent_options,
-            toolkit=assembly.toolkit,
-            executor=assembly.entry_executor,
-            prompt_builder=assembly.build_prompt,
-            bus=bus,
-            session_dir=assembly.session_dir,
-            artifacts=assembly.artifacts,
-            tracer=assembly.telemetry.tracer,
-            max_turns=args.max_turns,
-        )
-        try:
-            app.run()
-        finally:
-            app.close()
+        server = HttpMcpServer(assembly.entry_executor, port=args.mcp_port, event_bus=bus)
+        url = server.start()
+        owner = getattr(args, "_serve_owner_pid", None) or os.getpid()
+        SERVE_STATE.parent.mkdir(parents=True, exist_ok=True)
+        SERVE_STATE.write_text(json.dumps({
+            "url": url, "pid": owner, "integration": args.integration, "task": getattr(args, "task", None),
+            "recipe": args.recipe_id, "run_dir": str(assembly.session_dir),
+            "tools": [spec["name"] for spec in assembly.entry_executor.get_tool_schemas()]}, indent=2) + "\n")
+        print(f"Serving {args.integration} episode tools at {url}\n"
+              f"  evoab tools list                      # what an agent can call\n"
+              f"  evoab tools call NAME --json '{{...}}'  # call one tool\n"
+              f"  claude mcp add --transport http evoab {url}\n"
+              f"  evoab stop                            # end the episode\n"
+              f"Run record: {assembly.session_dir}", flush=True)
+        while not stop.wait(0.5):
+            pass
+    except KeyboardInterrupt:
+        pass
     finally:
-        for resource in (
-            assembly.executor,
-            assembly.observation_profile,
-            assembly.integration_session,
-            assembly.obs_proxy,
-            assembly.telemetry,
-            subscriptions,
-        ):
+        signal.signal(signal.SIGTERM, previous)
+        if server is not None:
+            server.stop()
+        try:
+            if json.loads(SERVE_STATE.read_text()).get("run_dir") == str(assembly.session_dir):
+                SERVE_STATE.unlink()
+        except (OSError, ValueError):
+            pass
+        for resource in (assembly.executor, assembly.observation_profile, assembly.integration_session,
+                         assembly.obs_proxy, assembly.telemetry, subscriptions):
             close_resource(resource)
         finish_artifacts(assembly.artifacts)
-
-
-class SingleTaskSession:
-    """One task per environment session, independent of the terminal frontend."""
-
-    def __init__(
-        self,
-        *,
-        agent_backend,
-        model,
-        agent_options,
-        toolkit,
-        executor,
-        prompt_builder,
-        bus,
-        session_dir,
-        artifacts,
-        tracer,
-        max_turns=50,
-    ):
-        self._agent_backend = agent_backend
-        self._model = model
-        options = dict(agent_options or {})
-        self._channel = options.pop("channel", "tools")
-        self._model_config = options.pop("model_config", None)
-        self._context_config = options.pop("context_config", {})
-        self._save_raw_request = options.pop("save_raw_request", False)
-        self._save_exchanges = options.pop("save_exchanges", True)
-        self._agent = create_agent(agent_backend, model=model, **options)
-        self._toolkit = toolkit
-        self._executor = executor
-        self._prompt_builder = prompt_builder
-        self._bus = bus
-        self._session_dir = Path(session_dir).resolve()
-        self._artifacts = artifacts
-        self._tracer = tracer
-        self._max_turns = max_turns
-        self._started = False
-        self.turns = 0
-
-    def run(self, task: str) -> AgentResult:
-        if self._started:
-            raise RuntimeError("This session has already run a task; start a new session")
-        self._started = True
-        with self._tracer.span(
-            "agent.run", agent_backend=self._agent_backend, model=self._model
-        ):
-            result = _run_agent(
-                self._agent,
-                model_config=self._model_config,
-                channel=self._channel,
-                context_config=self._context_config,
-                save_raw_request=self._save_raw_request,
-                save_exchanges=self._save_exchanges,
-                artifacts=self._artifacts,
-                tracer=self._tracer,
-                prompt=self._prompt_builder(task),
-                task=task,
-                toolkit=self._toolkit,
-                executor=self._executor,
-                max_turns=self._max_turns,
-                event_bus=self._bus,
-                session_dir=self._session_dir,
-            )
-        self.turns = result.turns_used
-        return result
-
-    def cancel(self) -> None:
-        self._agent.cancel("tui_closed")
-
-    def close(self) -> None:
-        self._agent.close()
 
 
 def _result_exit_code(*, outcome, task_success, agent_result, error_msg) -> int:

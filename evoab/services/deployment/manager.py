@@ -124,13 +124,13 @@ def deploy(args, adapter):
 def evaluator_entry():
     """Private process entry: resolved secrets travel through stdin, never argv or disk."""
     from argparse import Namespace
-    from evoab.session import run
+    from evoab.session import run, serve
     from evoab.telemetry.logging import configure_logging
     from evoab.composition.compiler import restore_compiled
     args = Namespace(**json.load(sys.stdin))
     restore_compiled(args)
     configure_logging(args.log_level)
-    run(args)
+    (serve if args.command == "serve" else run)(args)
 
 
 def run_evaluation(args):

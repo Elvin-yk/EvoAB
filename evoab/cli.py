@@ -20,7 +20,7 @@ from evoab.integrations import load_integration
 
 WORKBENCH_COMMANDS = {
     "runs": "List, launch, trace and stop runs (same as Studio)",
-    "methods": "The method library: list, show, graph, components, validate",
+    "methods": "The method library: list, components, validate",
     "models": "Model providers and presets",
     "benchmarks": "List benchmarks and tasks; prepare runtimes",
     "usage": "Token usage by API and model",
@@ -162,31 +162,33 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     )
     if integration_spec is not None:
         integration_spec.add_cli_args(common)
-    run = subparsers.add_parser(
-        "run", parents=[common], allow_abbrev=False, help="Run the agent on one robot task"
-    )
-    run.add_argument(
-        "--instruction", help="Override the environment's task instruction"
-    )
-    run.add_argument(
-        "--episode-timeout-s",
-        type=_nonnegative,
-        default=10800,
-        help="Agent episode wall clock budget; excludes managed environment startup; 0 disables",
-    )
     from evoab.services.deployment.config import add_runtime_arguments, add_launch_arguments
-    # Kept for scripts; a run without --env-url always starts its own environment.
-    run.add_argument("--deploy", choices=("local",), help=argparse.SUPPRESS)
-    add_runtime_arguments(run)
-    add_launch_arguments(run, managed=True)
-    run.add_argument("--monitor", action="store_true", help="Serve a local live Web console")
-    run.add_argument("--monitor-host", default="127.0.0.1")
-    run.add_argument("--monitor-port", type=int, default=8765)
-    monitor = subparsers.add_parser("monitor", help="View existing run directories; no model or environment required", allow_abbrev=False)
-    monitor.add_argument("--run-dir", type=Path, nargs="+", action="extend", required=True,
-                         help="One or more runs or parent directories containing runs")
-    monitor.add_argument("--host", default="127.0.0.1")
-    monitor.add_argument("--port", type=int, default=8765)
+    run = subparsers.add_parser(
+        "run", parents=[common], allow_abbrev=False, help="Run an agent on one robot task"
+    )
+    serve = subparsers.add_parser(
+        "serve", parents=[common], allow_abbrev=False,
+        help="Start one episode and serve its tools over MCP: any MCP agent, or evoab tools, drives the robot")
+    serve.add_argument("--mcp-port", type=int, default=18790, help="Local port of the MCP endpoint")
+    for command, timeout in ((run, 10800), (serve, 0)):
+        command.add_argument("--instruction", help="Override the environment's task instruction")
+        command.add_argument("--episode-timeout-s", type=_nonnegative, default=timeout,
+                             help="Episode wall-clock budget; excludes environment startup; 0 disables")
+        # Kept for scripts; without --env-url EvoAB always starts its own environment.
+        command.add_argument("--deploy", choices=("local",), help=argparse.SUPPRESS)
+        add_runtime_arguments(command)
+        add_launch_arguments(command, managed=True)
+        command.add_argument("--monitor", action="store_true", help="Serve a local live Web console")
+        command.add_argument("--monitor-host", default="127.0.0.1")
+        command.add_argument("--monitor-port", type=int, default=8765)
+    replay = subparsers.add_parser(
+        "replay", allow_abbrev=False,
+        help="Replay recorded runs step by step in the browser; no GPU, model or environment needed")
+    replay.add_argument("run_dir", nargs="+", metavar="RUN",
+                        help="A run directory, a directory of runs, or `demo` for the published example runs")
+    replay.add_argument("--host", default="127.0.0.1")
+    replay.add_argument("--port", type=int, default=8765)
+    replay.add_argument("--no-browser", action="store_true", help="Print the address instead of opening it")
     doctor = subparsers.add_parser(
         "doctor",
         help="Diagnose the installation and configuration offline",
@@ -233,10 +235,18 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         service.add_argument("--output-dir", default="runs")
         add_runtime_arguments(service)
         add_launch_arguments(service)
-    tui = subparsers.add_parser(
-        "tui", parents=[common], allow_abbrev=False, help="Interactive TUI"
-    )
-    tui.set_defaults(episode_timeout_s=0, instruction=None)
+    tools = subparsers.add_parser("tools", help="List or call the tools of the episode `evoab serve` is serving",
+                                  allow_abbrev=False)
+    tools_actions = tools.add_subparsers(dest="tools_action", required=True)
+    tools_actions.add_parser("list", help="Tools an agent can call, with their arguments")
+    call = tools_actions.add_parser("call", help="Call one tool and print its result")
+    call.add_argument("name")
+    call.add_argument("--json", dest="arguments_json", default="{}", help="Arguments as a JSON object")
+    call.add_argument("--arg", action="append", default=[], metavar="KEY=VALUE",
+                      help="One argument; the value is read as JSON when it parses, else as text")
+    for parser_ in (tools, call):
+        parser_.add_argument("--url", help="MCP endpoint (default: the one `evoab serve` recorded)")
+    subparsers.add_parser("stop", help="Stop the episode `evoab serve` is serving", allow_abbrev=False)
     # Resource commands are dispatched before this parser runs (see main); listed here for --help.
     for name, text in WORKBENCH_COMMANDS.items():
         subparsers.add_parser(name, help=text, add_help=False)
@@ -270,18 +280,23 @@ def main(argv=None, *, _supervised=False) -> None:
     if args.command is None:
         parser.print_help()
         raise SystemExit(1)
-    if args.command == "monitor":
+    if args.command == "replay":
         from evoab.ui.web.runtime import serve_directories
+        from evoab.ui.web.demo import demo_runs
         try:
             if not 0 <= args.port <= 65535:
                 raise ValueError("--port must be between 0 and 65535")
+            args.run_dir = [demo_runs() if str(path) == "demo" else Path(path) for path in args.run_dir]
             serve_directories(args)
         except (ValueError, OSError, RuntimeError) as error:
             parser.exit(1, f"{error}\n")
         return
     if args.command == "run" and not 0 <= args.monitor_port <= 65535:
         parser.error("--monitor-port must be between 0 and 65535")
-    if args.command == "run" and args.deploy is None and not (args.env_url or os.environ.get("EVOAB_ENV_URL")):
+    if args.command in ("tools", "stop"):
+        from evoab.services.mcp.cli import main as mcp_main
+        raise SystemExit(mcp_main(args))
+    if args.command in ("run", "serve") and args.deploy is None and not (args.env_url or os.environ.get("EVOAB_ENV_URL")):
         args.deploy = "local"  # the default: start the prepared environment, run, and stop it
     if args.command in ("setup", "deploy"):
         from evoab.services.deployment.config import validate_deployment
@@ -318,7 +333,9 @@ def main(argv=None, *, _supervised=False) -> None:
     if args.command == "run" and args.recipe.loop.episodes.repeat > 1:
         from evoab.composition.episodes import run_sequence
         raise SystemExit(run_sequence(argv, args))
-    if args.command == "run" and (
+    if args.command == "serve":
+        args._serve_owner_pid = os.getpid()
+    if args.command == "serve" and args.deploy == "local" or args.command == "run" and (
         args.deploy == "local" or hasattr(get_agent_backend(args.agent_backend), "evaluator_plan")
     ):
         from evoab.services.deployment.manager import run_evaluation
@@ -361,7 +378,7 @@ def main(argv=None, *, _supervised=False) -> None:
     if args.command == "run":
         from evoab.session import run
     else:
-        from evoab.session import run_tui as run
+        from evoab.session import serve as run
     run(args)
 
 

@@ -113,7 +113,14 @@ def _compile_role(name: str, role: Role, catalog: dict, spec: Any, base_dir: Pat
             available = sorted(set(catalog) | set(HARNESS_CAPABILITIES))
             raise ValueError(f"{where}: integration {spec.name!r} has no capability {capability.id!r}; "
                              f"choose from {', '.join(available)}")
-        modules.append(module.select(capability.tools, capability.options, role.style))
+        options = capability.options
+        if capability.id == "user_tools":
+            from evoab.tools.user import load_tools, resolve_file
+            if not isinstance(options.get("file"), str):
+                raise ValueError(f"{where}: user_tools needs options.file, a Python file of @tool functions")
+            options = {**options, "file": str(resolve_file(options["file"], base_dir))}
+            load_tools(options["file"])  # import and check every signature offline
+        modules.append(module.select(capability.tools, options, role.style))
     if role.initial_observation and not any(item.name == "scene" for item in modules):
         raise ValueError(f"{where}: initial_observation requires the scene capability")
     direct = _direct_config(role, base_dir) if role.channel == "action" else None

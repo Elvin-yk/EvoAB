@@ -1,4 +1,4 @@
-"""evoab — A robot agent built on Codex and Claude Code."""
+"""evoab — an open platform for robot-use agents."""
 
 from importlib.metadata import PackageNotFoundError, version
 
@@ -29,6 +29,7 @@ _EXPORTS = {
     "ToolClient": ("tools.client", "ToolClient"),
     "ToolJob": ("tools.client", "ToolJob"),
     "ToolOutput": ("tools.toolkit", "ToolOutput"),
+    "tool": ("tools.user", "tool"),
     "RunResult": ("artifacts.records", "RunResult"),
     "RunRecord": ("artifacts.records", "RunRecord"),
     "SetupConfig": ("services.deployment.config", "SetupConfig"),

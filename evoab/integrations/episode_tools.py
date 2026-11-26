@@ -43,3 +43,19 @@ SCENE_MODULE = ToolModule("scene", configure_scene, scene.tool_policies(), tools
     label="Scene perception", description="Measured state, calibrated multi-view capture and 2D segmentation.")
 EPISODE_MODULE = ToolModule("episode", lambda session, selection: EpisodeTools(session.episode),
     episode.tool_policies(), tools=episode.NAMES, label="Episode", description="Submit a completion claim; the environment decides success.")
+
+
+class UserToolsOptions(BaseModel):
+    """``file``: a Python file of ``@tool`` functions (see ``evoab.tools.user``)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    file: str
+
+
+def configure_user_tools(session, selection: ModuleSelection):
+    from evoab.tools.user import UserTools, load_tools
+    return UserTools(session.episode, load_tools(selection.options.file))
+
+
+USER_TOOLS_MODULE = ToolModule("user_tools", configure_user_tools, options=UserToolsOptions,
+    label="Your tools", description="Python functions marked with @tool, from the file in options.file.")

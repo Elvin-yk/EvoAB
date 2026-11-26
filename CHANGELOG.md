@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Ideas from dimos: your own tools, MCP serving, replay
+
+- `@tool` (`from evoab import tool`): a decorated Python function is an agent
+  tool; the docstring is its description, type hints its arguments, and `robot`
+  calls the episode's other tools. Select a file with the `user_tools`
+  capability (every environment). Example: `examples/tools/lift.py` (#43).
+- `evoab serve` starts an episode and serves the recipe's tools over MCP until
+  `evoab stop`; `evoab tools list|call` call them by hand and any MCP client
+  (Claude Code, Cursor) can be the agent (#44). It replaces `evoab tui`, which is
+  removed with the Textual dependency and its file tools.
+- `evoab replay RUN…` replaces `evoab monitor --run-dir`; `evoab replay demo`
+  downloads published example runs (#45).
+
 ### Plain recipes and a clearer command line
 
 - `evoab run` starts the benchmark's environment itself by default (`--deploy

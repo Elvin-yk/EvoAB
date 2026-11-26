@@ -37,7 +37,9 @@ def resolve_config(args, parser, integration_spec, argv=()):
     """CLI adapter: translate shared validation errors into argparse diagnostics."""
     explicit = {word.split("=", 1)[0] for word in argv if word.startswith("--")}
     try:
-        resolved = resolve_settings(args, integration_spec, explicit=explicit)
+        # evoab serve runs no agent: an MCP client outside EvoAB drives the tools.
+        resolved = resolve_settings(args, integration_spec, explicit=explicit,
+                                    agent_enabled=getattr(args, "command", "run") != "serve")
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
     for owner, options in getattr(parser, "agent_options", {}).items():

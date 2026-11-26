@@ -154,5 +154,7 @@ def assemble_tools(session: Any, selected: tuple[SelectedModule, ...]) -> ToolAs
 
 def module_catalog(spec: Any) -> dict[str, ToolModule]:
     """Every module an integration can assemble, by name."""
+    from evoab.integrations.episode_tools import USER_TOOLS_MODULE
     validate_modules(spec.tool_modules)
-    return {module.name: module for module in spec.tool_modules}
+    # Every environment accepts the user's own @tool functions.
+    return {**{module.name: module for module in spec.tool_modules}, USER_TOOLS_MODULE.name: USER_TOOLS_MODULE}

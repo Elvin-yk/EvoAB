@@ -7,14 +7,12 @@ from evoab.tools.toolkit import (
     bind_tools,
     schema,
 )
-from evoab.tools.workspace import WorkspaceProvider
 
 __all__ = [
     "ToolDef",
     "ToolOutput",
     "ToolProvider",
     "Toolkit",
-    "WorkspaceProvider",
     "ToolSpec",
     "bind_tools",
     "schema",

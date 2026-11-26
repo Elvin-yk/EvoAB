@@ -109,6 +109,20 @@ transport timeouts and Claude Code's `--claude-max-budget-usd` cost cap. None of
 these changes the prompt or tools: every agent gets the same robot prompt and only
 the recipe's tools.
 
+**Drive an episode from your own agent.** `evoab serve` takes the same flags as
+`evoab run` but starts no agent: it starts the environment and serves the
+recipe's tools over MCP until `evoab stop`. Any MCP client becomes the agent, and
+tool calls keep the same scheduling and run record:
+
+```bash
+evoab serve --integration metaworld --task reach-v3 --recipe agentic
+evoab tools list
+evoab tools call view_env_state
+evoab tools call move --json '{"targets": [{"arm": "arm", "pose": [0.0, 0.6, 0.2, 3.14, 0, 1.57]}]}'
+claude mcp add --transport http evoab http://127.0.0.1:18790/mcp/   # or any MCP client
+evoab stop
+```
+
 **Outcomes.** Tool success, agent completion and task success are separate. The
 agent ends with `finish`, which returns an acknowledgement; the environment
 decides success and the agent never sees the verdict.
@@ -160,6 +174,29 @@ by id and values are read as YAML:
 --set inputs.depth=false
 ```
 
+**Your own tools.** A Python function marked `@tool` is an agent tool: the
+docstring is the description the model sees, type hints are the arguments, and
+the first parameter, `robot`, calls the episode's other tools. Select the file
+with the `user_tools` capability; it works with any environment and channel.
+
+```python
+from evoab import tool
+
+@tool
+def lift_by(robot, arm: str, height_m: float = 0.05) -> str:
+    """Raise one arm's grasp site straight up by height_m metres, keeping its orientation."""
+    pose = robot.view_env_state()["state"]["arms"][arm]["control_pose"]
+    robot.move(targets=[{"arm": arm, "pose": [pose[0], pose[1], pose[2] + height_m, *pose[3:]]}])
+    return "lifted"
+```
+
+```yaml
+capabilities: [skills, scene, gripper, episode, {id: user_tools, options: {file: my_tools.py}}]
+```
+
+A tool returns text, a dict, a PIL image or `(text, [images])`; a failing inner
+call reaches the model as this tool's error. See `examples/tools/lift.py`.
+
 `delegate` exposes other roles as `delegate_<role>(instruction)`: the role runs
 with its own brain, channel and tools against the same episode and returns a
 report. Validation is offline and strict: unknown fields, unreachable roles and
@@ -185,7 +222,8 @@ Each run writes a directory under `--output-dir`: `result.json` (configuration,
 recipe, outcome), `recipe.json`, `effective_prompt.md` and `tools.json` (exactly
 what the agent saw), `trajectory.jsonl`, content-addressed `images/` and
 `artifacts/`, `roles/NNN_<role>/` for delegations and `direct/` for action-chunk
-requests. `evoab monitor --run-dir ./runs` replays saved runs without a model.
+requests. `evoab replay ./runs` replays saved runs in the browser without a model;
+`evoab replay demo` downloads published example runs.
 
 ## Python SDK
 

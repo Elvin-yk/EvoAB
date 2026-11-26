@@ -40,7 +40,7 @@ class LiveMonitor:
         except BaseException:
             self.close()
             raise
-        print(f'Monitor: {self.server.url}\nReplay: evoab monitor --run-dir {self.root}', flush=True)
+        print(f'Monitor: {self.server.url}\nReplay later: evoab replay {self.root}', flush=True)
         return self
 
     def update(self, **fields):
@@ -98,7 +98,13 @@ def serve_directories(args):
     previous = {s: signal.signal(s, lambda *_: stopped.set()) for s in (signal.SIGINT, signal.SIGTERM)}
     try:
         server.start_background()
-        print(f'Monitor: {server.url} ({len(roots)} runs; read-only)', flush=True)
+        print(f'Replay: {server.url} ({len(roots)} runs; read-only; Ctrl-C to stop)', flush=True)
+        if not getattr(args, 'no_browser', True):
+            import webbrowser
+            try:
+                webbrowser.open(server.url)
+            except Exception:  # noqa: BLE001 - no browser on a headless host; the address is printed.
+                pass
         while not stopped.wait(.5):
             pass
     finally:

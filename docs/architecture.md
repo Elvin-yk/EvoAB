@@ -87,6 +87,7 @@ checked against:
   | `skills` | `list_skills`, `read_skill`, optional `write_skill` | `write` |
   | `episode` | `finish` | |
   | `hybrid` | `actor_act`: run a policy (VLA/WAM) from the actor service | `binding`, `review` |
+  | `user_tools` | your `@tool` functions (every environment) | `file` |
   | `delegate` | `delegate_<role>` (harness) | `roles` |
   | `observation` | observation sidecar profile (harness) | |
 
@@ -146,6 +147,7 @@ Tools report what an action did in `ToolOutput.action` (`executed` none/some/unk
 | To add | Do this |
 |---|---|
 | **A method** | A directory in `evoab/methods/` ([guide](guide.md#methods-and-recipes)). Never branch on a method id in code. |
+| **A tool for your own methods** | A `@tool` function in a file selected with `user_tools` ([guide](guide.md#methods-and-recipes)); no EvoAB code changes. |
 | **A capability** | A `ToolModule` (provider factory `create(session, selection)`, policies, selectable `tools`, typed `options`, label) whose schemas and handlers live in `tools/<family>/`; integrations that support it publish it in `tool_modules`. |
 | **A channel or action representation** | Representations in `direct/actions.py`; channels in `session.py`, and every agent must be able to drive it. |
 | **An environment** | An integration package with `get_integration_spec()`: native execution, observations and outcome in the adapter, an accurate description (arms, frames, units, limits, cameras, calibration), the tool modules it supports, a deployment recipe, and a section in [benchmarks](benchmarks.md). It must not define its own model tools. |
