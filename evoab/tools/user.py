@@ -155,6 +155,9 @@ class UserTools(ToolProvider):
 
         def call(name: str, arguments: dict) -> ToolOutput:
             result = self._executor.call(name, arguments)
+            if result.output is None and result.job_id is not None:
+                # Background return mode queues physical tools; a user tool waits for its own calls.
+                result = self._executor.job_result(result.job_id, None)
             if result.output is None:
                 raise RuntimeError(f"{name} did not complete ({result.status})")
             return result.output

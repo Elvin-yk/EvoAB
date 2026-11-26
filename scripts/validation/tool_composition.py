@@ -260,8 +260,13 @@ class CompositionChecks(unittest.TestCase):
             "@tool\n"
             "def look(robot) -> str:\n"
             "    \"\"\"Read the environment state through another tool.\"\"\"\n"
-            "    return str(robot.view_env_state(cameras=['missing']))\n")
-        capabilities = [{"id": "scene"}, {"id": "episode"}, {"id": "user_tools", "options": {"file": str(file)}}]
+            "    return str(robot.view_env_state(cameras=['missing']))\n"
+            "@tool\n"
+            "def settle(robot, steps: int) -> dict:\n"
+            "    \"\"\"Hold the arm for some steps through the physical hold tool.\"\"\"\n"
+            "    return {'held': robot.hold(steps=steps)['success']}\n")
+        capabilities = [{"id": "scene"}, {"id": "gripper"}, {"id": "episode"},
+                        {"id": "user_tools", "options": {"file": str(file)}}]
         cfg = config(tool_return_mode="immediate", overrides={"roles.main.capabilities": capabilities})
         with assembled(cfg, self.directory) as (assembly, *_):
             schemas = {item["name"]: item for item in assembly.executor.get_tool_schemas()}
@@ -273,6 +278,12 @@ class CompositionChecks(unittest.TestCase):
             nested = assembly.executor.call("look", {}).output
             self.assertFalse(nested.success)  # the inner tool's failure reaches the model as this tool's error
             self.assertIn("view_env_state failed", nested.error)
+        background = config(tool_return_mode="background", overrides={"roles.main.capabilities": capabilities})
+        with assembled(background, self.directory) as (assembly, *_):
+            # In background mode the physical inner call is queued; the user tool waits for it.
+            started = assembly.executor.call("settle", {"steps": 1})
+            output = started.output or assembly.executor.job_result(started.job_id, 5).output
+            self.assertEqual(output.extra, {"held": True})
         with self.assertRaisesRegex(ValueError, "first parameter must be `robot`"):
             file.write_text("from evoab import tool\n@tool\ndef bad(x: int) -> str:\n    \"\"\"Doc.\"\"\"\n")
             config(overrides={"roles.main.capabilities": capabilities}).resolve()
