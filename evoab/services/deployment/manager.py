@@ -146,7 +146,9 @@ def run_evaluation(args):
     monitor = None
     obs_proxy = None
     service = Deployment(args, adapter, output, run_id) if adapter is not None else None
-    evaluator_plan = getattr(get_agent_backend(args.agent_backend), 'evaluator_plan', None)
+    # evoab serve runs no agent; only external evaluators bring their own process plan.
+    evaluator_plan = (getattr(get_agent_backend(args.agent_backend), 'evaluator_plan', None)
+                      if args.agent_backend else None)
     status = dict(state='deploying', episode_exit_code=None)
     code = 1
     with cancellation_signals():
