@@ -104,8 +104,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
              "default: the integration's default method")
     agent.add_argument(
         "--set", action="append", default=[], metavar="PATH=VALUE",
-        help="Override a recipe value by parameter name or dotted path, e.g. --set horizon=3:10 "
-             "or --set roles.main.context.policy=observation_window (repeatable)")
+        help="Override a recipe value by dotted path, read as YAML, e.g. "
+             "--set 'roles.main.action.horizon=[16,32]' or --set inputs.depth=false (repeatable)")
     agent.add_argument(
         "--experience-dir",
         help="Directory carrying skills/programs between episodes of a method that carries experience")

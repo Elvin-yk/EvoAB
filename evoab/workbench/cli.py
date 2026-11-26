@@ -208,7 +208,7 @@ def _runs_launch(bench, args) -> None:
     for text in args.set or ():
         name, sep, value = text.partition("=")
         if not sep:
-            sys.exit(f"--set expects NAME=VALUE, got {text!r}")
+            sys.exit(f"--set expects PATH=VALUE, got {text!r}")
         params[name] = value
     payload = {
         "integration": args.integration,
@@ -239,20 +239,8 @@ def _methods(bench, args) -> None:
         if args.json:
             _print_json(items)
             return
-        _table([[m["id"], m["status"], m["channel"], "+".join(m["paradigms"]) or "—", len(m["roles"]),
-                 ",".join(a["id"] for a in m["agents"]) or "—", m["label"]] for m in items],
-               ["ID", "STATUS", "CHANNEL", "PARADIGMS", "ROLES", "AGENTS", "LABEL"])
-    elif action == "show":
-        method = bench.method(args.method)
-        if args.json:
-            _print_json(method)
-            return
-        print(method["card"].rstrip() or f"# {method['label']}")
-        print("\n---\nrecipe:\n" + method["recipe"])
-        for parameter in method["parameters"]:
-            print(f"  --set {parameter['name']}=...   {parameter['label']} (default {parameter['default']!r})")
-    elif action == "graph":
-        _print_json(bench.method(args.method)["graph"])
+        _table([[m["id"], m["channel"], len(m["roles"]), m["label"], m["file"]] for m in items],
+               ["ID", "CHANNEL", "ROLES", "LABEL", "RECIPE"])
     elif action == "components":
         catalog = bench.components(args.integration)
         if args.json:
@@ -308,17 +296,26 @@ def _read_key(args) -> str | None:
 # -- benchmarks, usage, settings --------------------------------------------------
 
 
+def _dimension(task: dict) -> str:
+    dimension = (task.get("category") or "—").replace("_", "-")
+    return f"{dimension} ({task['variant']})" if task.get("variant") else dimension
+
+
+def _clip(text: str, width: int) -> str:
+    return text if len(text) <= width else text[: width - 1] + "…"
+
+
 def _benchmarks(bench, args) -> None:
     if args.action == "list":
         items = bench.benchmarks()
         if args.json:
             _print_json(items)
             return
-        _table([[b["integration"], b["title"], b["kind"], p["profile"], p["status"], p["task_count"],
-                 p.get("runtime_kind") or "-", ("image" if (b.get("container") or {}).get("source") == "image"
-                                                else "build" if b.get("container") else "-")]
-                for b in items for p in b["profiles"]],
-               ["INTEGRATION", "TITLE", "KIND", "PROFILE", "STATUS", "TASKS", "RUNTIME", "DOCKER"])
+        # Benchmarks only (real robots are not benchmarks); ready when any profile is prepared.
+        _table([[b["integration"], b["title"],
+                 "ready" if any(p["status"] == "ready" for p in b["profiles"]) else "not prepared"]
+                for b in items if b["kind"] != "real"],
+               ["INTEGRATION", "TITLE", "STATUS"])
     elif args.action == "tasks":
         tasks = bench.tasks(args.integration, args.profile)
         if args.suite:
@@ -326,8 +323,20 @@ def _benchmarks(bench, args) -> None:
         if args.json:
             _print_json(tasks)
             return
-        _table([[t["task"], t.get("embodiment"), t.get("max_steps"), (t.get("instruction") or "")[:60]] for t in tasks],
-               ["TASK", "EMBODIMENT", "MAX_STEPS", "INSTRUCTION"])
+        embodiments = {t.get("embodiment") for t in tasks}
+        dimensions = any(t.get("category") for t in tasks)
+        if len(embodiments) == 1 and None not in embodiments:
+            print(f"Robot: {embodiments.pop()}")
+            embodiments = set()
+        _table([[t["task"], *([_dimension(t)] if dimensions else []), *([t.get("embodiment")] if embodiments else []),
+                 t.get("max_steps") or "—", _clip(t.get("instruction") or "—", 70)] for t in tasks],
+               ["TASK", *(["DIMENSION"] if dimensions else []), *(["ROBOT"] if embodiments else []),
+                "MAX_STEPS", "INSTRUCTION"])
+        layouts = sorted({t["layouts_per_seed"] for t in tasks if t.get("layouts_per_seed")})
+        if layouts:
+            seeds = sorted({s for t in tasks for s in t.get("seeds") or ()})
+            print(f"\nScenes: --seed {seeds[0]}..{seeds[-1]} picks the evaluation set, --layout-id the scene in it "
+                  f"(0..{layouts[0] - 1} for generalization tasks, 0..{layouts[-1] - 1} for the others).")
     elif args.action == "prepare":
         _print_json(bench.prepare(args.integration, args.profile, container=args.container,
                                   accept_license=args.accept_license))
@@ -399,19 +408,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--effort", help="Reasoning effort (default: settings.default_effort or low)")
     p.add_argument("--method", help="Method id from `evoab methods list` (default: the last one launched)")
     p.add_argument("--agent", help="Override the method's entry agent runtime (for example native or codex)")
-    p.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
-                   help="Method parameter, e.g. --set horizon=3:10 (see `evoab methods show ID`)")
+    p.add_argument("--set", action="append", default=[], metavar="PATH=VALUE",
+                   help="Override a recipe value by dotted path, e.g. --set 'roles.main.action.horizon=[16,32]'")
     p.set_defaults(handler=_runs_launch)
 
     me = sub.add_parser("methods", help="The method library and its components").add_subparsers(dest="action")
     p = me.add_parser("list", parents=[common], help="Methods, their channels, paradigms and agents")
     p.add_argument("--integration", help="Only methods usable on this integration")
-    p.set_defaults(handler=_methods)
-    p = me.add_parser("show", parents=[common], help="A method's reproduction card, recipe and parameters")
-    p.add_argument("method")
-    p.set_defaults(handler=_methods)
-    p = me.add_parser("graph", parents=[common], help="A method's recipe as nodes and edges (JSON)")
-    p.add_argument("method")
     p.set_defaults(handler=_methods)
     p = me.add_parser("components", parents=[common], help="Building blocks a recipe can name")
     p.add_argument("--integration", help="Include this integration's tool modules")

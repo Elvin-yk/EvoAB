@@ -52,17 +52,18 @@ class RecipeValidation(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "write: true"):
             Recipe.model_validate(data)
 
-    def test_overrides_by_parameter_and_path(self):
-        method = get_method("direct_policy").recipe
-        changed = with_overrides(method, {"horizon": "2:9", "representation": "joint_abs",
+    def test_overrides_by_path(self):
+        method = get_method("direct_action").recipe
+        changed = with_overrides(method, {"roles.main.action.horizon": "[2, 9]",
+                                          "roles.main.action.representation": "joint_abs",
                                           "roles.main.action.history": [5, 2]})
         self.assertEqual(changed.entry.action.horizon, (2, 9))
         self.assertEqual(changed.entry.action.representation, "joint_abs")
         self.assertEqual(changed.entry.action.history, (5, 2))
-        with self.assertRaisesRegex(ValueError, "must be one of"):
-            with_overrides(method, {"representation": "teleport"})
+        with self.assertRaisesRegex(ValueError, "Extra inputs"):
+            with_overrides(method, {"horizon": "[2, 9]"})  # short parameter names no longer exist
         with self.assertRaisesRegex(ValueError, "horizon"):
-            with_overrides(method, {"horizon": "9:2"})
+            with_overrides(method, {"roles.main.action.horizon": "[9, 2]"})
         agentic = get_method("agentic").recipe
         narrowed = with_overrides(agentic, {"roles.main.capabilities.gripper.tools": ["move"]})
         self.assertEqual(narrowed.entry.capability("gripper").tools, ["move"])
@@ -71,14 +72,14 @@ class RecipeValidation(unittest.TestCase):
         from types import SimpleNamespace
         from evoab.composition.compiler import apply_to_args
         spec = load_integration("robolab").get_integration_spec()
-        for method in ("agentic", "code_as_policy", "direct_policy", "planner_direct", "code_iterate"):
+        for method in ("agentic", "code_as_policy", "direct_action", "planner_direct", "code_iterate"):
             recipe = get_method(method).recipe
             self.assertTrue(all(role.brain.agent is None for role in recipe.roles.values()), method)
             for agent in ("native", "codex", "claude_code", "opencode"):
                 pinned = with_overrides(recipe, {f"roles.{recipe.loop.entry}.brain.agent": agent})
                 compile_recipe(pinned, spec)
         args = SimpleNamespace(agent_backend="codex", model="preset")
-        apply_to_args(args, compile_recipe(get_method("direct_policy").recipe, spec), explicit={"--agent"})
+        apply_to_args(args, compile_recipe(get_method("direct_action").recipe, spec), explicit={"--agent"})
         self.assertEqual(args.agent_backend, "native")  # the action channel has no agent loop
         with self.assertRaisesRegex(ValueError, "external evaluator"):
             apply_to_args(SimpleNamespace(agent_backend="q0_preview", model="m"),
@@ -211,7 +212,7 @@ class RecipeValidation(unittest.TestCase):
 
     def test_method_library(self):
         ids = {method.id for method in list_methods()}
-        self.assertTrue({"agentic", "clean", "direct_policy", "code_as_policy", "agent_policy",
+        self.assertTrue({"agentic", "clean", "direct_action", "code_as_policy", "agent_policy",
                          "planner_direct", "code_iterate"} <= ids)
         for method in list_methods():
             self.assertTrue(method.card.startswith("# "), method.id)
@@ -236,7 +237,6 @@ class RecipeValidation(unittest.TestCase):
         data = get_method("planner_direct").recipe.model_dump(mode="json")
         data["roles"]["controller"] = {"brain": {"agent": "native"}, "channel": "tools", "capabilities": ["scene"]}
         data["execution"]["resource_scheduling"] = "global-serial"
-        data["parameters"] = []
         with self.assertRaisesRegex(ValueError, "global-serial"):
             compile_recipe(Recipe.model_validate(data), spec)
         with tempfile.TemporaryDirectory() as directory:
@@ -247,7 +247,7 @@ class RecipeValidation(unittest.TestCase):
                 self.assertEqual(get_method("agentic").source, "builtin")
             finally:
                 os.chdir(cwd)
-        text = with_overrides(get_method("direct_policy").recipe, {"custom_prompt": '"Red" cup first'})
+        text = with_overrides(get_method("direct_action").recipe, {"roles.main.action.custom_prompt": '"Red" cup first'})
         self.assertEqual(text.entry.action.custom_prompt, '"Red" cup first')
 
     def test_graph(self):

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Plain recipes and a clearer command line
+
+- `direct_policy` is renamed `direct_action` ("policy" means a VLA-style tool).
+  Use `--recipe direct_action`.
+- Recipe `parameters` (named shortcuts such as `--set horizon=3:10`) are removed.
+  Every built-in `method.yaml` now writes out its settings with a comment on
+  each; override any value by dotted path, read as YAML:
+  `--set 'roles.main.action.horizon=[16,32]'`. `evoab runs launch --set` and the
+  SDK's `recipe_overrides` take the same paths.
+- `evoab methods show` and `evoab methods graph` are removed; `evoab methods list`
+  prints where each `method.yaml` lives.
+- `evoab benchmarks list` shows benchmarks only (no real robots) with
+  integration, title and status (ready or not prepared).
+- `evoab benchmarks tasks` shows each task's capability dimension, its real
+  instruction and step limit read from the native task source (RoboDojo), and
+  which seeds and layouts can be chosen.
+
 ### How the agent works is configured only in the recipe
 
 The recipe says how the agent works; the command line only selects the run

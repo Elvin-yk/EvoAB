@@ -139,8 +139,6 @@ roles:
     action: {representation: abs_eef, horizon: [3, 15], history: [15, 7], max_calls: 6}
 loop: {entry: planner}
 execution: {return_mode: immediate}
-parameters:
-  - {name: controller_calls, path: roles.controller.action.max_calls, label: Controller calls, type: integer}
 ```
 
 | Part | Settings |
@@ -151,7 +149,17 @@ parameters:
 | Role `context`, `prompt`, `max_turns`, `brain` | History policy (`identity`, `sliding_window`, `observation_window`), method instructions, turn budget, an optional pinned model or effort |
 | `loop` | Entry role; `episodes.repeat`, `carry: [skills]` or `[programs]`, `keep: success\|always` |
 | `execution` | Return mode, resource scheduling, replanning, `parallel_tool_calls` ([architecture](architecture.md#scheduling)) |
-| `parameters` | Named shortcuts for `--set` and Studio |
+
+Every built-in `method.yaml` writes out its settings with a comment on each, so
+reading the file is the documentation. Change a value in a copy of the file, or
+for one run with `--set` and the value's dotted path; capabilities are addressed
+by id and values are read as YAML:
+
+```bash
+--set 'roles.main.action.horizon=[16,32]'
+--set 'roles.main.capabilities.gripper.tools=[move,hold]'
+--set inputs.depth=false
+```
 
 `delegate` exposes other roles as `delegate_<role>(instruction)`: the role runs
 with its own brain, channel and tools against the same episode and returns a
@@ -159,8 +167,7 @@ report. Validation is offline and strict: unknown fields, unreachable roles and
 missing capabilities fail before anything starts.
 
 ```bash
-evoab methods list --integration robodojo
-evoab methods show code_iterate              # card, recipe, parameters
+evoab methods list --integration robodojo       # ids and where each method.yaml lives
 evoab methods components --integration robodojo
 evoab methods validate ./my_method/ --integration robodojo
 ```
@@ -188,7 +195,7 @@ from evoab import AgentConfig, SessionConfig, run
 
 result = run(SessionConfig(
     integration="robodojo", env_url="http://127.0.0.1:18760",
-    recipe="planner_direct", recipe_overrides={"controller_calls": 4, "inputs.depth": False},
+    recipe="planner_direct", recipe_overrides={"roles.controller.action.max_calls": 4, "inputs.depth": False},
     agent=AgentConfig(model="my-model"),
 ))
 print(result.task_success)

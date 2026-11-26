@@ -219,7 +219,7 @@ def summarize_run(
         "model": (result or {}).get("model_preset") or (result or {}).get("model") or launch.get("model"),
         "agent": (result or {}).get("agent_backend") or launch.get("agent"),
         "method_id": (result or {}).get("recipe") or launch.get("method") or (
-            "direct_policy" if (run_dir / "direct" / "policy.json").is_file() else None),
+            "direct_action" if (run_dir / "direct" / "policy.json").is_file() else None),
         "channel": (result or {}).get("channel") or launch.get("channel"),
         "roles": (result or {}).get("roles") or [],
         "reasoning_effort": (result or {}).get("reasoning_effort") or launch.get("reasoning_effort"),

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evoab.agents.contracts import AgentLaunch
-from evoab.agents.registry import agent_launch, get_agent_backend, list_agent_launches
+from evoab.agents.registry import agent_launch, list_agent_launches
 from evoab.workbench import benchmarks, jobs
 from evoab.workbench.runs import STUDIO_DIR
 
@@ -31,7 +31,7 @@ class LaunchRequest:
     model: str
     reasoning_effort: str = "low"
     method: str = "agentic"
-    # Values for the method's declared parameters, by parameter name.
+    # Recipe overrides by dotted path, e.g. {"roles.main.action.horizon": [16, 32]}.
     params: dict | None = None
     # Overrides the entry role's agent runtime; None keeps the recipe's.
     agent: str | None = None
@@ -90,11 +90,10 @@ def methods(integration: str | None = None) -> tuple[dict, ...]:
         result.append({
             "id": recipe.id, "label": recipe.label, "summary": recipe.summary, "paradigms": recipe.paradigms,
             "status": recipe.status, "source": method.source, "integrations": recipe.integrations,
+            "file": _recipe_file(method),
             "external_evaluator": is_evaluator(default_agent),
             "fixed_effort": entry.brain.reasoning_effort if is_evaluator(default_agent) else None,
             "channel": entry.channel, "agent": default_agent, "roles": list(recipe.roles),
-            "parameters": [{**parameter.model_dump(mode="json"), "default": _parameter_default(recipe, parameter)}
-                           for parameter in recipe.parameters],
             "references": [reference.model_dump(mode="json") for reference in recipe.references],
             "episodes": recipe.loop.episodes.model_dump(mode="json"),
             "agents": agents if unavailable is None else [], "unavailable": unavailable,
@@ -103,18 +102,22 @@ def methods(integration: str | None = None) -> tuple[dict, ...]:
     return tuple(result)
 
 
-def _parameter_default(recipe, parameter):
-    from evoab.composition.recipe import get_path
-    value = get_path(recipe.model_dump(mode="json"), parameter.path)
-    if parameter.type == "pair" and isinstance(value, list):
-        return f"{value[0]}:{value[1]}"
-    return value
+def _recipe_file(method) -> str:
+    """Where the method's YAML lives: package-relative for built-in methods, absolute otherwise."""
+    if method.root is None:
+        return "—"
+    path = Path(method.root) / "method.yaml"
+    package = Path(__file__).resolve().parents[2]
+    try:
+        return str(path.resolve().relative_to(package))
+    except ValueError:
+        return str(path)
 
 
 def preferred_choice(integration: str, method: str | None, agent: str | None) -> tuple[str, str | None]:
     """Pick a usable saved selection for the current benchmark."""
     available = {item["id"]: item for item in methods(integration)}
-    for candidate in dict.fromkeys((method, "agentic", "direct_policy", *available)):
+    for candidate in dict.fromkeys((method, "agentic", "direct_action", *available)):
         item = available.get(candidate)
         if item is None or not item["agents"]:
             continue
@@ -140,23 +143,20 @@ def resolve_selection(request: LaunchRequest) -> tuple[LaunchRequest, dict, Agen
                    reasoning_effort=method["fixed_effort"] or request.reasoning_effort), method, agent
 
 
-def _parameter_flags(request: LaunchRequest, method: dict) -> list[str]:
-    declared = {parameter["name"]: parameter for parameter in method["parameters"]}
+def _override_flags(request: LaunchRequest) -> list[str]:
+    """Recipe overrides as ``--set PATH=VALUE``; values are written as JSON, which the run reads as YAML."""
     if request.params is not None and not isinstance(request.params, dict):
-        raise ValueError("params must be an object")
+        raise ValueError("params must be an object of recipe paths")
     flags = []
-    for name, value in (request.params or {}).items():
-        parameter = declared.get(name)
-        if parameter is None:
-            raise ValueError(f"unknown parameter {name!r} for {method['label']}")
-        if isinstance(value, str) and ("\x00" in value or len(value) > 8192):
-            raise ValueError(f"{name} must be text of at most 8192 characters without NUL")
-        if not isinstance(value, (str, int, float, bool)):
-            raise ValueError(f"{name} must be a scalar value")
-        text = json.dumps(value) if parameter["type"] == "text" and isinstance(value, str) else str(value)
-        if isinstance(value, bool):
-            text = "true" if value else "false"
-        flags.append(f"--set={name}={text}")
+    for path, value in (request.params or {}).items():
+        if not isinstance(path, str) or not path or "=" in path:
+            raise ValueError(f"invalid recipe path {path!r}")
+        if not isinstance(value, (str, int, float, bool, list)):
+            raise ValueError(f"{path} must be a scalar or a list")
+        text = json.dumps(value)
+        if "\x00" in text or len(text) > 8192:
+            raise ValueError(f"{path} must be at most 8192 characters without NUL")
+        flags.append(f"--set={path}={text}")
     return flags
 
 
@@ -224,7 +224,7 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         "--reasoning-effort", request.reasoning_effort,
         *agent.cli_flags,
         *_agent_option_flags(request, agent),
-        *_parameter_flags(request, method),
+        *_override_flags(request),
     ]
     if request.seed is not None:
         command.extend(("--seed", str(request.seed)))
@@ -277,7 +277,7 @@ def validate(request: LaunchRequest) -> dict:
         allowed = {name for names in groups.values() for name in names}
         if set(request.visible_tools) - allowed:
             raise ValueError("Selection contains tools not available for this benchmark and Agent")
-    _parameter_flags(request, method)
+    _override_flags(request)
     recipe = resolve_run_recipe(request, method)
     if request.team and recipe.entry.brain.model_preset not in (None, request.model):
         raise ValueError("The entry Agent preset must match the launch model")

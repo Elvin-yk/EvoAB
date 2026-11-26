@@ -54,7 +54,7 @@ evaluators bring their own agent.
 |---|---|---|
 | `agentic` | orchestrate | Tool calls: skills, scene, motion, finish |
 | `clean` | orchestrate | Four tools, compact results |
-| `direct_policy` | direct | One action chunk per stateless inference ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/) Direct) |
+| `direct_action` | direct | One action chunk per stateless inference ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/) Direct) |
 | `code_as_policy` | code | Python programs against the robot API |
 | `agent_policy` | orchestrate + policy | Tool calls plus a VLA actor |
 | `planner_direct` | orchestrate + direct | A planner delegates sub-goals to a Direct controller |
@@ -63,10 +63,9 @@ evaluators bring their own agent.
 | `q0_preview_upstream` | orchestrate | Qoo Tech's Q0-Preview as an external evaluator |
 
 ```bash
-evoab methods list --integration robodojo
-evoab methods show planner_direct
+evoab methods list --integration robodojo     # ids and where each method.yaml lives
 evoab run --integration robodojo --deploy local --task stack_bowls \
-  --recipe planner_direct --model my-model --set controller_calls=4
+  --recipe planner_direct --model my-model --set roles.controller.action.max_calls=4
 ```
 
 ## Environments

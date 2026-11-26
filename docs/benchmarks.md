@@ -115,7 +115,7 @@ Three separate runtimes; never install stock LIBERO and its forks in one interpr
 
 ```bash
 evoab run --integration libero_pro --deploy local --container --runtime-profile libero_object \
-  --task pick_up_the_cream_cheese_and_place_it_in_the_basket --recipe direct_policy --model my-model --no-sam3
+  --task pick_up_the_cream_cheese_and_place_it_in_the_basket --recipe direct_action --model my-model
 ```
 
 Rerunning setup rescans an installation and replaces its task catalog.

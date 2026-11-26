@@ -1,15 +1,17 @@
-# Direct Policy
+# Direct Action
 
 The model is the controller. Each inference is an independent request (prompt
-blocks, task, a sampled window of recent frames) that must return exactly one
-action-chunk tool call. The chunk is validated and step-limited completely, then
-executed one row per control step; malformed output is re-requested on the
-unchanged observation.
+blocks, task, a sampled window of recent frames) whose only allowed answer is one
+action chunk. The chunk is returned through a forced function call
+(`emit_eef_actions` and similar): the function is never executed, it only gives
+the answer a schema EvoAB can validate. The chunk is step-limited, then executed
+one row per control step; a malformed answer is re-requested on the unchanged
+observation.
 
 | | |
 |---|---|
 | Paradigm | Direct |
-| Channel | Action (`emit_eef_actions`, `emit_delta_eef_actions` or `emit_joint_actions`) |
+| Channel | `action` |
 | Context | Stateless; frames t−14, t−7, t by default |
 
 ## Reproduction target: Astranomy (Direct form)

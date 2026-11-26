@@ -16,6 +16,9 @@ layout; ``layouts_per_seed`` is the official count.
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 CATEGORIES: dict[str, tuple[str, ...]] = {
     "generalization": ("stack_bowls", "push_T", "pack_objects_into_box", "fold_clothes", "hang_mugs",
                        "sweep_blocks", "pour_liquid_into_cup", "make_toast", "arrange_largest_number",
@@ -35,16 +38,49 @@ SEEDS = (0, 1, 2)
 _CATEGORY = {task: category for category, tasks in CATEGORIES.items() for task in tasks}
 
 
-def task_metadata(task: str) -> dict:
-    """Category, base task and layout variant of one RoboDojo config; empty if unknown."""
+def task_metadata(task: str, native_root: str | Path | None = None) -> dict:
+    """Category, layout variant and evaluation sets of one RoboDojo config; empty if unknown.
+
+    With the prepared source checkout, also the instruction and step limit the
+    native task declares (``gen_instruction`` templates and ``step_lim``).
+    """
     base = task[: -len(RANDOM_SUFFIX)] if task.endswith(RANDOM_SUFFIX) else task
     category = _CATEGORY.get(base)
     if category is None:
         return {}
     random = base != task
-    return {"category": category, "base_task": base,
-            "variant": ("random" if random else "standard") if category == "generalization" else None,
-            "seeds": list(SEEDS), "layouts_per_seed": 25 if category == "generalization" else 50}
+    facts = {"category": category, "base_task": base,
+             "variant": ("random" if random else "standard") if category == "generalization" else None,
+             "seeds": list(SEEDS), "layouts_per_seed": 25 if category == "generalization" else 50}
+    if native_root is not None:
+        facts.update(source_facts(Path(native_root) / "task/RoboDojo/tasks" / f"{task}.py"))
+    return facts
+
+
+def source_facts(path: Path) -> dict:
+    """``max_steps`` and ``instruction`` read statically from a native task file.
+
+    The instruction is the first literal template; a task that builds its
+    instruction per layout (for example from a language or image prompt) has none.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return {}
+    facts: dict = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+            for target in node.targets:
+                if (isinstance(target, ast.Attribute) and target.attr == "step_lim"
+                        and isinstance(node.value.value, int)):
+                    facts["max_steps"] = node.value.value
+        if isinstance(node, ast.FunctionDef) and node.name == "gen_instruction":
+            for item in ast.walk(node):
+                if (isinstance(item, ast.Assign) and isinstance(item.value, ast.List) and item.value.elts
+                        and all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in item.value.elts)):
+                    facts["instruction"] = item.value.elts[0].value
+                    break
+    return facts
 
 
 def layout_path(assets, task: str, seed: int, layout: int):

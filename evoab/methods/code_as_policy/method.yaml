@@ -10,7 +10,6 @@ roles:
   main:
     description: Programs call the same registered tools; image-dependent decisions end the program.
     channel: code
-    capabilities: [skills, scene, gripper, episode]
+    capabilities: [skills, scene, gripper, episode]   # the robot API the programs call
+    prompt: {append: ""}           # extra method instructions
 loop: {entry: main}
-parameters:
-  - {name: prompt, path: roles.main.prompt.append, label: Extra instructions, type: text}

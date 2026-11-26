@@ -212,17 +212,6 @@ class Inputs(Spec):
         return self
 
 
-class Parameter(Spec):
-    """A recipe value exposed to launchers (Studio, CLI) with a label and choices."""
-
-    name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
-    path: str = Field(min_length=1)
-    label: str
-    help: str = ""
-    type: Literal["string", "integer", "number", "boolean", "text", "pair"] = "string"
-    choices: list[Any] | None = None
-
-
 class Reference(Spec):
     title: str
     url: str
@@ -243,7 +232,6 @@ class Recipe(Spec):
     roles: dict[str, Role]
     loop: Loop = Field(default_factory=Loop)
     execution: ExecutionSpec = Field(default_factory=ExecutionSpec)
-    parameters: list[Parameter] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def roles_and_loop(self):
@@ -279,11 +267,6 @@ class Recipe(Spec):
                     frontier.append(target)
         if unreachable := sorted(set(self.roles) - reachable):
             raise ValueError(f"roles not reachable from loop.entry through delegate: {unreachable}")
-        names = [parameter.name for parameter in self.parameters]
-        if len(set(names)) != len(names):
-            raise ValueError("parameter names must be unique")
-        for parameter in self.parameters:
-            get_path(self.model_dump(mode="json"), parameter.path)
         return self
 
     @property
@@ -369,67 +352,21 @@ def parse_assignment(text: str) -> tuple[str, str]:
 
 
 def with_overrides(recipe: Recipe, assignments: dict[str, Any]) -> Recipe:
-    """Return a new validated recipe with values replaced.
+    """Return a new validated recipe with values replaced at dotted paths.
 
-    A short name refers to a declared parameter (``--set horizon=3:10``) and is
-    converted by the parameter's type; anything else is a dotted path whose text
-    value is read as YAML.
+    Text values are read as YAML (``--set roles.main.action.horizon=[16,32]``).
     """
     if not assignments:
         return recipe
     data = copy.deepcopy(recipe.model_dump(mode="json"))
-    parameters = {parameter.name: parameter for parameter in recipe.parameters}
     for key, value in assignments.items():
-        parameter = parameters.get(key)
-        if parameter is not None:
-            set_path(data, parameter.path, coerce_parameter(parameter, value))
-        else:
-            set_path(data, key, parse_value(value) if isinstance(value, str) else value)
+        set_path(data, key, parse_value(value) if isinstance(value, str) else value)
     try:
         return Recipe.model_validate(data)
     except ValidationError as error:
         problems = "; ".join(f"{'.'.join(map(str, item['loc'])) or 'recipe'}: {item['msg']}"
                              for item in error.errors())
         raise ValueError(f"invalid recipe override ({', '.join(assignments)}): {problems}") from None
-
-
-def coerce_parameter(parameter: Parameter, value: Any) -> Any:
-    """Convert a launcher value (often text) to the parameter's declared type."""
-    kind = parameter.type
-    if isinstance(value, str):
-        text = value.strip()
-        try:
-            if kind == "pair":
-                first, sep, second = text.partition(":")
-                if not sep:
-                    raise ValueError
-                value = [_number(first), _number(second)]
-            elif kind == "integer":
-                value = int(text)
-            elif kind == "number":
-                value = float(text)
-            elif kind == "boolean":
-                if text.lower() not in {"true", "false", "1", "0", "yes", "no"}:
-                    raise ValueError
-                value = text.lower() in {"true", "1", "yes"}
-            elif kind == "text" and text.startswith('"'):
-                try:
-                    decoded = json.loads(text)
-                except ValueError:
-                    decoded = None
-                value = decoded if isinstance(decoded, str) else value
-        except ValueError:
-            raise ValueError(f"{parameter.name} expects a {kind} value, got {value!r}") from None
-    elif kind == "pair" and isinstance(value, (list, tuple)) and len(value) == 2:
-        value = list(value)
-    if parameter.choices is not None and value not in parameter.choices:
-        raise ValueError(f"{parameter.name} must be one of {parameter.choices}")
-    return value
-
-
-def _number(text: str):
-    text = text.strip()
-    return int(text) if text.lstrip("-").isdigit() else float(text)
 
 
 # -- files ---------------------------------------------------------------------

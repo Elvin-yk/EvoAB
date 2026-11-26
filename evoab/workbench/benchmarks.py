@@ -208,13 +208,15 @@ def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
     return runtimes
 
 
-def _integration_task_metadata(integration: str, task: str) -> dict[str, Any]:
+def _integration_task_metadata(integration: str, task: str, native_root: str | None = None) -> dict[str, Any]:
     try:
         from evoab.integrations import load_integration
         describe = getattr(load_integration(integration), "task_metadata", None)
+        if describe is None:
+            return {}
+        return describe(task, native_root) if native_root else describe(task)
     except Exception:  # noqa: BLE001 - a catalog without extra facts still lists its tasks.
         return {}
-    return describe(task) if describe is not None else {}
 
 
 def _parse_runtime(record: Path) -> PreparedRuntime | None:
@@ -255,7 +257,8 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
             runtime_profile, task_name = launch_target(integration, profile, task_id)
             tasks[task_id].update(runtime_profile=runtime_profile, native_task=task_name)
         # Integration-owned catalog facts (e.g. RoboDojo's capability dimension and layout variants).
-        tasks[task_id].update({key: value for key, value in _integration_task_metadata(integration, task_id).items()
+        facts = _integration_task_metadata(integration, task_id, payload.get("native_root"))
+        tasks[task_id].update({key: value for key, value in facts.items()
                                if value is not None or key not in tasks[task_id]})
     try:
         validation = json.loads((record.parent / "validation.json").read_text(encoding="utf-8"))

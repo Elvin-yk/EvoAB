@@ -24,14 +24,10 @@ roles:
   controller:
     description: Executes one short sub-goal with up to 6 action chunks, then reports.
     channel: action
-    action:
-      representation: abs_eef
-      horizon: [3, 15]
-      history: [15, 7]
-      max_calls: 6
+    action:                        # same settings as direct_action
+      representation: abs_eef      # abs_eef | delta_eef | joint_abs
+      horizon: [3, 15]             # rows per chunk, [min, max]
+      history: [15, 7]             # frame window [span, stride]
+      max_calls: 6                 # action chunks per sub-goal
 loop: {entry: planner}
 execution: {return_mode: immediate}
-parameters:
-  - {name: controller_calls, path: roles.controller.action.max_calls, label: Controller inferences per sub-goal, type: integer}
-  - {name: representation, path: roles.controller.action.representation, label: Controller action representation,
-     type: string, choices: [abs_eef, delta_eef, joint_abs]}

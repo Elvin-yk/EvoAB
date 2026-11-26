@@ -14,7 +14,7 @@ their feedback. Background tool returns let reasoning overlap motion.
 ## Reproduction notes
 
 - Astranomy's "Agentic" form (one absolute EEF target held 1–5 steps) is a different
-  tool contract; see `direct_policy` for its Direct form.
+  tool contract; see `direct_action` for its Direct form.
 
 ## Results
 

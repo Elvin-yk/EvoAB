@@ -19,7 +19,5 @@ roles:
         next attempt: re-localize objects instead of hard-coding poses, and verify critical steps.
 loop:
   entry: main
+  # repeat: episodes in the sequence | carry: what moves forward | keep: success (promote only after a success) or always
   episodes: {repeat: 5, carry: [programs], keep: success, stop_on_success: false}
-parameters:
-  - {name: episodes, path: loop.episodes.repeat, label: Episodes, type: integer}
-  - {name: keep, path: loop.episodes.keep, label: Keep programs after, type: string, choices: [success, always]}
