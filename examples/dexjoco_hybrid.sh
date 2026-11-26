@@ -12,10 +12,9 @@ exec evoab run \
   --task pick_bucket \
   --env-url "$ENV_URL" \
   --recipe agent_policy \
-  --action-model-binding dexjoco_tcp_hand \
+  --set roles.main.capabilities.hybrid.options.binding=dexjoco_tcp_hand \
   --action-model-url "$ACTOR_URL" \
   --action-model-checkpoint-sha256 "$ACTOR_CHECKPOINT_SHA256" \
-  --no-sam3 \
-  --max-turns 0 \
+  --set roles.main.max_turns=0 \
   --episode-timeout-s 10800 \
   "$@"

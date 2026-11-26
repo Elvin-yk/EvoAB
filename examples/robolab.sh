@@ -18,7 +18,7 @@ case "$mode" in
     exec "${PYTHON:-python}" -m evoab run \
       --integration robolab --env-url http://127.0.0.1:18770 \
       --task BananaInBowlTask --seed 0 --instruction-type default \
-      --recipe agentic --no-sam3 --output-dir ./runs/robolab "$@"
+      --recipe agentic --output-dir ./runs/robolab "$@"
     ;;
   -h|--help)
     cat <<'HELP'

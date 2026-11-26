@@ -75,10 +75,10 @@ export Q0_PREVIEW_API_BASE_URL=https://api.anthropic.com
 # Supply Q0_PREVIEW_API_KEY through the process environment.
 evoab run --integration robodojo --recipe q0_preview_upstream \
   --task stack_bowls --env-url "$EPISODE_URL" --run-id "$EPISODE_ID" \
-  --q0-policy-gpu 0 --no-sam3
+  --q0-policy-gpu 0
 ```
 
-For local simulation, use `--deploy local --no-depth` with a prepared
+For local simulation, use `--deploy local` (the method sets `inputs.depth: false`) with a prepared
 RoboDojo runtime and frozen layout. For the upstream GPT example, select its
 Responses configuration and model together.
 
@@ -87,7 +87,7 @@ export Q0_PREVIEW_API_BASE_URL=https://api.openai.com/v1
 export Q0_PREVIEW_AGENT_CONFIG="$EVOAB_Q0_ROOT/policy/Q0_Preview/config/agent.gpt6astra.example.json"
 evoab run --integration robodojo --recipe q0_preview_upstream \
   --task stack_bowls --env-url "$EPISODE_URL" --run-id "$EPISODE_ID" \
-  --set roles.main.brain.model=gpt-6-astra --no-sam3
+  --set roles.main.brain.model=gpt-6-astra
 ```
 
 `--q0-agent-config` also accepts the upstream agent JSON directly. Its

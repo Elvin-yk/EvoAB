@@ -11,8 +11,7 @@ def main():
     args = parser.parse_args()
     with deploy(DeploymentConfig(integration=args.integration, task=args.task,
                                  deploy_gpu=args.gpu)) as environment:
-        with Session(SessionConfig(integration=args.integration, env_url=environment.url,
-                                   no_sam3=True)) as session:
+        with Session(SessionConfig(integration=args.integration, env_url=environment.url)) as session:
             print(session.tools.call('view_env_state').to_dict())
         print(session.result.record)
 

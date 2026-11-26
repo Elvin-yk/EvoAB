@@ -10,4 +10,4 @@ MODEL=${MODEL:-qwen3.8-flash}
 evoab run --integration navila --recipe agent_policy \
   --env-url "$ENV_URL" --action-model-url "$ACTOR_URL" \
   --action-model-checkpoint-sha256 "$CHECKPOINT_SHA256" \
-  --model "$MODEL" --no-vla-review --no-sam3 "$@"
+  --model "$MODEL" --set roles.main.capabilities.hybrid.options.review=false "$@"

@@ -14,7 +14,7 @@ case "$mode" in
   run)
     exec "${PYTHON:-python}" -m evoab run \
       --integration robodojo --deploy local --task stack_bowls \
-      --recipe agentic --no-sam3 --output-dir ./runs/robodojo "$@"
+      --recipe agentic --output-dir ./runs/robodojo "$@"
     ;;
   -h|--help)
     cat <<'HELP'
@@ -28,7 +28,7 @@ Run starts one stack_bowls episode and cleans up its owned environment.
 Options after the mode are forwarded unchanged and override example defaults:
   --task TASK              Select another RoboDojo task
   --env-gpu 0              Select the simulator GPU
-  --no-depth               Use RGB with calibration
+  --set inputs.depth=false  Use RGB with calibration
   --monitor                Open a local live-monitor endpoint
   --validate-config        Check arguments without starting a simulator/model
   --help                   Show all CLI options for setup or run

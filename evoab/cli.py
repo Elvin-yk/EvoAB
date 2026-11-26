@@ -116,15 +116,7 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         help="Override the entry role's agent runtime (default: the recipe's)",
     )
     agent.add_argument("--model", help="Model ID or preset for the entry role (unless the recipe pins one)")
-    agent.add_argument(
-        "--max-turns",
-        type=_nonnegative,
-        default=0,
-        help="Agent turn limit; 0 disables (use --episode-timeout-s for wall time)",
-    )
-    common.add_argument("--visible-tools", nargs="*", metavar="NAME",
-        help="Expose only these of the entry role's tools for this run; an empty list exposes none")
-    visibility = common.add_argument_group("Tool visibility debugging")
+    visibility = common.add_argument_group("Tool visibility debugging (developers)")
     visibility.add_argument(
         "--tool-debug", action="store_true",
         help="Select the exact agent tool set with --tools; preserve modes, prompts and scheduling",
@@ -137,9 +129,6 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     for name in ("env-url", "sam3-url"):
         services.add_argument("--" + name, "--" + name.replace("-", "_"))
     services.add_argument("--action-model-url", "--action_model_url", dest="action_model_url"
-    )
-    services.add_argument(
-        "--no-sam3", action="store_true", help="Explicitly disable SAM3"
     )
     services.add_argument(
         "--obs-pipeline",

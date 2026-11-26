@@ -46,7 +46,6 @@ class LaunchRequest:
 def _agent_choice(name: str, launch: AgentLaunch) -> dict:
     return {"id": name, "label": launch.label, "description": launch.description,
             "integrations": launch.integrations, "cli_flags": launch.cli_flags,
-            "tool_selection_flags": launch.tool_selection_flags,
             "options": [asdict(option) for option in launch.options],
             "filters_presets": launch.validate_preset is not None, "model_help": launch.model_help,
             "probes_presets": launch.probe_preset is not None}
@@ -162,7 +161,7 @@ def _parameter_flags(request: LaunchRequest, method: dict) -> list[str]:
 
 
 def tool_groups(integration: str, method_id: str, agent_id: str) -> dict[str, list[str]]:
-    """The entry role's tools by capability, for Studio's per-run tool picker (``--visible-tools``)."""
+    """The entry role's tools by capability, for Studio's per-run tool picker (written into the run recipe)."""
     from evoab.composition.compiler import compile_recipe
     from evoab.composition.methods import get_method
     from evoab.integrations import load_integration
@@ -220,7 +219,6 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         *(["--runtime-profile", profile] if profile is not None else []),
         "--task", task,
         "--recipe", str(recipe_path) if recipe_path else method["id"],
-        "--no-sam3",
         *(["--agent", request.agent] if request.agent else []),
         "--model", request.model,
         "--reasoning-effort", request.reasoning_effort,
@@ -228,8 +226,6 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         *_agent_option_flags(request, agent),
         *_parameter_flags(request, method),
     ]
-    if request.visible_tools is not None:
-        command.extend((*agent.tool_selection_flags, *request.visible_tools))
     if request.seed is not None:
         command.extend(("--seed", str(request.seed)))
     if request.layout_id is not None:
@@ -318,10 +314,34 @@ def resolve_run_recipe(request: LaunchRequest, method: dict) -> Recipe:
         roles = team_roles(request.integration, request.team)
         return_mode = "background" if any(role.get("job_tools") for role in roles.values()) else "immediate"
         recipe = with_overrides(recipe, {"roles": roles, "execution.return_mode": return_mode})
+    spec = load_integration(request.integration).get_integration_spec()
+    if request.visible_tools is not None:
+        recipe = _narrow_entry_tools(recipe, compile_recipe(recipe, spec, base_dir=entry.root),
+                                     set(request.visible_tools))
     if request.agent:
         recipe = with_overrides(recipe, {f"roles.{recipe.loop.entry}.brain.agent": request.agent})
-    compile_recipe(recipe, load_integration(request.integration).get_integration_spec(), base_dir=entry.root)
+    compile_recipe(recipe, spec, base_dir=entry.root)
     return recipe
+
+
+def _narrow_entry_tools(recipe: Recipe, compiled, chosen: set[str]) -> Recipe:
+    """The picker's choice written into the recipe: capabilities keep only the chosen tools."""
+    from evoab.tools.selection import TOOL_GROUPS
+
+    entry = compiled.entry
+    available = {item.name: item.selection.tools or item.module.tools for item in entry.modules}
+    capabilities = []
+    for capability in entry.role.capabilities:
+        if capability.id not in available:  # harness capabilities (delegate) are not narrowed
+            capabilities.append(capability)
+            continue
+        kept = [name for name in available[capability.id] if name in chosen]
+        if kept:
+            capabilities.append(capability.model_copy(update={"tools": kept}))
+    jobs = [name for name in TOOL_GROUPS["@jobs"] if name in chosen] \
+        if recipe.execution.return_mode == "background" else None
+    role = entry.role.model_copy(update={"capabilities": capabilities, "job_tools": jobs})
+    return recipe.model_copy(update={"roles": {**recipe.roles, recipe.loop.entry: role}})
 
 
 def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
@@ -333,7 +353,7 @@ def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
     launch_id = f"{time.strftime('%Y%m%d-%H%M%S')}_{secrets.token_hex(3)}"
     request, method, agent = resolve_selection(request)
     recipe_path = None
-    if request.team is not None:
+    if request.team is not None or request.visible_tools is not None:
         recipe = resolve_run_recipe(request, method)
         recipe_path = (runs_root / STUDIO_DIR / "recipes" / f"{launch_id}.json").resolve()
         recipe_path.parent.mkdir(parents=True, exist_ok=True)

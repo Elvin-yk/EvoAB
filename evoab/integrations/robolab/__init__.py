@@ -27,7 +27,7 @@ def validate_cli(args):
     if args.action_model_binding not in (None, "robolab_droid_joint"):
         raise ValueError("RoboLab supports the robolab_droid_joint binding")
     if args.sam3_url:
-        raise ValueError("This RoboLab profile requires --no-sam3")
+        raise ValueError("This RoboLab profile has no SAM3 segmentation (scene segmentation: false)")
 
 
 def get_integration_spec():

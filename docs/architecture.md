@@ -12,7 +12,7 @@ method as a **recipe** over them:
 
 | Axis | Choices | Examples |
 |---|---|---|
-| What the model sees | Multi-view RGB, proprioception, calibration; optional depth and perception | RUA RGB-only, SAM3 localization |
+| What the model sees | Multi-view RGB, proprioception, calibration; optional depth and perception | `inputs.depth: false`, SAM3 segmentation |
 | How it acts | Tool calls, code, or direct action chunks; end-effector targets with host-side IK, or joints | `agentic` (tools), PyRUA-Lean (code), Astranomy Direct (chunks) |
 | Policies | A VLA/WAM or other policy as one callable tool, or none | `agent_policy` |
 | Roles | One agent, or roles that delegate to each other | `planner_direct`, Agent team |
@@ -36,7 +36,10 @@ Two rules hold everywhere:
    checkpoint, never environment-specific tool code. Users can add their own tools
    the same way.
 
-New capabilities land in the CLI, recipes and SDK first; Studio follows later.
+How the agent works is configured only in the recipe (inputs, channels, tools and
+their options, context, budgets, loop); the command line selects the run (task,
+services, model, outputs). New capabilities land in the CLI, recipes and SDK
+first; Studio follows later.
 
 ## Layers
 
@@ -77,15 +80,15 @@ checked against:
 - **Channels**: `tools`, `code`, `action` ([guide](guide.md#methods-and-recipes)).
 - **Capabilities** (tool modules published by integrations):
 
-  | Module | Tools |
-  |---|---|
-  | `gripper` | `move`, `grasp`, `release`, `hold` |
-  | `scene` | `view_env_state`, `capture_scene`, `locate` |
-  | `skills` | `list_skills`, `read_skill`, optional `write_skill` |
-  | `episode` | `finish` |
-  | `hybrid` | `actor_act`: run a policy (VLA/WAM) from the actor service, with optional reviewer |
-  | `delegate` | `delegate_<role>` (harness) |
-  | `observation` | observation sidecar profile (harness) |
+  | Module | Tools | Options |
+  |---|---|---|
+  | `gripper` | `move`, `grasp`, `release`, `hold` | |
+  | `scene` | `view_env_state`, `capture_scene`, `locate` | `segmentation` (SAM3) |
+  | `skills` | `list_skills`, `read_skill`, optional `write_skill` | `write` |
+  | `episode` | `finish` | |
+  | `hybrid` | `actor_act`: run a policy (VLA/WAM) from the actor service | `binding`, `review` |
+  | `delegate` | `delegate_<role>` (harness) | `roles` |
+  | `observation` | observation sidecar profile (harness) | |
 
 - **Action representations** (action channel): `abs_eef`, `delta_eef` (through
   the environment's IK), `joint_abs`.
@@ -93,7 +96,8 @@ checked against:
   stateless frame windows for action roles.
 - **Loops**: single episode, or an episode sequence that carries skills or programs.
 
-Perception: `locate` uses SAM3 when a SAM3 service is configured, and depth or
+Perception: `locate` uses SAM3 when the recipe enables `segmentation` (the run
+passes `--sam3-url`), and depth or
 calibrated multi-view triangulation for 3D. The Observation ToolPackage
 (`observation/toolpackage/`, `--obs-pipeline` or `evoab ob-proxy`) runs SAM3,
 FoundationPose and mask-IoU NMS as a proxy in front of the environment and adds

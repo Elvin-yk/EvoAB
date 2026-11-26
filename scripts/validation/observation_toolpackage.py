@@ -621,7 +621,6 @@ class ObservationToolPackageTests(unittest.TestCase):
         cfg = SessionConfig(
             integration="robodojo",
             env_url="http://127.0.0.1:18760",
-            no_sam3=True,
             obs_pipeline=pipeline_path,
             integration_options={"task": "stack_bowls"},
         )
@@ -636,7 +635,6 @@ class ObservationToolPackageTests(unittest.TestCase):
                 "--recipe", "q0_preview_upstream",
                 "--task", "stack_bowls",
                 "--env-url", "http://127.0.0.1:18760",
-                "--no-sam3",
                 "--obs-pipeline", str(pipeline_path),
                 "--validate-config",
             ],

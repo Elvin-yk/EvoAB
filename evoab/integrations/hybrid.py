@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import argparse
 import re
-from argparse import BooleanOptionalAction
 from typing import Any
 from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from evoab.integrations.base import IntegrationOptions
 from evoab.integrations.composition import ToolModule
@@ -17,10 +16,19 @@ from evoab.tools.hybrid.provider import NAMES as HYBRID_NAMES, HybridTools, unav
 from evoab.tools.hybrid.reviewer import ChunkReviewer
 
 
+class PolicyToolOptions(BaseModel):
+    """How the agent's policy tool behaves: the environment binding and the chunk reviewer.
+
+    ``None`` keeps the environment's default binding and the binding's reviewer default.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    binding: str | None = None
+    review: bool | None = None
+
+
 class HybridOptions(IntegrationOptions):
-    action_model_binding: str | None = None
     action_model_checkpoint_sha256: str | None = None
-    vla_review: bool | None = None
     vla_review_model: str | None = None
     vla_review_base_url: str | None = None
     vla_review_adapter: str | None = None
@@ -29,16 +37,9 @@ class HybridOptions(IntegrationOptions):
 
 def add_hybrid_cli_args(parser: argparse.ArgumentParser) -> None:
     """Configure actor execution independently of the environment embodiment."""
-    group = parser.add_argument_group("Hybrid actor")
-    group.add_argument("--action-model-binding",
-                       help="Explicit actor binding; defaults to the environment's binding")
+    group = parser.add_argument_group("Policy service (the hybrid capability's binding and reviewer are recipe options)")
     group.add_argument("--action-model-checkpoint-sha256",
         dest="action_model_checkpoint_sha256",
-    )
-    group.add_argument("--vla-review",
-        dest="vla_review",
-        action=BooleanOptionalAction,
-        default=None,
     )
     group.add_argument("--vla-review-model")
     group.add_argument("--vla-review-base-url")
@@ -48,11 +49,6 @@ def add_hybrid_cli_args(parser: argparse.ArgumentParser) -> None:
 
 def validate_hybrid_cli(args: Any) -> None:
     """Validate actor and reviewer settings without opening a service."""
-    binding = getattr(args, "action_model_binding", None)
-    if binding and "hybrid" not in args.tool_modules:
-        raise ValueError("--action-model-binding requires the hybrid action profile")
-    if args.vla_review and "hybrid" not in args.tool_modules:
-        raise ValueError("--vla-review requires the hybrid action profile")
     args.vla_review_model = args.vla_review_model or args.model
     # A separate reviewer endpoint/profile is resolved when the action binding
     # decides whether review is enabled. Messages endpoints cannot be inherited
@@ -101,9 +97,10 @@ def configure_hybrid(session, selection=None):
         raise ValueError("Hybrid requires --action-model-checkpoint-sha256")
     actor = session.own(ActorClient(args.action_model_url,
         checkpoint_sha256=checkpoint, tracer=session.context.tracer))
-    name = args.action_model_binding or getattr(episode.description.environment, "action_binding", None)
+    options = selection.options if selection is not None else PolicyToolOptions()
+    name = options.binding or getattr(episode.description.environment, "action_binding", None)
     binding = binding_factory(name, args, episode.description, actor.info)
-    enabled = binding.reviewer_supported if args.vla_review is None else args.vla_review
+    enabled = binding.reviewer_supported if options.review is None else options.review
     if enabled and not binding.reviewer_supported:
         raise ValueError("The selected binding does not support actor review")
     if enabled:
@@ -117,7 +114,7 @@ def configure_hybrid(session, selection=None):
     return HybridTools(episode, actor=actor, binding=binding, reviewer=reviewer)
 
 
-HYBRID_MODULE = ToolModule("hybrid", configure_hybrid, tool_policies(), tools=HYBRID_NAMES,
+HYBRID_MODULE = ToolModule("hybrid", configure_hybrid, tool_policies(), tools=HYBRID_NAMES, options=PolicyToolOptions,
     label="Action model (Hybrid)", description="Ask a VLA / world-action model for bounded, reviewed action chunks.",
     runtime_prompts=("hybrid.md",),
     declare_unavailable=lambda session: unavailable_tools(session.episode))

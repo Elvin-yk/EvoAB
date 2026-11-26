@@ -54,11 +54,3 @@ def select_tools(declared_tools: Iterable[ToolDef], selectors: Iterable[str]) ->
         tools=tuple(catalog[name] for name in expanded if name in catalog),
         control_names=tuple(name for name in expanded if name in controls),
     )
-
-
-def restrict_tools(enabled: Iterable[ToolDef], names: list[str], return_mode: str) -> ToolSelection:
-    """Intersect a per-run allowlist with the tools this episode actually enables."""
-    allowed = set(names)
-    tools = tuple(tool for tool in enabled if tool.name in allowed)
-    controls = tuple(name for name in TOOL_GROUPS["@jobs"] if name in allowed and return_mode == "background")
-    return ToolSelection(tuple(names), tuple(tool.name for tool in tools) + controls, tools, controls)

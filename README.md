@@ -32,7 +32,7 @@ evoab models add-preset my-model --provider my_api --model MODEL_ID
 
 evoab setup --integration metaworld
 evoab run --integration metaworld --deploy local --task reach-v3 \
-  --recipe agentic --model my-model --no-sam3 --output-dir ./runs
+  --recipe agentic --model my-model --output-dir ./runs
 evoab studio --runs-root ./runs          # open http://127.0.0.1:8770 to replay
 ```
 
@@ -65,7 +65,7 @@ evaluators bring their own agent.
 ```bash
 evoab methods list --integration robodojo
 evoab methods show planner_direct
-evoab run --integration robodojo --deploy local --task stack_bowls --no-sam3 \
+evoab run --integration robodojo --deploy local --task stack_bowls \
   --recipe planner_direct --model my-model --set controller_calls=4
 ```
 

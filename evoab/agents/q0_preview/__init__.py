@@ -65,7 +65,7 @@ class Q0PreviewAgent:
     model_protocol = "messages"
     owns_provider = True
     workbench_launch = AgentLaunch(
-        label="Q0-Preview", integrations=("robodojo",), cli_flags=("--model-preset", "--no-depth"),
+        label="Q0-Preview", integrations=("robodojo",), cli_flags=("--model-preset",),
         validate_preset=_preset, model_help="Select a preset matching the upstream Q0 agent configuration.",
     )
 
@@ -91,7 +91,7 @@ class Q0PreviewAgent:
         if (args.command != "run" or args.integration != "robodojo" or args.channel != "tools"
                 or args.tool_modules or len(args.compiled_recipe.roles) != 1 or args.tool_debug
                 or role.prompt.append or role.prompt.files or role.job_tools is not None or role.initial_observation
-                or args.instruction or args.include_extra_task_requirements or args.context_policy != "identity"
+                or args.instruction or args.task_supplements or args.context_policy != "identity"
                 or args.max_turns or args.action_model_url):
             raise ValueError("Q0-Preview requires one RoboDojo evaluator role with its own tools, task and context.")
         if args.reasoning_effort != "xhigh":

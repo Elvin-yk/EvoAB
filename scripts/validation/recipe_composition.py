@@ -84,6 +84,52 @@ class RecipeValidation(unittest.TestCase):
             apply_to_args(SimpleNamespace(agent_backend="q0_preview", model="m"),
                           compile_recipe(get_method("agentic").recipe, spec), explicit={"--agent"})
 
+    def test_agent_settings_live_in_the_recipe(self):
+        from evoab.composition.compiler import check_inputs
+        from evoab.config import SessionConfig
+        base = dict(integration="robodojo", env_url="http://127.0.0.1:18760")
+        rgb = SessionConfig(**base, recipe_overrides={"inputs.depth": False,
+                                                      "inputs.task_supplements": True}).resolve()
+        self.assertEqual((rgb.depth, rgb.camera_calibration, rgb.task_supplements, rgb.sam3_url),
+                         (False, None, True, None))
+        with self.assertRaisesRegex(ValueError, "publishes no task supplements"):
+            SessionConfig(integration="libero_pro", env_url=base["env_url"],
+                          recipe_overrides={"inputs.task_supplements": True}).resolve()
+        with self.assertRaisesRegex(ValueError, "requires inputs.depth: false"):
+            SessionConfig(**base, recipe_overrides={"inputs.calibration": False}).resolve()
+        segmented = {"roles.main.capabilities.scene.options": {"segmentation": True}}
+        with self.assertRaisesRegex(ValueError, "--sam3-url"):
+            SessionConfig(**base, recipe_overrides=segmented).resolve()
+        self.assertEqual(SessionConfig(**base, recipe_overrides=segmented,
+                                       sam3_url="http://127.0.0.1:18762").resolve().sam3_url,
+                         "http://127.0.0.1:18762")
+        # Without segmentation the SAM3 address is ignored: the recipe, not the command line, decides.
+        self.assertIsNone(SessionConfig(**base, sam3_url="http://127.0.0.1:18762").resolve().sam3_url)
+        policy = SessionConfig(integration="robolab", env_url=base["env_url"], recipe="agent_policy",
+                               action_model_url="http://127.0.0.1:18761",
+                               integration_options={"task": "t", "action_model_checkpoint_sha256": "a" * 64},
+                               recipe_overrides={"roles.main.capabilities.hybrid.options":
+                                                 {"binding": "robolab_droid_joint", "review": False}}).resolve()
+        self.assertEqual((policy.action_model_binding, policy.vla_review), ("robolab_droid_joint", False))
+
+        def described(depth, calibration=True):
+            camera = SimpleNamespace(has_depth=depth, has_calibration=calibration)
+            return SimpleNamespace(environment=SimpleNamespace(cameras=[camera]))
+        inputs = get_method("agentic").recipe.inputs
+        check_inputs(inputs, described(True))  # None keeps whatever the environment provides
+        check_inputs(inputs.model_copy(update={"depth": False}), described(False))
+        with self.assertRaisesRegex(ValueError, "provides depth"):
+            check_inputs(inputs.model_copy(update={"depth": False}), described(True))
+
+    def test_studio_tool_picker_writes_the_recipe(self):
+        from evoab.workbench.launcher import LaunchRequest, resolve_run_recipe
+        request = LaunchRequest("robodojo", "", "m", "medium", method="agentic",
+                                visible_tools=["move", "capture_scene", "finish", "wait_for_tool"])
+        role = resolve_run_recipe(request, {"id": "agentic"}).entry
+        self.assertEqual({item.id: item.tools for item in role.capabilities},
+                         {"scene": ["capture_scene"], "gripper": ["move"], "episode": ["finish"]})
+        self.assertEqual(role.job_tools, ["wait_for_tool"])
+
     def test_run_program_tool(self):
         from evoab.execution.code_as_policy.runner import ProgramTools
         from evoab.execution.serial import SerialToolExecutor
@@ -134,7 +180,7 @@ class RecipeValidation(unittest.TestCase):
         cli_args = parser.parse_args([
             "run", "--integration", "robodojo", "--recipe", "q0_preview_upstream",
             "--task", "stack_bowls", "--env-url", "http://127.0.0.1:18760",
-            "--provider-url", "https://example.test", "--no-sam3",
+            "--provider-url", "https://example.test",
         ])
         with patch.dict(os.environ, {"Q0_PREVIEW_API_KEY": "q0-fixture-key"}, clear=False):
             os.environ.pop("EVOAB_API_KEY", None)

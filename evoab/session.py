@@ -158,6 +158,8 @@ def assemble_session(args) -> SessionAssembly:
             )
         )
         session.start()
+        from evoab.composition.compiler import check_inputs
+        check_inputs(args.recipe.inputs, getattr(session.episode, "description", None))
 
         telemetry.annotate(
             integration=args.integration,
@@ -233,10 +235,6 @@ def assemble_session(args) -> SessionAssembly:
             declared.extend(observation_profile.tools if observation_profile is not None
                             else ObservationTools(None).get_declared_tools())
             selection = select_tools(declared, getattr(args, "tools", ()))
-        elif getattr(args, "visible_tools", None) is not None:
-            from evoab.tools.selection import restrict_tools
-            selection = restrict_tools(tools, args.visible_tools, args.tool_return_mode)
-            prompt_tool_names = tuple(sorted(tool.name for tool in selection.tools))
         if selection is not None:
             tools = list(selection.tools)
 

@@ -190,6 +190,26 @@ class ExecutionSpec(Spec):
     observation_profile: str = "none"
 
 
+class Inputs(Spec):
+    """What the episode gives every role. ``None`` keeps the environment's default.
+
+    ``depth`` and ``calibration`` are applied when EvoAB starts the environment
+    (``--deploy local``) and checked against the description of a connected one.
+    ``task_supplements`` appends the environment's extra task clarifications
+    (only environments that publish them, such as RoboDojo).
+    """
+
+    depth: bool | None = None
+    calibration: bool | None = None
+    task_supplements: bool = False
+
+    @model_validator(mode="after")
+    def calibration_needs_no_depth(self):
+        if self.calibration is False and self.depth is not False:
+            raise ValueError("inputs.calibration: false requires inputs.depth: false")
+        return self
+
+
 class Parameter(Spec):
     """A recipe value exposed to launchers (Studio, CLI) with a label and choices."""
 
@@ -217,6 +237,7 @@ class Recipe(Spec):
     status: Literal["builtin", "reproduction", "experimental"] = "builtin"
     integrations: list[str] | None = None
     references: list[Reference] = Field(default_factory=list)
+    inputs: Inputs = Field(default_factory=Inputs)
     roles: dict[str, Role]
     loop: Loop = Field(default_factory=Loop)
     execution: ExecutionSpec = Field(default_factory=ExecutionSpec)

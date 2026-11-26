@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### How the agent works is configured only in the recipe
+
+The recipe says how the agent works; the command line only selects the run
+(task and scene, where services run, which model, outputs).
+
+- New recipe section `inputs`: `depth`, `calibration` (applied by
+  `--deploy local`, checked against a connected environment's description) and
+  `task_supplements` (environments that publish them; RoboDojo).
+- New capability options: `scene` `segmentation` (SAM3 for `locate`) and
+  `hybrid` `binding` and `review` (the policy tool's environment binding and
+  chunk reviewer).
+- Studio's tool picker writes the narrowed recipe for the run.
+- Removed from `evoab run` and the SDK, with their replacements:
+
+  | Removed | Use |
+  |---|---|
+  | `--no-depth`, `--no-camera-calibration`, `--cameras` | `--set inputs.depth=false`, `--set inputs.calibration=false` (`deploy env` keeps the flags) |
+  | `--include-extra-task-requirements` | `--set inputs.task_supplements=true` |
+  | `--no-sam3` | nothing: SAM3 is off unless the recipe sets `scene` `segmentation: true` (then pass `--sam3-url`) |
+  | `--no-vla-review`, `--action-model-binding X` | `--set roles.<role>.capabilities.hybrid.options.review=false`, `….binding=X` |
+  | `--max-turns N` | `--set roles.<role>.max_turns=N` |
+  | `--visible-tools …` | narrow `roles.<role>.capabilities.<id>.tools` |
+  | SDK `no_sam3`, `visible_tools`, `AgentConfig.max_turns`, `integration_options` `include_extra_task_requirements`, `vla_review`, `action_model_binding` | `recipe_overrides` with the paths above |
+
 ### RUA folded into the core
 
 - RUA (arXiv 2611.01560) is EvoAB's own harness, so it is no longer a separate

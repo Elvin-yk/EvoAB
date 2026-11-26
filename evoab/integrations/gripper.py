@@ -31,8 +31,6 @@ def add_gripper_cli_args(parser: argparse.ArgumentParser) -> None:
 
 def validate_gripper_cli(args: Any) -> None:
     validate_hybrid_cli(args)
-    if "locate" in args.selected_tools and not args.no_sam3 and not args.sam3_url:
-        raise ValueError("Set --sam3-url or explicitly use --no-sam3")
     if args.sam3_url:
         address = urlsplit(args.sam3_url)
         if address.scheme not in {"http", "https"} or not address.hostname or address.query or address.fragment:

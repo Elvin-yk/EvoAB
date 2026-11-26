@@ -51,13 +51,6 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     explicit = set(explicit)
     from evoab.agents.registry import get_agent_backend
     resolve_recipe(args, integration_spec, explicit=explicit)
-    if getattr(args, "visible_tools", None) is not None:
-        from evoab.composition.components import is_evaluator
-        if args.tool_debug or args.channel == "action" or len(args.compiled_recipe.roles) > 1 \
-                or (args.agent_backend and is_evaluator(args.agent_backend)):
-            raise ValueError("--visible-tools narrows the session tools of a one-role tools or code method "
-                             "without --tool-debug; narrow multi-role methods with "
-                             "--set roles.<role>.capabilities.<id>.tools=[...]")
     if not agent_enabled:
         args.agent_backend, args.model = None, None
     if agent_enabled:
@@ -66,8 +59,6 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
                              f"in method {args.recipe_id!r})")
         get_agent_backend(args.agent_backend).resolve_defaults(args)
     # Read environment variables at the entry point; business modules receive resolved values.
-    if args.no_sam3 and args.sam3_url:
-        raise ValueError("--sam3-url and --no-sam3 are mutually exclusive")
     for name in (
         "env_url",
         "action_model_url",
@@ -82,8 +73,11 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     if hasattr(args, "_vla_review_api_key") and args._vla_review_api_key is None:
         args._vla_review_api_key = runtime_env("VLA_REVIEW_API_KEY", args._api_key)
     args.output_dir = args.output_dir or "outputs"
-    if args.no_sam3:
+    # The recipe decides whether locate segments (scene option segmentation); the URL only locates SAM3.
+    if not args.segmentation:
         args.sam3_url = None
+    elif not args.sam3_url:
+        raise ValueError("the recipe enables scene segmentation: start SAM3 (evoab deploy sam3) and pass --sam3-url")
     from urllib.parse import urlsplit
 
     for name in ("env_url", "action_model_url", "sam3_url", "provider_url"):
@@ -105,9 +99,6 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     if args.env_url and urlsplit(args.env_url).scheme not in {"http", "https"}:
         raise ValueError("--env-url must be a prepared episode HTTP(S) URL")
     local = getattr(args, "deploy", None) == "local"
-    if getattr(args, "camera_calibration", None) is not None and not local:
-        raise ValueError("--camera-calibration/--no-camera-calibration require --deploy local; "
-                         "configure an external environment service at startup instead")
     if local and args.env_url:
         raise ValueError("--deploy local and --env-url (including environment variables) are mutually exclusive")
     if not args.env_url and not local:
@@ -270,7 +261,6 @@ class AgentConfig(BaseModel):
     # None uses the recipe's entry-role brain.
     agent_backend: str | None = None
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
-    max_turns: int = Field(default=0, ge=0)
     provider_url: str | None = None
     provider_profile: str | None = None
     api_key: str | None = Field(default=None, exclude=True, repr=False)
@@ -303,7 +293,6 @@ class SessionConfig(BaseModel):
     instruction: str | None = None
     action_model_url: str | None = None
     sam3_url: str | None = None
-    no_sam3: bool = False
     obs_pipeline: Path | None = None
     output_dir: Path | None = None
     episode_timeout_s: int = Field(default=10800, ge=0)
@@ -312,7 +301,6 @@ class SessionConfig(BaseModel):
     # Dotted recipe paths or declared parameter names, e.g. {"horizon": "3:10"}.
     recipe_overrides: dict[str, Any] = Field(default_factory=dict)
     experience_dir: Path | None = None
-    visible_tools: list[str] | None = None
     tool_debug: bool = False
     tools: list[str] = Field(default_factory=list)
     save_exchanges: bool = True

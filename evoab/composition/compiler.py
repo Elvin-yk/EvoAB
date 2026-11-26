@@ -74,6 +74,8 @@ def compile_recipe(recipe: Recipe, spec: Any, *, base_dir: Path | None = None) -
     """Check a recipe against an integration without opening any service."""
     if recipe.integrations is not None and spec.name not in recipe.integrations:
         raise ValueError(f"method {recipe.id!r} supports {', '.join(recipe.integrations)}, not {spec.name!r}")
+    if recipe.inputs.task_supplements and not getattr(spec, "task_supplements", False):
+        raise ValueError(f"inputs.task_supplements: {spec.name} publishes no task supplements")
     catalog = module_catalog(spec)
     roles = {name: _compile_role(name, role, catalog, spec, base_dir) for name, role in recipe.roles.items()}
     for name, role in roles.items():
@@ -193,15 +195,15 @@ def _prompt_text(role: Role, base_dir: Path | None) -> str:
 # -- run settings -----------------------------------------------------------------
 
 #: CLI flags that override the entry role's brain when given explicitly.
-BRAIN_FLAGS = {"--agent": "agent_backend", "--model": "model", "--reasoning-effort": "reasoning_effort",
-               "--max-turns": "max_turns"}
+BRAIN_FLAGS = {"--agent": "agent_backend", "--model": "model", "--reasoning-effort": "reasoning_effort"}
 
 
 def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = frozenset()) -> None:
     """Write the entry role's settings onto the run namespace.
 
-    Explicit ``--agent``/``--model``/``--reasoning-effort``/``--max-turns`` win
-    over the recipe; everything else about the method comes from the recipe.
+    Explicit ``--agent``/``--model``/``--reasoning-effort`` win over the recipe
+    (which run, which model); everything about how the agent works comes from the
+    recipe, overridden only through ``--set``.
     """
     recipe, entry = compiled.recipe, compiled.entry
     brain = entry.role.brain
@@ -216,8 +218,7 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
             args.model_preset = True
     if "--reasoning-effort" not in explicit and brain.reasoning_effort is not None:
         args.reasoning_effort = brain.reasoning_effort
-    if "--max-turns" not in explicit:
-        args.max_turns = entry.role.max_turns
+    args.max_turns = entry.role.max_turns
     evaluator = [name for name in {args.agent_backend, brain.agent} - {None} if is_evaluator(name)]
     if evaluator and args.agent_backend != brain.agent:
         raise ValueError(f"{evaluator[0]} is an external evaluator: it runs only methods written for it, "
@@ -238,6 +239,14 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
     args.prompt_append = entry.prompt_text
     args.context_policy = entry.context["context_policy"]
     args.context_options = entry.context["context_options"]
+    selections = [item for role in compiled.roles.values() for item in role.modules]
+    args.segmentation = any(item.name == "scene" and item.selection.options.segmentation for item in selections)
+    policy = next((item.selection.options for item in selections if item.name == "hybrid"), None)
+    args.action_model_binding = policy.binding if policy else None
+    args.vla_review = policy.review if policy else None
+    inputs = recipe.inputs
+    args.depth, args.camera_calibration = inputs.depth, inputs.calibration
+    args.task_supplements = inputs.task_supplements
     execution = recipe.execution
     args.tool_return_mode = execution.return_mode
     args.resource_scheduling = execution.resource_scheduling
@@ -252,6 +261,19 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
                 or entry.channel != "tools":
             raise ValueError("the compact tool style requires the tools channel without observation, "
                              "skill writing or tool debugging")
+
+
+def check_inputs(inputs: Any, description: Any) -> None:
+    """Fail when a connected environment gives the agent other inputs than the recipe asks for."""
+    cameras = getattr(getattr(description, "environment", None), "cameras", None) or ()
+    for name, attribute in (("depth", "has_depth"), ("calibration", "has_calibration")):
+        wanted = getattr(inputs, name)
+        actual = {getattr(camera, attribute, None) for camera in cameras} - {None}
+        if wanted is not None and actual and actual != {wanted}:
+            raise ValueError(f"the recipe sets inputs.{name}: {str(wanted).lower()}, but the environment "
+                             f"{'provides' if True in actual else 'does not provide'} {name}; start it to match "
+                             f"(--deploy local applies the recipe, or evoab deploy env --{'' if wanted else 'no-'}"
+                             f"{'depth' if name == 'depth' else 'camera-calibration'})")
 
 
 # -- process boundary ---------------------------------------------------------------

@@ -611,7 +611,7 @@ function commandPreview() {
   const {runtime_profile: profile, native_task: task} = w.task;
   const parts = [
     "evoab run", `--integration ${w.bench.integration}`, "--deploy local", ...(profile ? [`--runtime-profile ${profile}`] : []),
-    `--task ${shellQuote(task)}`, method.external_evaluator ? `--recipe ${shellQuote(method.id)}` : "--recipe team.recipe.json", "--no-sam3",
+    `--task ${shellQuote(task)}`, method.external_evaluator ? `--recipe ${shellQuote(method.id)}` : "--recipe team.recipe.json",
     ...(agent.id !== method.agent ? [`--agent ${agent.id}`] : []),
     `--model ${shellQuote(w.model)}`, `--reasoning-effort ${method.fixed_effort || w.effort}`,
     ...agent.cli_flags,

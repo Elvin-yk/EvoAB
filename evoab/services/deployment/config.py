@@ -106,7 +106,7 @@ def validate_deployment(args):
     if getattr(args, 'camera_calibration', None) is not None and (
         service != 'env' or args.integration != 'robodojo'
     ):
-        raise ValueError('--camera-calibration/--no-camera-calibration only apply to RoboDojo environment deployment')
+        raise ValueError('Camera calibration can only be switched off for a RoboDojo environment (inputs.calibration, or --no-camera-calibration on deploy env)')
     adapter = adapter_for(args)
     adapter.validate(args)
     if getattr(args, 'port', None) is not None and not 1 <= args.port <= 65535:
@@ -148,10 +148,12 @@ def add_launch_arguments(parser, *, managed=False):
     parser.add_argument('--task-dir', type=Path)
     if '--seed' not in parser._option_string_actions:
         parser.add_argument('--seed', type=int)
+    if managed:
+        return  # evoab run takes what the agent observes from the recipe's inputs
     parser.add_argument('--cameras', nargs='+')
     parser.add_argument('--depth', action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument('--camera-calibration', action=argparse.BooleanOptionalAction, default=None,
-                        help='RoboDojo environment deployment only; disabling requires --no-depth')
+                        help='RoboDojo environment deployment only; disabling requires --depth off')
 
 
 def environment_options(values):

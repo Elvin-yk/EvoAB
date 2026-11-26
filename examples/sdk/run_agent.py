@@ -13,7 +13,7 @@ def main():
     parser.add_argument('--set', action='append', default=[], metavar='NAME=VALUE')
     args = parser.parse_args()
     overrides = dict(item.split('=', 1) for item in args.set)
-    result = run(SessionConfig(integration=args.integration, env_url=args.env_url, no_sam3=True,
+    result = run(SessionConfig(integration=args.integration, env_url=args.env_url,
                               recipe=args.recipe, recipe_overrides=overrides,
                               agent=AgentConfig(model=args.model, agent_backend=args.agent)))
     print(result.task_success, result.session_dir)

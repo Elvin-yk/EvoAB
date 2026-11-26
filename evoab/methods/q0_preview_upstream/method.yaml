@@ -4,6 +4,7 @@ summary: Original Qoo Tech planning harness and CuRobo controller on one simulat
 paradigms: [orchestrate]
 status: reproduction
 integrations: [robodojo]
+inputs: {depth: false}
 references:
   - {title: Q0-Preview, kind: code, url: "https://github.com/XPolicyLab/XPolicyLab/tree/4a9e3afd73b86a48c5db076f5cf9dbfbef1a180e/policy/Q0_Preview"}
 roles:

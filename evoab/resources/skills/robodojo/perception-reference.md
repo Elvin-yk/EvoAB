@@ -58,8 +58,8 @@ reports unavailable calibration, use `capture_scene` and `locate` for geometry.
 
 ## Camera capabilities
 
-Environment operators can use `--no-depth` with calibration retained, or add
-`--no-camera-calibration` for pure RGB. Use declared camera capabilities and
+An episode may provide RGB with calibration but no depth, or pure RGB without
+calibration. Use declared camera capabilities and
 exposed methods. `triangulate` needs calibrated views but not SAM. With depth
 or calibration disabled, `segment` returns only 2D evidence; without calibration
 there is no pixels/triangulate method or plane fitting.

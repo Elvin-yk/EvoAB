@@ -8,5 +8,5 @@ exec "${PYTHON:-python}" -m evoab run \
   --integration robolab --task BananaInBowlTask \
   --env-url "${EVOAB_ENV_URL:-http://127.0.0.1:18770}" \
   --action-model-url "${EVOAB_ACTION_MODEL_URL:-http://127.0.0.1:18761}" \
-  --recipe agent_policy --action-model-binding robolab_droid_joint \
-  --no-sam3 --output-dir ./runs/robolab-hybrid "$@"
+  --recipe agent_policy --set roles.main.capabilities.hybrid.options.binding=robolab_droid_joint \
+  --output-dir ./runs/robolab-hybrid "$@"

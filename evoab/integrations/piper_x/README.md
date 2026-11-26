@@ -131,10 +131,11 @@ ID and a model configured for that planner:
 ```bash
 evoab run --integration piper_x --robot-id YOUR_ROBOT_ID \
   --env-url http://127.0.0.1:19312 --agent codex --model YOUR_MODEL_ID \
-  --recipe agentic --no-sam3 --output-dir ./runs --monitor
+  --recipe agentic --output-dir ./runs --monitor
 ```
 
-`--no-sam3` disables SAM segmentation; calibrated RGB-D remains available.
+SAM3 segmentation is off unless the recipe enables it (`scene` option
+`segmentation: true`, with `--sam3-url`); calibrated RGB-D remains available.
 Use the usual perception options if SAM is required. There is no private
 evaluation runner or `--deploy local` recipe. Each trial uses a new environment
 and official CLI session. UNI owns result, trajectory and monitor artifacts.

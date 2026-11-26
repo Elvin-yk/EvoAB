@@ -13,6 +13,6 @@ evoab run \
   --env-url "$BEHAVIOR_ENV_URL" \
   --action-model-url "$ACTOR_URL" \
   --action-model-checkpoint-sha256 "$ACTOR_CHECKPOINT_SHA256" \
-  --action-model-binding behavior_r1pro_joint \
+  --set roles.main.capabilities.hybrid.options.binding=behavior_r1pro_joint \
   --provider-url "$PROVIDER_URL" --model "$MODEL" \
-  --no-sam3 --no-vla-review "$@"
+  --set roles.main.capabilities.hybrid.options.review=false "$@"

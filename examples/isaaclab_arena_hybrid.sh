@@ -15,6 +15,6 @@ evoab run --model "$MODEL" \
   --integration isaaclab_arena --recipe agent_policy \
   --env-url "${ARENA_ENV_URL:-http://127.0.0.1:18789}" \
   --action-model-url "${ACTOR_URL:-http://127.0.0.1:18762}" \
-  --action-model-binding arena_g1_locomanipulation \
+  --set roles.main.capabilities.hybrid.options.binding=arena_g1_locomanipulation \
   --action-model-checkpoint-sha256 "$ACTOR_CHECKPOINT_SHA256" \
-  --no-vla-review --no-sam3 "$@"
+  --set roles.main.capabilities.hybrid.options.review=false "$@"

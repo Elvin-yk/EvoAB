@@ -51,7 +51,6 @@ class AgentLaunch:
     options: tuple[LaunchIntegerOption, ...] = ()
     validate_preset: Callable[[str], object] | None = None
     model_help: str = ""
-    tool_selection_flags: tuple[str, ...] = ("--visible-tools",)
     probe_preset: Callable[[str, str], dict[str, Any]] | None = None
 
 

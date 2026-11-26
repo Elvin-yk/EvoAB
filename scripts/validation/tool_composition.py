@@ -86,19 +86,17 @@ def config(integration="robolab", profile="direct", *, recipe=None, overrides=No
            **settings):
     """A tool-only session for one built-in method; profile names map to the methods that replaced them."""
     options = {"task": "validation-task"}
-    if integration == "robodojo":
-        options["include_extra_task_requirements"] = False
-    if profile == "hybrid":
-        options.update(vla_review=False, action_model_checkpoint_sha256="a" * 64)
-        settings.setdefault("action_model_url", "http://actor.invalid")
     recipe_overrides = dict(overrides or {})
+    if profile == "hybrid":
+        options.update(action_model_checkpoint_sha256="a" * 64)
+        recipe_overrides["roles.main.capabilities.hybrid.options"] = {"review": False}
+        settings.setdefault("action_model_url", "http://actor.invalid")
     for name, path in OVERRIDES.items():
         if name in settings:
             recipe_overrides[path] = settings.pop(name)
     if skill_writing:
         recipe_overrides["roles.main.capabilities.skills.options"] = {"write": True}
-    return SessionConfig(integration=integration, env_url="http://environment.invalid",
-                         no_sam3=True, integration_options=options,
+    return SessionConfig(integration=integration, env_url="http://environment.invalid", integration_options=options,
                          recipe=recipe or PROFILE_METHODS.get(profile, profile),
                          recipe_overrides=recipe_overrides, **settings)
 
@@ -296,7 +294,7 @@ class CompositionChecks(unittest.TestCase):
             parser = build_parser(spec)
             argv = ["run", "--integration", integration, "--model", "fixture",
                     "--task", "validation-task", "--env-url", "http://fixture.invalid",
-                    "--no-sam3", "--recipe", "clean", "--set", "roles.main.max_turns=7"]
+                    "--recipe", "clean", "--set", "roles.main.max_turns=7"]
             args = resolve_settings(parser.parse_args(argv), spec, agent_enabled=False)
             self.assertEqual((args.recipe_id, args.tool_style, args.tool_return_mode), ("clean", "compact", "immediate"))
             self.assertEqual(args.max_turns, 7)

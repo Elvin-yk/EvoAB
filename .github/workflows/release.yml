@@ -110,7 +110,7 @@ jobs:
           "$UV_TOOL_BIN_DIR/evoab" --version
           "$UV_TOOL_BIN_DIR/evoab" run --integration robodojo --agent codex \
             --agent-python "$(command -v python)" --model validation-model \
-            --env-url http://127.0.0.1:18760 --no-sam3 --validate-config
+            --env-url http://127.0.0.1:18760 --validate-config
 
   publish:
     # No push, pull request, tag creation, or default manual run uploads a package.
