@@ -6,8 +6,8 @@ simulator or robot is in [benchmarks](benchmarks.md).
 
 ## Install
 
-Linux with Python 3.11 (3.12 works for the CLI) and Docker: every environment
-and model service runs in a container. macOS can view runs and drive remote
+Use Linux with Python 3.11 (3.12 works for the CLI) and Docker to run a benchmark.
+Methods that use a policy or SAM3 connect to a service you run separately. macOS can view runs and drive remote
 environments.
 
 ```bash
@@ -19,11 +19,11 @@ evoab doctor
 
 If cloning fails, run `gh auth login` and `gh repo clone Elvin-yk/EvoAB ~/evoab`.
 Extras add harness-side dependencies only (`agent` is required; `robodojo`,
-`benchmarks`, `xpolicylab`, `arx_one`, `piper_x`, `dev`); simulator and model
-images, assets and checkpoints are prepared separately ([benchmarks](benchmarks.md)).
+`benchmarks`, `xpolicylab`, `arx_one`, `piper_x`, `dev`); benchmark images, assets
+and model checkpoints are prepared separately ([benchmarks](benchmarks.md)).
 
-**Docker**: Docker Engine and the user in the `docker` group. GPU benchmarks and
-model services also need the NVIDIA Container Toolkit (`sudo nvidia-ctk runtime
+**Docker**: Docker Engine and the user in the `docker` group. GPU benchmarks
+also need the NVIDIA Container Toolkit (`sudo nvidia-ctk runtime
 configure --runtime=docker`, then restart Docker); MetaWorld runs on the CPU.
 Allow about 120 GiB of disk for the GPU benchmarks.
 `evoab benchmarks check` reports anything missing.
@@ -222,5 +222,5 @@ print(result.task_success)
 ```
 
 `Session(SessionConfig(...))` gives direct access to the episode's tools;
-`setup()` and `deploy()` prepare and start service containers. Examples are in
+`setup()` and `deploy()` prepare and start benchmark containers. Examples are in
 [`examples/sdk/`](../examples/sdk/).

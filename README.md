@@ -48,8 +48,7 @@ Ask me before any command that needs sudo, and tell me the Studio URL when done.
 ## Methods
 
 A method is a directory with `method.yaml` (the recipe) and `CARD.md` (paper,
-setting, results). Any agent and any model preset runs any method; only external
-evaluators bring their own agent.
+setting, results). The built-in agent runs the method with the selected model preset.
 
 | Method | Paradigm | How it acts |
 |---|---|---|
@@ -75,9 +74,9 @@ evoab run --integration robodojo --task stack_bowls \
 | Simulation | RoboDojo, MetaWorld, LIBERO / LIBERO-Plus / LIBERO-PRO, RoboTwin 2.0, CALVIN, your own image |
 | Real robot | ARX ONE, Piper-X |
 
-Environments and model services run only in Docker containers, like Harbor:
-an upstream image (or yours) plus EvoAB's service layer, deployed in one step
-(`evoab setup`, or Studio: 设置 → 评测集 → 部署).
+Prepare a benchmark image with `evoab setup` or Studio (设置 → 评测集 → 部署).
+`evoab run` starts its container for each episode. For methods that use a policy
+or SAM3, start that service yourself and pass `--action-model-url` or `--sam3-url`.
 
 ## Documentation
 

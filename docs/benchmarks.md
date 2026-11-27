@@ -18,16 +18,14 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 
 ## Preparing a runtime
 
-Every environment and model service runs in a Docker container; there is no
-other runtime. The CLI never imports simulators: `evoab setup` pulls the
+Benchmark simulators run in Docker. To prepare a benchmark, `evoab setup` pulls the
 upstream image (pinned by digest) or builds it once from a pinned recipe, adds
 EvoAB's service package in a small local layer, and records the result under
 `~/.cache/evoab` (or `--cache-dir`). Each launch then starts one container with
 host networking and the run directory mounted at the same path, and removes it
 afterwards. Nothing is hosted by EvoAB.
 
-Docker is always needed; GPU environments and model services also need the
-NVIDIA Container Toolkit. MetaWorld renders on the CPU. Studio: 设置 → 评测集 →
+GPU benchmark containers also need the NVIDIA Container Toolkit. MetaWorld renders on the CPU. Studio: 设置 → 评测集 →
 部署, or:
 
 ```bash
@@ -152,7 +150,7 @@ checkpoint_sha256 = "<checkpoint SHA-256>"
 For an Agent trial with only `actor_act` available for motion:
 
 ```bash
-evoab run --integration calvin --env-url http://127.0.0.1:18786 \
+evoab run --integration calvin --task open_drawer \
   --recipe agent_policy --model MY_PRESET \
   --set 'roles.main.capabilities=[scene, hybrid, episode]' \
   --action-model-url http://127.0.0.1:8601 \

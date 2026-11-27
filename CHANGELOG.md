@@ -75,9 +75,8 @@ keep working (their cache paths and image identities are unchanged). Native
 runtimes and adopted installations are ignored; run `evoab setup --integration X`
 once to build the image. Start actor and SAM3 servers yourself (for example
 `python -m evoab.services.actor.server --config ACTOR.toml`) and pass their URLs.
-Custom benchmark manifests need an `image` (and `python` inside it). For a
-removed benchmark, stay on an earlier release or connect a service you run
-yourself with `--env-url`.
+Custom benchmark manifests need an `image` (and `python` inside it). To run a
+removed integration, use a release that includes its adapter.
 
 ### Plain recipes and a clearer command line
 
