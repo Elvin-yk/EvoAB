@@ -16,8 +16,10 @@ def parser(*, suites=tuple(BUDGETS), description=__doc__, port=18781):
     return p
 
 
-def prepare(args, *, benchmark_name="libero_plus", revision=REVISION, budgets=BUDGETS):
+def prepare(args, *, benchmark_name="libero_plus", revision=REVISION, budgets=BUDGETS, adapter_factory=None):
+    import hashlib
     import os
+    import numpy as np
     import yaml
 
     if args.seed < 0 or args.init_state_index < 0 or args.settle_steps < 1 or (args.max_steps is not None and args.max_steps < 1):
@@ -71,10 +73,13 @@ def prepare(args, *, benchmark_name="libero_plus", revision=REVISION, budgets=BU
         # The final settling observation has passed through the corruption wrapper.
         if env.check_success():
             raise ValueError("Task is already successful after settling; reject this initial state")
-        return LiberoAdapter(env, obs, episode_id=args.run_id, instruction=task.language,
+        adapter = adapter_factory or LiberoAdapter
+        initial_state_sha256 = hashlib.sha256(np.ascontiguousarray(states[args.init_state_index]).tobytes()).hexdigest()
+        return adapter(env, obs, episode_id=args.run_id, instruction=task.language,
             metadata={"benchmark": benchmark_name, "native_revision": revision, "suite": args.suite,
                       "task_id": task.name, "task_index": index, "init_state_index": args.init_state_index,
                       "seed": args.seed, "settle_steps": args.settle_steps, "max_steps": max_steps,
+                      "initial_state_sha256": initial_state_sha256,
                       "evaluation_profile": "direct-rgbd" if args.depth else "direct-rgb"},
             max_steps=max_steps, depth_enabled=args.depth, convention=macros.IMAGE_CONVENTION)
     except BaseException:
