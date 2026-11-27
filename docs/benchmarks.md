@@ -7,7 +7,7 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 | Integration | Kind | Image | Tools | Notes |
 |---|---|---|---|---|
 | `robodojo` | Dual-arm ARX X5, Isaac Sim 5.1 | Local build | Motion, policy (Pi0.5) | 42 tasks, 5 capability dimensions |
-| `metaworld` | MetaWorld MT50, MuJoCo | Local build, CPU only | Motion | Fastest smoke test; no GPU |
+| `metaworld` | MetaWorld MT50, MuJoCo | Local build, CPU simulator | Motion, policy (SmolVLA) | Motion-only runs need no GPU |
 | `libero` | Original LIBERO | Public | Motion, policy (StarVLA) | Spatial, Object, Goal, Long, 90 |
 | `libero_plus` | LIBERO-Plus perturbations | Local build | Motion | |
 | `libero_pro` | LIBERO-PRO suites | Public | Motion | `_env`, `_object`, `_swap`, `_task`, `_lan` variants |
@@ -112,8 +112,34 @@ and about 38.5 GiB of assets.
 
 MetaWorld MT50 (`metaworld==3.1.1`) through the shared motion tools. `evoab setup
 --integration metaworld` builds a small CPU-only image (slim Python, MuJoCo
-rendering through OSMesa) in a few minutes; tasks are named like `reach-v3`. It
-needs no GPU, so it is the quickest check that a method runs end to end.
+rendering through OSMesa) in a few minutes. Tasks are named like `reach-v3`.
+
+The shared `actor_act` tool accepts
+[`lerobot/smolvla_metaworld`](https://huggingface.co/lerobot/smolvla_metaworld).
+Prepare the checkpoint directory with the published weights, configuration and
+processor files. Prepare the configuration and tokenizer files for
+`HuggingFaceTB/SmolVLM2-500M-Video-Instruct` separately. The policy checkpoint
+supplies the model weights.
+
+Start `python -m evoab.services.actor.server --config ACTOR.toml` in a LeRobot
+runtime with SmolVLA dependencies and `num2words`. The reference checkpoint
+was tested with LeRobot 0.4.4:
+
+```toml
+backend = "smolvla_metaworld"
+checkpoint = "/path/to/smolvla_metaworld"
+checkpoint_sha256 = "<SHA-256 of model.safetensors>"
+vlm_config = "/path/to/SmolVLM2-500M-Video-Instruct"
+device = "cuda"
+```
+
+Use the `agent_policy` recipe with `--integration metaworld`, the actor URL and
+checkpoint SHA-256. Select `active_groups=["arm"]` and pass the policy's task
+instruction. The adapter captures a 480 × 480 policy view using LeRobot's
+`corner2` pose. The binding applies the training image orientation and passes
+the four native Sawyer proprioceptive values. Native XYZ deltas and gripper
+commands execute through the same episode as the motion tools. The binding
+runs without a chunk reviewer.
 
 ## LIBERO, LIBERO-Plus, LIBERO-PRO
 

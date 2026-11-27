@@ -162,6 +162,7 @@ python scripts/validation/recipe_composition.py     # recipes, roles, experience
 python scripts/validation/tool_composition.py       # tool schemas, visibility, prompts per configuration
 python scripts/validation/calvin_actor.py           # CALVIN Hybrid execution against fixture services
 python scripts/validation/libero_actor.py           # LIBERO policy observation and native action binding
+python scripts/validation/metaworld_actor.py        # MetaWorld policy observation and native/pose action binding
 python scripts/validation/observation_toolpackage.py
 evoab methods validate METHOD --integration X
 ```

@@ -22,7 +22,11 @@ def parser():
 
 
 def prepare(args):
+    from hashlib import sha256
+    from importlib.metadata import version
+
     import metaworld
+    import numpy as np
     from .adapter import MetaWorldAdapter
 
     if args.seed < 0 or args.max_steps < 1:
@@ -36,8 +40,13 @@ def prepare(args):
         raise ValueError(f"No MT50 task variants found for {args.task}")
     env = env_cls(render_mode="rgb_array")
     try:
-        env.set_task(task_variants[args.seed % len(task_variants)])
+        variant = args.seed % len(task_variants)
+        task = task_variants[variant]
+        env.set_task(task)
         obs, _ = env.reset(seed=args.seed)
+        initial_state = sha256(task.data)
+        for values in (env.data.qpos, env.data.qvel, obs):
+            initial_state.update(np.ascontiguousarray(values, dtype="<f8").tobytes())
         title = args.task[:-3] if args.task.endswith(("-v3", "-v2")) else args.task
         instruction = title.replace("-", " ")
         max_steps = min(args.max_steps, int(getattr(env, "max_path_length", args.max_steps)))
@@ -51,6 +60,9 @@ def prepare(args):
                 "suite": "mt50",
                 "task_id": args.task,
                 "seed": args.seed,
+                "variant_index": variant,
+                "native_revision": version("metaworld"),
+                "initial_state_sha256": initial_state.hexdigest(),
                 "max_steps": max_steps,
                 "evaluation_profile": "direct-rgbd" if args.depth else "direct-rgb",
             },
@@ -64,7 +76,8 @@ def prepare(args):
 
 def main():
     args = parser().parse_args()
-    serve_episode(lambda: prepare(args), args, "metaworld")
+    serve_episode(lambda: prepare(args), args, "metaworld",
+                  capabilities=("pose", "native", "published_observations"))
 
 
 if __name__ == "__main__":
