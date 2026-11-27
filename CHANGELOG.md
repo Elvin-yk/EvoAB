@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replace the built-in `planner_direct` recipe with an in-process Direct actor for RoboDojo. Use `agent_policy` with `robodojo_direct_eef`, or select Direct on a Planner card in Studio. Standalone `direct_policy` remains available.
+
 - Add the Q0-Preview reproduction for simulated RoboDojo X5 episodes, with calibrated RGB observations, single-step receipts and native outcome recording. On an RTX 4090 D, GPT-6.2 Astra through Codex CLI completed the frozen `stack_bowls` task in 483 steps.
 
 - **Recipes replace interaction modes and tool profiles (breaking).** A run's

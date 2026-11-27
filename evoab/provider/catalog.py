@@ -257,4 +257,5 @@ class ModelClient:
         if callable(close_provider):
             close_provider()
         if not self._loop.is_closed():
+            self._loop.run_until_complete(self._loop.shutdown_asyncgens())
             self._loop.close()

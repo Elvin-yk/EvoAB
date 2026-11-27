@@ -17,11 +17,29 @@ can compose Hybrid with Direct tools. DexJoCo, BEHAVIOR, IsaacLab Arena and NaVI
 compose Hybrid with scene, skills and episode tools, without gripper tools.
 Integrations own these compositions; a backend never chooses the visible tools.
 
-The Hybrid module creates actor/reviewer clients through session ownership.
-Direct does not instantiate an empty Hybrid provider. Explicit visibility
+The Hybrid module owns its actor and reviewer resources through the session.
+The standalone action channel runs its own Direct loop. Explicit visibility
 debugging can still declare `actor_act` under Direct, but invocation reports
 unavailability and never starts an actor service. Execution return modes and
 episode resource exclusion remain independent of the selected profile.
+
+## RoboDojo Direct policy
+
+Select the `robodojo_direct_eef` binding in the `agent_policy` recipe, or
+enable Direct on a single Planner card in Studio. The local actor uses
+the calling role's model preset to generate a short sequence of absolute
+grasp-site targets from the sub-goal, camera images and arm poses.
+`actor_act` executes the requested prefix and returns feedback.
+
+```bash
+evoab run --integration robodojo --deploy local --task stack_bowls --no-sam3 \
+  --recipe agent_policy --agent native --model MY_PRESET \
+  --set roles.main.capabilities.hybrid.options.binding=robodojo_direct_eef
+```
+
+This replaces the built-in `planner_direct` orchestration recipe. The binding
+runs inside EvoAB without a separate actor endpoint, checkpoint or reviewer.
+Use `direct_policy` to run the standalone action channel.
 
 ## Responsibilities
 

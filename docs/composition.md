@@ -33,7 +33,7 @@ Combinations come from several roles: a role can expose others as tools
 ## Recipe format
 
 ```yaml
-id: planner_direct                 # must match the method directory name
+id: custom_team                    # must match a custom method directory name
 label: Planner + Direct controller
 summary: One line shown in listings and Studio.
 paradigms: [orchestrate, direct]   # orchestrate | direct | code | policy
@@ -112,8 +112,11 @@ In Python:
 ```python
 from evoab import AgentConfig, SessionConfig, run
 run(SessionConfig(integration="robodojo", env_url=URL, no_sam3=True,
-                  recipe="planner_direct", recipe_overrides={"controller_calls": 4},
-                  agent=AgentConfig(model="gpt-6-astra")))
+                  recipe="agent_policy",
+                  recipe_overrides={
+                      "roles.main.capabilities.hybrid.options.binding": "robodojo_direct_eef",
+                  },
+                  agent=AgentConfig(agent_backend="native", model="gpt-6-astra")))
 ```
 
 ## Roles and delegation

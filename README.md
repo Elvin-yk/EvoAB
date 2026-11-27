@@ -102,10 +102,11 @@ when it outgrows the model's context window.
 
 ```bash
 evoab methods list --integration robodojo     # methods usable on RoboDojo
-evoab methods show planner_direct             # card, recipe, parameters
+evoab methods show agent_policy               # card, recipe, parameters
 evoab methods validate my_recipe.yaml --integration libero_pro
 evoab run --integration robodojo --deploy local --task stack_bowls --no-sam3 \
-  --recipe planner_direct --model gpt-6-astra --set controller_calls=4
+  --recipe agent_policy --agent native --model gpt-6-astra \
+  --set roles.main.capabilities.hybrid.options.binding=robodojo_direct_eef
 ```
 
 Studio's method step shows each method's component graph and parameters; a run's

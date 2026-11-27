@@ -29,8 +29,8 @@ def add_gripper_cli_args(parser: argparse.ArgumentParser) -> None:
     add_hybrid_cli_args(parser)
 
 
-def validate_gripper_cli(args: Any) -> None:
-    validate_hybrid_cli(args)
+def validate_gripper_cli(args: Any, *, default_vla_review: bool | None = None) -> None:
+    validate_hybrid_cli(args, default_vla_review=default_vla_review)
     if "locate" in args.selected_tools and not args.no_sam3 and not args.sam3_url:
         raise ValueError("Set --sam3-url or explicitly use --no-sam3")
     if args.sam3_url:

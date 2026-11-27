@@ -18,9 +18,10 @@ class ObservationInputs:
     manifest: dict
     images: dict[str, str]
     history: dict[str, list[HistoryImage]] = field(default_factory=dict)
+    active_groups: tuple[str, ...] = ()
 
     @classmethod
-    def capture(cls, episode, manifest):
+    def capture(cls, episode, manifest, *, active_groups=()):
         history = {
             name: [HistoryImage(frame_id=sample["frame_id"], captured_at=sample["captured_at"],
                                 simulation_time_s=sample["simulation_time_s"], state_version=sample["state_version"],
@@ -28,4 +29,5 @@ class ObservationInputs:
                    for sample in samples]
             for name, samples in manifest.get("history", {}).items()
         }
-        return cls(manifest=manifest, images=episode.image_paths(manifest), history=history)
+        return cls(manifest=manifest, images=episode.image_paths(manifest), history=history,
+                   active_groups=tuple(active_groups))

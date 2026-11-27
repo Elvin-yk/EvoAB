@@ -1,4 +1,5 @@
 """Independent model-facing actor collaboration tools."""
+from evoab.execution.correlation import current_role
 from evoab.execution.scheduler import ToolExecutionPolicy
 from evoab.tools.presentation import state_for_model
 from evoab.tools.scene.perception import snapshot_images, snapshot_metadata
@@ -66,11 +67,15 @@ def unavailable_tools(episode):
 class HybridTools(ToolProvider):
     provider_id = "hybrid"
 
-    def __init__(self, episode, *, actor, binding, reviewer):
+    def __init__(self, episode, *, actor, binding, reviewer, role_actors=None, entry_role=None):
         if actor is None or binding is None:
             raise ValueError("HybridTools requires a configured actor and binding")
         self.episode, self.binding, self.reviewer = episode, binding, reviewer
-        self.runner = ActorRunner(episode, actor=actor, binding=binding, reviewer=reviewer)
+        self.entry_role = entry_role
+        self.role_runners = {role: ActorRunner(episode, actor=client, binding=binding, reviewer=reviewer)
+                             for role, client in (role_actors or {}).items()}
+        self.runner = next(iter(self.role_runners.values())) if self.role_runners else ActorRunner(
+            episode, actor=actor, binding=binding, reviewer=reviewer)
 
     def get_tools(self):
         return bind_tools(tool_specs(self.binding, self.reviewer), provider_id=self.provider_id,
@@ -80,7 +85,8 @@ class HybridTools(ToolProvider):
         return self.episode.invoke(handler, **arguments)
 
     def actor_act(self, **arguments):
-        summary = self.runner.run(**arguments)
+        runner = self.role_runners[current_role.get() or self.entry_role] if self.role_runners else self.runner
+        summary = runner.run(**arguments)
         chunk = summary["chunks"][-1] if summary["chunks"] else None
         decision = (chunk.get("decision") or {}) if chunk else {}
         assessment = decision.get("assessment") or {}
