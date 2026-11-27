@@ -1,4 +1,4 @@
-"""Original LIBERO with the shared gripper tools."""
+"""Original LIBERO with shared motion and policy tools."""
 from evoab.integrations.gripper import GripperOptions, add_gripper_cli_args
 
 
@@ -14,8 +14,9 @@ def add_cli_args(parser):
 
 def get_integration_spec():
     from evoab.integrations.simulation import build_simulation_spec
+    from .action_binding import create_binding
 
-    spec = build_simulation_spec("libero")
+    spec = build_simulation_spec("libero", binding_factory=create_binding)
     spec.add_cli_args = add_cli_args
     spec.config_model = LiberoOptions
     spec.deployment_module = "evoab.integrations.libero.deployment"

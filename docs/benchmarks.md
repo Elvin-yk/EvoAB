@@ -8,7 +8,7 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 |---|---|---|---|---|
 | `robodojo` | Dual-arm ARX X5, Isaac Sim 5.1 | Local build | Motion, policy (Pi0.5) | 42 tasks, 5 capability dimensions |
 | `metaworld` | MetaWorld MT50, MuJoCo | Local build, CPU only | Motion | Fastest smoke test; no GPU |
-| `libero` | Original LIBERO | Public | Motion | Spatial, Object, Goal, Long, 90 |
+| `libero` | Original LIBERO | Public | Motion, policy (StarVLA) | Spatial, Object, Goal, Long, 90 |
 | `libero_plus` | LIBERO-Plus perturbations | Local build | Motion | |
 | `libero_pro` | LIBERO-PRO suites | Public | Motion | `_env`, `_object`, `_swap`, `_task`, `_lan` variants |
 | `robotwin` | RoboTwin 2.0 aloha-agilex | Local build | Motion | `demo_clean`, `demo_randomized` |
@@ -116,6 +116,26 @@ Three separate images; stock LIBERO and its forks never share an interpreter.
 evoab run --integration libero_pro --runtime-profile libero_object \
   --task pick_up_the_cream_cheese_and_place_it_in_the_basket --recipe direct_action --model my-model
 ```
+
+Stock LIBERO can use `actor_act` with RoboScope's `starvla_libero_policy.py`
+and `StarVLA/Qwen2.5-VL-OFT-LIBERO-4in1`. Prepare the checkpoint with the
+RoboScope LIBERO configuration and start its policy socket. Run
+`python -m evoab.services.actor.server --config ACTOR.toml` with the RoboScope
+SDK available. Use the same actor configuration fields as [CALVIN](#calvin)
+with `backend = "starvla_libero"`.
+
+```bash
+evoab run --integration libero --env-url http://127.0.0.1:18801 \
+  --recipe agent_policy --model MODEL_PRESET \
+  --set 'roles.main.capabilities=[scene, hybrid, episode]' \
+  --action-model-url http://127.0.0.1:8601 \
+  --action-model-checkpoint-sha256 CHECKPOINT_SHA256
+```
+
+The binding uses `active_groups=["arm"]` and delivers the agent-view and wrist
+images in the benchmark's training orientation. Each prediction is a chunk of
+native relative OSC actions. Use the default `agent_policy` capabilities for
+mixed control. Initial state index and hash are recorded by the native service.
 
 ## RoboTwin 2.0
 
