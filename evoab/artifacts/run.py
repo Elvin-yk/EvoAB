@@ -64,7 +64,6 @@ def build_run_result(
         "max_turns": args.max_turns,
         "episode_timeout_s": args.episode_timeout_s,
         "reasoning_effort": args.reasoning_effort,
-        "context_policy": getattr(args, "context_policy", "identity"),
         "telemetry": getattr(args, "telemetry", "off"),
         "elapsed_s": round(elapsed_s, 1),
         "error": error_msg or (agent_result.error if agent_result else None),

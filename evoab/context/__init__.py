@@ -1,15 +1,5 @@
-"""Prompt composition and model context policies."""
+"""Prompt composition: the environment prompt, method text and tool guidance."""
 
-from .history import (
-    ContextBlock,
-    ContextBudget,
-    ContextDecision,
-    ContextManager,
-    ContextPolicy,
-    ContextRequest,
-    PreparedContext,
-    estimate_tokens,
-)
 from .prompt import (
     Prompt,
     PromptBuilder,
@@ -20,14 +10,6 @@ from .prompt import (
 )
 
 __all__ = [
-    "ContextBlock",
-    "ContextBudget",
-    "ContextDecision",
-    "ContextManager",
-    "ContextPolicy",
-    "ContextRequest",
-    "PreparedContext",
-    "estimate_tokens",
     "Prompt",
     "PromptBuilder",
     "PromptContext",

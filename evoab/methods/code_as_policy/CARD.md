@@ -1,10 +1,8 @@
 # Code as Policy
 
-The agent uses its native shell to run ordinary Python programs against a
-generated `scratch/robot_api.md`. Programs call the same registered tools with
+The agent writes ordinary Python programs against a generated robot API and runs
+them with the `run_program` tool. Programs call the same registered tools with
 the same validation and scheduling. Skill tools stay directly callable.
-
-Runs on any agent: Codex and Claude Code run programs in their own terminal; other agents use the harness `run_program` tool.
 
 ## Reproduction targets
 

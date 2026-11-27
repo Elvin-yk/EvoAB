@@ -628,23 +628,17 @@ class ObservationToolPackageTests(unittest.TestCase):
         self.assertEqual(resolved.obs_pipeline, str(pipeline_path.resolve()))
 
         env = {**os.environ, "PYTHONPATH": str(REPO_ROOT)}
-        run_check = subprocess.run(
-            [
-                sys.executable, "-m", "evoab.cli", "run",
-                "--integration", "robodojo",
-                "--recipe", "q0_preview_upstream",
-                "--task", "stack_bowls",
-                "--env-url", "http://127.0.0.1:18760",
-                "--obs-pipeline", str(pipeline_path),
-                "--validate-config",
-            ],
-            capture_output=True,
-            text=True,
-            env=env,
-            check=False,
-        )
-        self.assertEqual(run_check.returncode, 0, msg=run_check.stderr)
-        self.assertIn("Configuration valid", run_check.stdout)
+        from unittest import mock
+        from evoab.cli import build_parser
+        from evoab.config import resolve_settings
+        from evoab.integrations import load_integration
+        spec = load_integration("robodojo").get_integration_spec()
+        argv = ["run", "--integration", "robodojo", "--recipe", "agentic", "--model", "fixture",
+                "--task", "stack_bowls", "--env-url", "http://127.0.0.1:18760",
+                "--obs-pipeline", str(pipeline_path)]
+        with mock.patch("evoab.provider.catalog.presets", return_value=[{"name": "fixture"}]):
+            checked = resolve_settings(build_parser(spec).parse_args(argv), spec)
+        self.assertEqual(checked.obs_pipeline, str(pipeline_path.resolve()))
 
         proxy_check = subprocess.run(
             [

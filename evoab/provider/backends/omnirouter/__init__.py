@@ -1,1 +1,0 @@
-"""OmniRouter model protocol adapters."""

@@ -162,7 +162,7 @@ For an Agent trial with only `actor_act` available for motion:
 
 ```bash
 evoab run --integration calvin --env-url http://127.0.0.1:18786 \
-  --recipe agent_policy --agent codex --model MODEL_ID \
+  --recipe agent_policy --model MY_PRESET \
   --set 'roles.main.capabilities=[scene, hybrid, episode]' \
   --action-model-url http://127.0.0.1:8601 \
   --action-model-checkpoint-sha256 CHECKPOINT_SHA256
@@ -198,15 +198,6 @@ tools, and default to `agent_policy`.
 
 Each integration's `SOURCE.md` pins the sources, assets and weights it was
 validated with.
-
-## External evaluators
-
-Some methods run another project's complete agent against an EvoAB episode; the
-recipe cannot change their roles or tools.
-
-- **`q0_preview_upstream`**: Qoo Tech's Q0-Preview on RoboDojo. Setup, credentials
-  and validation evidence are in its
-  [card](../evoab/methods/q0_preview_upstream/CARD.md).
 
 ## Real robots
 

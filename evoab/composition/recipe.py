@@ -39,15 +39,12 @@ class Spec(BaseModel):
 
 
 class Brain(Spec):
-    """The model runtime of one role; agent, model and effort may be left to the launcher.
+    """The model of one role: a model preset and effort, both optional (the run's by default).
 
-    ``agent: null`` (the default) means the agent chosen for the run, so a method
-    is independent of the agent that executes it. Pin an agent only when the
-    method is that agent (an external evaluator). ``action`` roles have no agent
-    loop: each inference is one request to the role's model.
+    Every role runs on EvoAB's built-in agent; ``action`` roles have no agent loop:
+    each inference is one request to the role's model.
     """
 
-    agent: str | None = None
     model: str | None = None
     model_preset: str | None = Field(default=None, min_length=1)
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
@@ -103,20 +100,6 @@ class ActionSpec(Spec):
         return self
 
 
-class ContextSpec(Spec):
-    """History retained across requests of a tool or code role."""
-
-    policy: Literal["identity", "sliding_window", "observation_window"] = "identity"
-    observation_horizon: int = Field(default=2, gt=0)
-    image_token_allowance: int = Field(default=1536, gt=0)
-    max_input_tokens: int | None = Field(default=None, gt=0)
-    target_input_tokens: int | None = Field(default=None, gt=0)
-    keep_recent_blocks: int = Field(default=4, ge=0)
-    keep_observation_blocks: int = Field(default=1, ge=0)
-    min_recent_tool_images: int = Field(default=3, ge=0)
-    image_eviction_batch_size: int = Field(default=20, gt=0)
-
-
 class PromptSpec(Spec):
     """Method text appended to the environment prompt of a role."""
 
@@ -134,7 +117,6 @@ class Role(Spec):
     style: Style = "full"
     initial_observation: bool = False
     action: ActionSpec | None = None
-    context: ContextSpec = Field(default_factory=ContextSpec)
     prompt: PromptSpec = Field(default_factory=PromptSpec)
     max_turns: int = Field(default=0, ge=0)
 
@@ -188,8 +170,7 @@ class ExecutionSpec(Spec):
     # None selects the integration's mode (IntegrationSpec.execution_mode).
     mode: Literal["parallel", "replanning"] | None = None
     observation_profile: str = "none"
-    # Whether the model may request several tool calls in one response.
-    parallel_tool_calls: bool = True
+
 
 
 class Inputs(Spec):

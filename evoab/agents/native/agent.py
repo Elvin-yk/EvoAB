@@ -1,4 +1,4 @@
-"""EvoAB's built-in agent (``--agent native``).
+"""EvoAB's built-in agent, the only agent EvoAB runs.
 
 ``--model`` names a model preset from :mod:`evoab.provider.catalog`, which owns
 provider connections, request APIs, retries and usage accounting. Two modes:
@@ -33,8 +33,6 @@ def _consolidator(workspace: Path, registry):
 
 @register_agent("native")
 class NativeAgent:
-    model_protocol = "native"
-    owns_provider = True
     capabilities = AgentCapabilities(tool_event_source="execution")
     workbench_launch = AgentLaunch(
         label="EvoAB 内置 Agent",
@@ -49,8 +47,6 @@ class NativeAgent:
     @classmethod
     def validate_config(cls, args, explicit: set[str]) -> None:
         from evoab.provider import catalog
-        if args.provider_url:
-            raise ValueError("--agent native uses configured model presets; omit --provider-url")
         names = {p["name"] for p in catalog.presets()}
         if args.model not in names:
             raise ValueError(f"--model must name a model preset (evoab models); configured: {', '.join(sorted(names)) or 'none'}")
@@ -70,12 +66,6 @@ class NativeAgent:
         self.reasoning_effort = reasoning_effort
         self.direct_config = direct
         self._policy = None
-
-    def model_runtime(self, profile: str, event_bus):  # pragma: no cover - the catalog owns transport
-        raise RuntimeError("the native agent does not use the provider gateway")
-
-    def finalize_without_provider(self, result: AgentResult, session_dir: Path | None) -> None:
-        return None
 
     def cancel(self, reason: str) -> None:
         if self._policy is not None:
@@ -106,7 +96,7 @@ class NativeAgent:
             trace_format="direct")
 
     def run(self, *, prompt, task: str, toolkit, executor, max_turns: int = 50, event_bus=None,
-            session_dir: Path | None = None, model_endpoint: str | None = None, code_policy=None) -> AgentResult:
+            session_dir: Path | None = None) -> AgentResult:
         """Tool calling with only EvoAB's robot tools registered."""
 
         from nanobot.agent.runner import AgentRunner, AgentRunSpec

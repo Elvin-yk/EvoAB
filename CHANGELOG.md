@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### One agent: the built-in agent over model presets
+
+EvoAB now runs every method on its built-in agent; models come from presets
+(`evoab models`). Removed, with all their code:
+
+- The Codex, Claude Code, OpenCode, Gemini CLI and Antigravity agent runtimes,
+  `--agent` and the runtime flags (`--agent-python`, `--opencode-*`,
+  `--gemini-*`, `--mcp-timeout-s`, `--claude-max-budget-usd`), the
+  `openai-codex` and `claude-agent-sdk` dependencies and the `antigravity` extra.
+- `evoab serve`, `evoab tools` and `evoab stop` (episodes exposed over MCP).
+- The Q0-Preview external evaluator (`q0_preview_upstream`).
+- The provider gateway those runtimes used (`--provider-url`,
+  `--provider-profile`, `--model-preset`, `--save-exchanges`, provider
+  timeouts and retries) and the context window policies that needed it
+  (`context.policy` sliding_window / observation_window). Recipes drop
+  `context`, `brain.agent` and `execution.parallel_tool_calls`.
+- The VLA chunk reviewer now uses a model preset: `--vla-review-model PRESET`
+  (default: the run's model) replaces `--vla-review-base-url`,
+  `--vla-review-adapter` and `--vla-review-api-key`.
+
 ### Ideas from dimos: your own tools, MCP serving, replay
 
 - `@tool` (`from evoab import tool`): a decorated Python function is an agent

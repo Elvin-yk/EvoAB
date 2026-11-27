@@ -47,7 +47,7 @@ first; Studio follows later.
 |---|---|---|
 | Entry | CLI, Studio, Python SDK; same operations everywhere | `cli.py`, `workbench/`, `ui/`, `__init__.py` (SDK exports) |
 | Method | Recipes, method library, compiler, graphs, experience | `composition/`, `methods/` |
-| Agent | The agent loop, model presets and wire conversion, prompts and context | `agents/`, `provider/`, `context/` |
+| Agent | The built-in agent loop, model presets, prompts | `agents/`, `provider/`, `context/` |
 | Execution | Scheduling, resource exclusion, background jobs, code bridge | `execution/` |
 | Tools | Model-visible schemas, handlers and feedback | `tools/` |
 | Embodiment | Environment and robot adapters, services, deployment | `integrations/`, `services/` |
@@ -93,8 +93,8 @@ checked against:
 
 - **Action representations** (action channel): `abs_eef`, `delta_eef` (through
   the environment's IK), `joint_abs`.
-- **Context policies**: `identity`, `sliding_window`, `observation_window`;
-  stateless frame windows for action roles.
+- **Context**: tool and code roles keep their transcript (the built-in agent
+  consolidates long histories); action roles see a stateless window of frames.
 - **Loops**: single episode, or an episode sequence that carries skills or programs.
 
 Perception: `locate` uses SAM3 when the recipe enables `segmentation` (the run
@@ -136,7 +136,6 @@ submission order; background calls return job handles (`wait_for_tool`,
 |---|---|
 | `execution.return_mode` | `immediate`, `background` |
 | `execution.resource_scheduling` | `per-resource`, `global-serial` |
-| `execution.parallel_tool_calls` | `true` (default): the model may request several tool calls per response |
 | `execution.mode` | `parallel`, or `replanning`: after a failed world-changing action, queued actions are cancelled and new ones are refused until the result is read, the stop is confirmed and a fresh `capture_scene` is taken |
 
 Tools report what an action did in `ToolOutput.action` (`executed` none/some/unknown,
@@ -153,8 +152,7 @@ Tools report what an action did in `ToolOutput.action` (`executed` none/some/unk
 | **An environment** | An integration package with `get_integration_spec()`: native execution, observations and outcome in the adapter, an accurate description (arms, frames, units, limits, cameras, calibration), the tool modules it supports, a deployment recipe, and a section in [benchmarks](benchmarks.md). It must not define its own model tools. |
 | **A real robot** | As an environment, plus the device process that owns the hardware, physical limits, interruption and operator commands; follow ARX ONE as the reference. The shared IK contract is tracked in [#18](https://github.com/Elvin-yk/EvoAB/issues/18) and [#22](https://github.com/Elvin-yk/EvoAB/issues/22). |
 | **An action model** | An `ActorBackend` registered in `services/actor/registry.py`; environment-specific conversion stays in the integration's binding. |
-| **A model vendor or wire format** | A provider adapter in `provider/`; presets reach it through `evoab models`. |
-| **An agent runtime** | `agents/<name>/` registered in `agents/registry.py`, using the shared executor and events. Set `runs_programs = True` if it runs code-channel programs in its own terminal. |
+| **A model vendor** | Add a provider and preset with `evoab models` (or Studio, 设置 → 模型); no code changes. |
 
 ## Validation
 

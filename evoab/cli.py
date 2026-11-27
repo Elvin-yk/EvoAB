@@ -14,7 +14,6 @@ from evoab.config import (
     public_config,
     resolve_config,
 )
-from evoab.agents import get_agent_backend, list_agent_backends
 from evoab.integrations import load_integration
 
 
@@ -46,11 +45,6 @@ def _add_doctor_arguments(parser: argparse.ArgumentParser) -> None:
         metavar="PATH",
         help="Override the output-directory writability check",
     )
-    parser.add_argument(
-        "--check-binaries",
-        action="store_true",
-        help="Run --version on opencode/gemini with a short timeout; disabled by default",
-    )
 
 
 def _run_doctor(argv: list[str]) -> int:
@@ -68,7 +62,6 @@ def _run_doctor(argv: list[str]) -> int:
         report = doctor.run_checks(
             integration=args.integration,
             output_dir=args.output_dir,
-            check_binaries=args.check_binaries,
         )
     except (ValueError, OSError) as error:
         parser.exit(1, f"{error}\n")
@@ -109,13 +102,9 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     agent.add_argument(
         "--experience-dir",
         help="Directory carrying skills/programs between episodes of a method that carries experience")
-    agent.add_argument("--agent",
-        dest="agent_backend",
-        choices=list_agent_backends(),
-        default=None,
-        help="Override the entry role's agent runtime (default: the recipe's)",
-    )
-    agent.add_argument("--model", help="Model ID or preset for the entry role (unless the recipe pins one)")
+    agent.add_argument("--model", help="Model preset for the entry role (evoab models; unless the recipe pins one)")
+    agent.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
+                       default=None, help="Reasoning effort of the entry role's model (default: the preset's)")
     services = common.add_argument_group("Services")
     # EvoAB starts the environment's container itself; connecting to an already running
     # environment service by URL is an internal and developer path, so it is not advertised.
@@ -131,19 +120,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         metavar="PATH",
         help="Path to an external observation enhancement pipeline YAML/JSON (or EVOAB_OBS_PIPELINE)",
     )
-    from evoab.agents.runtime import add_model_arguments
-    add_model_arguments(common)
-    parser.agent_options = {}
-    for backend in list_agent_backends():
-        before = set(common._option_string_actions)
-        get_agent_backend(backend).add_cli_arguments(common)
-        parser.agent_options[backend] = set(common._option_string_actions) - before
     output = common.add_argument_group("Output and diagnostics")
     output.add_argument("--output-dir")
-    output.add_argument(
-        "--save-exchanges", action=argparse.BooleanOptionalAction, default=True,
-        help="Archive model requests/responses; disabling releases temporary inputs after successful training export, retaining images and diagnostics",
-    )
     output.add_argument(
         "--telemetry", choices=("off", "standard"), default="standard",
         help="Record traces and diagnostics in the run directory (default: standard)")
@@ -166,11 +144,7 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     run = subparsers.add_parser(
         "run", parents=[common], allow_abbrev=False, help="Run an agent on one robot task"
     )
-    serve = subparsers.add_parser(
-        "serve", parents=[common], allow_abbrev=False,
-        help="Start one episode and serve its tools over MCP: any MCP agent, or evoab tools, drives the robot")
-    serve.add_argument("--mcp-port", type=int, default=18790, help="Local port of the MCP endpoint")
-    for command, timeout in ((run, 10800), (serve, 0)):
+    for command, timeout in ((run, 10800),):
         command.add_argument("--instruction", help="Override the environment's task instruction")
         command.add_argument("--episode-timeout-s", type=_nonnegative, default=timeout,
                              help="Episode wall-clock budget; excludes environment startup; 0 disables")
@@ -235,18 +209,6 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         service.add_argument("--output-dir", default="runs")
         add_runtime_arguments(service)
         add_launch_arguments(service)
-    tools = subparsers.add_parser("tools", help="List or call the tools of the episode `evoab serve` is serving",
-                                  allow_abbrev=False)
-    tools_actions = tools.add_subparsers(dest="tools_action", required=True)
-    tools_actions.add_parser("list", help="Tools an agent can call, with their arguments")
-    call = tools_actions.add_parser("call", help="Call one tool and print its result")
-    call.add_argument("name")
-    call.add_argument("--json", dest="arguments_json", default="{}", help="Arguments as a JSON object")
-    call.add_argument("--arg", action="append", default=[], metavar="KEY=VALUE",
-                      help="One argument; the value is read as JSON when it parses, else as text")
-    for parser_ in (tools, call):
-        parser_.add_argument("--url", help="MCP endpoint (default: the one `evoab serve` recorded)")
-    subparsers.add_parser("stop", help="Stop the episode `evoab serve` is serving", allow_abbrev=False)
     # Resource commands are dispatched before this parser runs (see main); listed here for --help.
     for name, text in WORKBENCH_COMMANDS.items():
         subparsers.add_parser(name, help=text, add_help=False)
@@ -291,10 +253,7 @@ def main(argv=None, *, _supervised=False) -> None:
         return
     if args.command == "run" and not 0 <= args.monitor_port <= 65535:
         parser.error("--monitor-port must be between 0 and 65535")
-    if args.command in ("tools", "stop"):
-        from evoab.services.mcp.cli import main as mcp_main
-        raise SystemExit(mcp_main(args))
-    if args.command in ("run", "serve") and args.deploy is None and not (args.env_url or os.environ.get("EVOAB_ENV_URL")):
+    if args.command == "run" and args.deploy is None and not (args.env_url or os.environ.get("EVOAB_ENV_URL")):
         args.deploy = "local"  # the default: start the prepared environment, run, and stop it
     if args.command in ("setup", "deploy"):
         from evoab.services.deployment.config import validate_deployment
@@ -331,11 +290,7 @@ def main(argv=None, *, _supervised=False) -> None:
     if args.command == "run" and args.recipe.loop.episodes.repeat > 1:
         from evoab.composition.episodes import run_sequence
         raise SystemExit(run_sequence(argv, args))
-    if args.command == "serve":
-        args._serve_owner_pid = os.getpid()
-    if args.command == "serve" and args.deploy == "local" or args.command == "run" and (
-        args.deploy == "local" or hasattr(get_agent_backend(args.agent_backend), "evaluator_plan")
-    ):
+    if args.command == "run" and args.deploy == "local":
         from evoab.services.deployment.manager import run_evaluation
         from evoab.services.deployment.process import enable_child_reaping
         enable_child_reaping()
@@ -373,10 +328,7 @@ def main(argv=None, *, _supervised=False) -> None:
     from evoab.telemetry.logging import configure_logging
 
     configure_logging(args.log_level)
-    if args.command == "run":
-        from evoab.session import run
-    else:
-        from evoab.session import serve as run
+    from evoab.session import run
     run(args)
 
 

@@ -8,7 +8,6 @@ roles:
     description: Plans and acts with the shared scene, motion, skill and episode tools.
     channel: tools
     capabilities: [skills, scene, gripper, episode]   # tool modules; narrow one with {id: gripper, tools: [move, hold]}
-    context: {policy: identity}    # identity: full transcript | sliding_window | observation_window (windows need a provider URL)
     prompt: {append: ""}           # extra method instructions
 loop: {entry: main}
 execution: {return_mode: background, resource_scheduling: per-resource}   # background: reasoning overlaps motion

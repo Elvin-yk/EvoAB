@@ -11,8 +11,8 @@ def register_agent(name: str):
     """Register an agent class.
 
     Usage:
-        @register_agent("codex")
-        class CodexAgent:
+        @register_agent("native")
+        class NativeAgent:
             def run(self, ...): ...
     """
 
@@ -37,14 +37,9 @@ def get_agent_backend(name: str) -> Any:
 
 # Agent registry
 
+# EvoAB runs one agent: the built-in agent over model presets.
 _BUILTIN_AGENTS: dict[str, str] = {
-    "claude_code": "evoab.agents.claude_code.agent:ClaudeCodeAgent",
-    "codex": "evoab.agents.codex.agent:CodexAgent",
-    "opencode": "evoab.agents.opencode.agent:OpenCodeAgent",
-    "antigravity": "evoab.agents.antigravity.agent:AntigravityAgent",
-    "gemini_cli": "evoab.agents.gemini_cli.agent:GeminiCliAgent",
     "native": "evoab.agents.native.agent:NativeAgent",
-    "q0_preview": "evoab.agents.q0_preview:Q0PreviewAgent",
 }
 
 

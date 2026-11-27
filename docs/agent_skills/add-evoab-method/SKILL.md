@@ -16,8 +16,8 @@ of `docs/architecture.md` before starting.
      (emits action chunks each inference);
    - capabilities: `skills`, `scene`, `gripper`, `hybrid`, `episode`,
      `delegate`, `observation` (`evoab methods components --integration X`);
-   - context policy; brain (agent runtime) — `native` drives tools/action,
-     `codex`/`claude_code` drive tools/code.
+   - brain: an optional model preset and effort per role (every role runs on
+     EvoAB's built-in agent).
    Multiple agents become roles connected with `delegate`. Cross-episode learning
    becomes `loop.episodes` with `carry: [programs]` or `[skills]`.
 2. Copy the closest built-in method directory and rename it; the directory name

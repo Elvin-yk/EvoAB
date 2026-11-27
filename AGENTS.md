@@ -25,9 +25,9 @@ families are examples of this architecture, not a closed list of allowed tools.
 |---|---|
 | `cli.py`, `config.py`, `session.py` | Resolve configuration and assemble/own the run lifecycle |
 | `composition/`, `methods/` | Recipes (roles, channels, capabilities, loops), their compilation, the method library and graphs |
-| `agents/` | Adapt planner SDKs, deliver tool calls through the executor, translate SDK events and records |
-| `provider/` | Connect model APIs: gateway, wire conversion, model-request retry and response delivery |
-| `context/` | Assemble prompts/history and apply context policies |
+| `agents/` | The built-in agent: run the model loop, deliver tool calls through the executor, record events |
+| `provider/` | Model presets: providers, models and usage (calls go through the presets' client) |
+| `context/` | Assemble prompts |
 | `tools/` | Define model-visible tool schemas, handlers, orchestration, feedback and resource requirements |
 | `direct/` | Direct policies: prompt packs, action-chunk representations, and the observe → infer → execute loop on episode contracts |
 | `execution/` | Schedule tool work, enforce resource exclusion and manage background jobs |
@@ -54,8 +54,8 @@ families are examples of this architecture, not a closed list of allowed tools.
 - Reuse compatible observation contracts and scene tools. Extend them or add
   a tool family for a different agent capability; native sensor setup belongs
   in the adapter. Expose only capabilities the selected environment supports.
-- Keep SDK-specific behavior in `agents/`, upstream wire differences in
-  `provider/`, and scheduling in `execution/`. Rendering and logging consume
+- Keep the agent loop in `agents/`, model connections in `provider/` presets,
+  and scheduling in `execution/`. Rendering and logging consume
   shared state/events; they do not implement robot control.
 - Keep native dependencies at service/startup boundaries so CLI help and offline
   configuration validation do not require robot or model runtimes.
@@ -88,7 +88,7 @@ families are examples of this architecture, not a closed list of allowed tools.
 
 Flag integration-local model tools, generic `execute_tool(name, args)` service
 routes, tool-family imports of native integrations, duplicated episode state,
-unsupported capabilities advertised to the planner, SDK-specific decisions in
+unsupported capabilities advertised to the planner, agent-specific decisions in
 generic scheduling, and robot control implemented in UI/telemetry. Review changes
 to shared contracts for affected callers and migration, not for conformity to
 an immutable tool list. For migrations, account for retained, replaced and

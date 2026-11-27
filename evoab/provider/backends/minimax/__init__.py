@@ -1,1 +1,0 @@
-"""MiniMax model-provider adapters."""

@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import shlex
-import sys
 
 from evoab.context.prompt import Prompt
 from evoab.tools.results import ArmFeedback, MotionFeedback, ResultFields, ResultState
@@ -120,8 +118,7 @@ An exception may follow partial execution; never blindly replay the script.
     return "\n".join(sections)
 
 
-def prepare_code_policy(schemas: list[dict], session_dir: Path, prompt: Prompt, *,
-                        own_shell: bool = True) -> Prompt:
+def prepare_code_policy(schemas: list[dict], session_dir: Path, prompt: Prompt) -> Prompt:
     scratch = session_dir.resolve() / "scratch"
     scratch.mkdir(parents=True, exist_ok=True)
     api = scratch / "robot_api.md"
@@ -148,16 +145,9 @@ Finish only through the declared finish operation after verifying the task.
         sections.append(f"## {spec['name']}\n\n{spec.get('description', '')}\n\n"
                         f"```json\n{json.dumps(spec['input_schema'], indent=2)}\n```")
     api.write_text("\n\n".join(sections) + "\n", encoding="utf-8")
-    if own_shell:
-        prompt = prompt.append(system=(
-            f"Read the generated API at {api} before controlling the robot. "
-            f"Run your scripts with {shlex.quote(sys.executable)}. "
-            f"Your working directory is {scratch}; connection settings are already in the environment."
-        ), source=str(api))
-    else:
-        # Without a terminal the agent cannot open the file, so the API goes into the prompt.
-        from evoab.execution.code_as_policy.runner import PROMPT
-        prompt = prompt.append(system="\n\n".join(sections) + "\n\n" + PROMPT.format(scratch=scratch),
-                               source=str(api))
+    # The agent runs programs through run_program, so the API goes into the prompt.
+    from evoab.execution.code_as_policy.runner import PROMPT
+    prompt = prompt.append(system="\n\n".join(sections) + "\n\n" + PROMPT.format(scratch=scratch),
+                           source=str(api))
     (session_dir / "effective_prompt.md").write_text(prompt.flatten(), encoding="utf-8")
     return prompt

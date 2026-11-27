@@ -9,11 +9,11 @@ delegate capability.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from evoab.composition.components import ALL_CHANNELS, HARNESS_CAPABILITIES, agent_channels, is_evaluator
+from evoab.composition.components import HARNESS_CAPABILITIES
 from evoab.composition.recipe import Recipe, Role
 from evoab.integrations.composition import SelectedModule, module_catalog
 
@@ -28,16 +28,7 @@ class CompiledRole:
     delegates: tuple[str, ...] = ()
     observation_profile: str = "none"
     direct: Any | None = None
-    context: dict = field(default_factory=dict)
     prompt_text: str = ""
-
-    @property
-    def agent(self) -> str | None:
-        """The pinned agent; ``None`` follows the run's agent. Action roles use the direct runner."""
-        return "native" if self.role.channel == "action" else self.role.brain.agent
-
-    def agent_for(self, run_agent: str) -> str:
-        return self.agent or run_agent
 
     @property
     def channel(self) -> str:
@@ -90,10 +81,6 @@ def compile_recipe(recipe: Recipe, spec: Any, *, base_dir: Path | None = None) -
 
 def _compile_role(name: str, role: Role, catalog: dict, spec: Any, base_dir: Path | None) -> CompiledRole:
     where = f"role {name!r}"
-    channels = agent_channels(role.brain.agent) if role.brain.agent and role.channel != "action" else ALL_CHANNELS
-    if role.channel not in channels:
-        raise ValueError(f"{where}: agent {role.brain.agent!r} drives {', '.join(channels)}, "
-                         f"not the {role.channel} channel")
     modules, delegates, observation = [], (), "none"
     for capability in role.capabilities:
         if capability.id == "delegate":
@@ -125,7 +112,7 @@ def _compile_role(name: str, role: Role, catalog: dict, spec: Any, base_dir: Pat
         raise ValueError(f"{where}: initial_observation requires the scene capability")
     direct = _direct_config(role, base_dir) if role.channel == "action" else None
     return CompiledRole(name, role, tuple(modules), delegates, observation, direct,
-                        _context(role), _prompt_text(role, base_dir))
+                        _prompt_text(role, base_dir))
 
 
 def _direct_config(role: Role, base_dir: Path | None):
@@ -154,31 +141,6 @@ def _direct_config(role: Role, base_dir: Path | None):
         repair_attempts=action.repair_attempts, max_calls=action.max_calls)
 
 
-def _context(role: Role) -> dict:
-    context = role.context
-    options: dict[str, Any] = {}
-    if context.policy == "sliding_window":
-        if context.max_input_tokens is None or context.target_input_tokens is None:
-            raise ValueError("sliding_window requires context.max_input_tokens and context.target_input_tokens")
-        options = {
-            "max_estimated_input_tokens": context.max_input_tokens,
-            "target_estimated_input_tokens": context.target_input_tokens,
-            "reserve_output_tokens": 0,
-            "keep_recent_blocks": context.keep_recent_blocks,
-            "keep_observation_blocks": context.keep_observation_blocks,
-            "min_recent_tool_images": context.min_recent_tool_images,
-            "image_eviction_batch_size": context.image_eviction_batch_size,
-        }
-    elif context.policy == "observation_window":
-        options = {
-            "observation_horizon": context.observation_horizon,
-            "keep_recent_blocks": context.keep_recent_blocks,
-            "max_estimated_input_tokens": context.max_input_tokens,
-            "image_token_allowance": context.image_token_allowance,
-        }
-    return {"context_policy": context.policy, "context_options": options}
-
-
 def _resolve(path: str, base_dir: Path | None) -> Path:
     candidate = Path(path).expanduser()
     if not candidate.is_absolute():
@@ -202,34 +164,24 @@ def _prompt_text(role: Role, base_dir: Path | None) -> str:
 # -- run settings -----------------------------------------------------------------
 
 #: CLI flags that override the entry role's brain when given explicitly.
-BRAIN_FLAGS = {"--agent": "agent_backend", "--model": "model", "--reasoning-effort": "reasoning_effort"}
+BRAIN_FLAGS = {"--model": "model", "--reasoning-effort": "reasoning_effort"}
 
 
 def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = frozenset()) -> None:
     """Write the entry role's settings onto the run namespace.
 
-    Explicit ``--agent``/``--model``/``--reasoning-effort`` win over the recipe
-    (which run, which model); everything about how the agent works comes from the
-    recipe, overridden only through ``--set``.
+    Explicit ``--model``/``--reasoning-effort`` win over the recipe (which model);
+    everything about how the agent works comes from the recipe, overridden only
+    through ``--set``. Every role runs on the built-in agent.
     """
     recipe, entry = compiled.recipe, compiled.entry
     brain = entry.role.brain
-    if "--agent" not in explicit or getattr(args, "agent_backend", None) is None:
-        args.agent_backend = brain.agent or "native"
-    if entry.channel == "action":
-        # One stateless model request per chunk: the direct runner, whatever agent was chosen.
-        args.agent_backend = "native"
+    args.agent_backend = "native"
     if ("--model" not in explicit or not getattr(args, "model", None)) and (brain.model or brain.model_preset):
         args.model = brain.model or brain.model_preset
-        if brain.model_preset:
-            args.model_preset = True
     if "--reasoning-effort" not in explicit and brain.reasoning_effort is not None:
         args.reasoning_effort = brain.reasoning_effort
     args.max_turns = entry.role.max_turns
-    evaluator = [name for name in {args.agent_backend, brain.agent} - {None} if is_evaluator(name)]
-    if evaluator and args.agent_backend != brain.agent:
-        raise ValueError(f"{evaluator[0]} is an external evaluator: it runs only methods written for it, "
-                         f"not {recipe.id!r} with --agent {args.agent_backend}")
     args.recipe = recipe
     args.recipe_id = recipe.id
     args.recipe_dir = str(compiled.base_dir) if compiled.base_dir else None
@@ -244,8 +196,6 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
     args.delegates = entry.delegates
     args.direct_config = entry.direct
     args.prompt_append = entry.prompt_text
-    args.context_policy = entry.context["context_policy"]
-    args.context_options = entry.context["context_options"]
     selections = [item for role in compiled.roles.values() for item in role.modules]
     args.segmentation = any(item.name == "scene" and item.selection.options.segmentation for item in selections)
     policy = next((item.selection.options for item in selections if item.name == "hybrid"), None)
@@ -258,7 +208,6 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
     args.tool_return_mode = execution.return_mode
     args.resource_scheduling = execution.resource_scheduling
     args.execution_mode = execution.mode
-    args.model_parallel_tool_calls = execution.parallel_tool_calls
     args.observation_profile = entry.observation_profile if entry.observation_profile != "none" \
         else execution.observation_profile
     if args.tool_style == "compact":

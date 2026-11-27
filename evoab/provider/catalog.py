@@ -90,11 +90,7 @@ def settings() -> dict[str, Any]:
     """Providers (configured first, then addable built-ins) and model presets, without secrets."""
     _activate()
     from nanobot.webui import settings_api
-    from evoab.provider import antigravity_acp
-    payload = antigravity_acp.decorate_settings_payload(
-        settings_api.settings_payload(config_path=config_path()),
-        config_path=config_path(),
-    )
+    payload = settings_api.settings_payload(config_path=config_path())
     providers = [{k: p.get(k) for k in _PROVIDER_FIELDS if k in p} for p in payload["providers"]]
     presets = [{k: p.get(k) for k in _PRESET_FIELDS if k in p} for p in payload["model_presets"] if p["name"] != "default"]
     providers.sort(key=lambda p: (not p.get("configured"), not p.get("is_custom"), p.get("label") or p["name"]))
@@ -110,9 +106,6 @@ def presets(config=None) -> list[dict[str, Any]]:
 
 
 def provider_models(provider: str, refresh: bool = False) -> dict[str, Any]:
-    if provider == "antigravity":
-        from evoab.provider import antigravity_acp
-        return antigravity_acp.provider_models_payload(refresh=refresh)
     from nanobot.webui import settings_api
     return _call(settings_api.provider_models_payload, {"provider": provider, "refresh": "1" if refresh else None})
 
@@ -128,15 +121,6 @@ def usage() -> dict[str, Any]:
 
 def save_preset(fields: dict[str, Any], *, existing: str | None = None) -> dict[str, Any]:
     from nanobot.webui import settings_api
-    if fields.get("provider") == "antigravity":
-        from evoab.provider import antigravity_acp
-        _activate()
-        if not antigravity_acp.oauth_status()["configured"]:
-            raise CatalogError(
-                "sign in to Google Antigravity first (Studio Settings -> Models or `evoab models login antigravity`)",
-                400,
-            )
-        antigravity_acp.sync_config_provider(config_path(), enabled=True)
     if existing:
         _call(settings_api.update_model_configuration, {**fields, "name": existing,
                                                          "new_name": fields.get("name") or existing})
@@ -218,11 +202,7 @@ class ModelClient:
         self.max_tokens = max_tokens or resolved.max_tokens
         self.temperature = resolved.temperature
         self.context_window_tokens = resolved.context_window_tokens
-        if resolved.provider == "antigravity":
-            from evoab.provider.antigravity_acp import AntigravityAcpLLMProvider
-            self._provider = AntigravityAcpLLMProvider(default_model=resolved.model)
-        else:
-            self._provider = make_provider(config, preset_name=preset)
+        self._provider = make_provider(config, preset_name=preset)
         self._provider.set_llm_call_observer(record_llm_call)  # every physical call lands in the usage store
         self._loop = asyncio.new_event_loop()
 

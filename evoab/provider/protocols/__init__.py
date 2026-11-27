@@ -1,1 +1,0 @@
-"""Injectable client model protocols."""

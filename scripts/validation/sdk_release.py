@@ -18,7 +18,6 @@ def main():
     parser.add_argument('wheel', type=Path)
     parser.add_argument('directory', type=Path)
     parser.add_argument('--installer', choices=('pip', 'uv'), default='pip')
-    parser.add_argument('--antigravity', action='store_true', help='Also install and check the optional SDK')
     parser.add_argument('--wheelhouse', type=Path)
     parser.add_argument('--upgrade-from', help='Install this published main-package version before upgrading')
     parser.add_argument('--check-uninstall', action='store_true',
@@ -40,7 +39,7 @@ def main():
     source = ['--no-index', '--find-links', args.wheelhouse.resolve()] if args.wheelhouse else []
     if args.upgrade_from:
         command([*install, *source, f'evoab=={args.upgrade_from}'])
-    command([*install, *source, str(wheel) + ('[antigravity]' if args.antigravity else '')])
+    command([*install, *source, str(wheel)])
     command([python, '-I', '-c', '''import pathlib,sys,evoab
 for name in evoab.__all__:
     getattr(evoab, name)
@@ -53,58 +52,17 @@ print('Installed SDK:', evoab.__file__)
     command([executable, '--version'])
     command([executable, '--help'])
     command([python, '-m', 'evoab', '--version'])
+    # Offline method checks: the built-in agent needs no model or credential to validate a recipe.
     for integration in ('robodojo', 'robolab', 'robotwin', 'libero', 'libero_plus',
                         'libero_pro', 'rmbench', 'calvin', 'arx_one'):
-        command([python, '-m', 'evoab', 'run', '--integration', integration,
-                 '--model', 'validation-model', '--task', 'validation-task',
-                 '--env-url', 'http://127.0.0.1:18760',
-                 '--recipe', 'agentic', '--agent', 'codex',
-                 '--agent-python', python, '--validate-config'])
-    for backend, runtime_options in (
-        ('antigravity', []),
-        ('opencode', ['--opencode-version', 'offline-candidate']),
-        ('gemini_cli', ['--gemini-version', 'offline-candidate',
-                        '--gemini-bridge-manifest', 'offline-manifest.json']),
-    ):
-        command([python, '-m', 'evoab', 'run', '--integration', 'libero_pro',
-                 '--agent', backend, '--model', 'qwen-validation', '--recipe', 'agentic',
-                 '--env-url', 'http://127.0.0.1:18760',
-                 '--provider-url', 'https://provider.invalid/v1', *runtime_options, '--validate-config'])
-    if args.antigravity:
-        command([python, '-I', '-c', '''from importlib.metadata import distribution
-from pathlib import Path
-from google.antigravity import Agent, LocalAgentConfig
-from evoab.agents.antigravity.config import SDK_VERSION
-dist = distribution('google-antigravity')
-assert dist.version == SDK_VERSION
-assert Path(dist.locate_file('google/antigravity/bin/localharness')).is_file()
-assert callable(Agent) and callable(LocalAgentConfig)
-print('Optional Antigravity SDK:', dist.version)
-'''])
-    for integration, binding in (('robodojo', 'robodojo_pi05'),
-                                 ('robodojo', 'robodojo_x5_joint'),
-                                 ('robolab', 'robolab_droid_joint'),
-                                 ('dexjoco', 'dexjoco_tcp_hand')):
-        command([python, '-m', 'evoab', 'run', '--integration', integration,
-                 '--task', 'validation-task', '--model', 'validation-model',
-                 '--env-url', 'http://127.0.0.1:18760',
-                 '--recipe', 'agent_policy', '--agent', 'codex', '--set', f'roles.main.capabilities.hybrid.options.binding={binding}',
-                 '--action-model-url', 'http://127.0.0.1:18761',
-                 '--action-model-checkpoint-sha256', 'a' * 64, '--set', 'roles.main.capabilities.hybrid.options.review=false',
-                 '--agent-python', python, '--validate-config'])
-    command([python, '-m', 'evoab', 'run', '--integration', 'robodojo',
-             '--agent', 'codex', '--model', 'hy4', '--provider-profile', 'tencent.responses',
-             '--provider-url', 'https://tokenhub.tencentmaas.com/v1',
-             '--reasoning-effort', 'high', '--recipe', 'agentic',
-             '--env-url', 'http://127.0.0.1:18760',
-             '--agent-python', python, '--validate-config'])
+        command([python, '-m', 'evoab', 'methods', 'validate', 'agentic', '--integration', integration])
+    for integration in ('robodojo', 'robolab', 'dexjoco'):
+        command([python, '-m', 'evoab', 'methods', 'validate', 'agent_policy', '--integration', integration])
     command([python, '-I', '-c', """from pathlib import Path
 from importlib.util import find_spec
 import evoab
 from evoab import Session, SessionConfig, SetupConfig, DeploymentConfig
 from evoab.context.prompt import get_prompt_builder
-from evoab.provider.registry import build_provider_adapter
-assert build_provider_adapter('tencent.responses', client_protocol='responses').profile_name == 'tencent.responses'
 from evoab.integrations.robodojo.action_binding import create_binding as x5_binding
 from evoab.integrations.robolab.action_binding import create_binding as droid_binding
 from evoab.tools.hybrid.provider import HybridTools
@@ -116,7 +74,6 @@ assert not any(name in sys.modules for name in ('isaacsim', 'mujoco', 'torch', '
 root = Path(evoab.__file__).parent
 assert callable(get_prompt_builder('robodojo'))
 for resource in ('ui/web/static/index.html', 'ui/web/static/app.js',
-                 'agents/opencode/bridge.js', 'agents/gemini_cli/robotBridge.ts',
                  'integrations/robodojo/deployment.toml',
                  'integrations/dexjoco/deployment.toml', 'integrations/dexjoco/SOURCE.md',
                  'resources/prompts/dexjoco/hybrid.md', 'resources/skills/dexjoco/index.md',

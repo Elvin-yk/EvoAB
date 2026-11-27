@@ -51,9 +51,7 @@ evoab models list
 evoab usage
 ```
 
-Any method runs with any agent. Studio uses the built-in agent; the CLI also runs
-Codex, Claude Code, OpenCode, Gemini CLI and Antigravity with `--agent`
-(`--model-preset` makes them take model, endpoint and key from a preset).
+Every method runs on EvoAB's built-in agent; `--model` picks the preset.
 
 ## Studio
 
@@ -98,30 +96,12 @@ evoab run --integration robodojo --task stack_bowls --recipe agentic --model my-
 | `--task`, `--seed`, `--layout-id`, `--layout`, `--instruction` | The episode and scene |
 | `--env-gpu` | Which GPU the environment uses |
 | `--sam3-url`, `--action-model-url`, `--action-model-checkpoint-sha256` | Where perception and policy services run, and which checkpoint |
-| `--agent`, `--model`, `--model-preset`, `--reasoning-effort` | Which agent runtime and model |
+| `--model`, `--reasoning-effort` | Which model preset, and its effort |
 | `--episode-timeout-s`, `--output-dir`, `--experience-dir`, `--monitor` | Wall-clock budget, outputs, live console |
 | `--debug` | Verbose logs and raw model requests in the run record; never changes what the agent sees or does |
 | `--validate-config`, `--print-config` | Check or print the resolved configuration offline |
 
-`evoab run --integration X --help` lists everything, including where external
-agent runtimes are installed (`--agent-python`, `--opencode-binary`, …), model
-transport timeouts and Claude Code's `--claude-max-budget-usd` cost cap. None of
-these changes the prompt or tools: every agent gets the same robot prompt and only
-the recipe's tools.
-
-**Drive an episode from your own agent.** `evoab serve` takes the same flags as
-`evoab run` but starts no agent: it starts the environment and serves the
-recipe's tools over MCP until `evoab stop`. Any MCP client becomes the agent, and
-tool calls keep the same scheduling and run record:
-
-```bash
-evoab serve --integration metaworld --task reach-v3 --recipe agentic
-evoab tools list
-evoab tools call view_env_state
-evoab tools call move --json '{"targets": [{"arm": "arm", "pose": [0.0, 0.6, 0.2, 3.14, 0, 1.57]}]}'
-claude mcp add --transport http evoab http://127.0.0.1:18790/mcp/   # or any MCP client
-evoab stop
-```
+`evoab run --integration X --help` lists everything.
 
 **Outcomes.** Tool success, agent completion and task success are separate. The
 agent ends with `finish`, which returns an acknowledgement; the environment
@@ -157,11 +137,11 @@ execution: {return_mode: immediate}
 | Part | Settings |
 |---|---|
 | `inputs` | `depth`, `calibration` (applied when EvoAB starts the environment), `task_supplements` (environments that publish them) |
-| Role `channel` | `tools` (tool calls), `code` (Python programs against the robot API: Codex and Claude Code in their own terminal, every other agent through `run_program`), `action` (one stateless request per action chunk: `abs_eef`, `delta_eef`, `joint_abs`) |
+| Role `channel` | `tools` (tool calls), `code` (Python programs against the robot API, run through the `run_program` tool), `action` (one stateless request per action chunk: `abs_eef`, `delta_eef`, `joint_abs`) |
 | Role `capabilities` | Tool modules, optionally narrowed (`tools`) and configured (`options`); `{id: X, optional: true}` is skipped where missing. `scene` has `segmentation` (SAM3 for `locate`); `hybrid`, the policy tool, has `binding` and `review` |
-| Role `context`, `prompt`, `max_turns`, `brain` | History policy (`identity`, `sliding_window`, `observation_window`), method instructions, turn budget, an optional pinned model or effort |
+| Role `prompt`, `max_turns`, `brain` | Method instructions, turn budget, an optional model preset or effort for this role |
 | `loop` | Entry role; `episodes.repeat`, `carry: [skills]` or `[programs]`, `keep: success\|always` |
-| `execution` | Return mode, resource scheduling, replanning, `parallel_tool_calls` ([architecture](architecture.md#scheduling)) |
+| `execution` | Return mode, resource scheduling, replanning ([architecture](architecture.md#scheduling)) |
 
 Every built-in `method.yaml` writes out its settings with a comment on each, so
 reading the file is the documentation. Change a value in a copy of the file, or

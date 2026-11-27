@@ -23,12 +23,12 @@ from evoab.events.subscribers import (
     EventJsonlSubscriber,
     EventSubscriptions,
 )
-from evoab.config import resolve_context_config, resolve_agent_model_config, runtime_env
+from evoab.config import runtime_env
 from evoab.context.prompt import PromptContext, assemble_prompt, get_prompt_builder
 from evoab.events import ErrorEvent, EventBus, AgentRunFinished, Event
 from evoab.observation import load_observation_profile
 from evoab.agents import create_agent, get_agent_backend
-from evoab.agents.contracts import AgentInterrupted, CodePolicyContext
+from evoab.agents.contracts import AgentInterrupted
 from evoab.integrations import load_integration
 from evoab.integrations.base import (
     IntegrationSession,
@@ -181,7 +181,7 @@ def assemble_session(args) -> SessionAssembly:
                 target = compiled.roles[name]
                 from evoab.tools.delegation.provider import DelegateTarget
                 targets[name] = DelegateTarget(name, target.role.description, target.channel,
-                                               target.agent_for(args.agent_backend))
+                                               "native")
         if targets:
             from evoab.tools.delegation.provider import DelegationTools, tool_policies as delegation_policies
             dispatch = RoleDispatch()
@@ -505,10 +505,7 @@ class Session:
                 if args.channel == "action":
                     self._agent_result = _run_direct(self._agent, args, assembly, self.events)
                 else:
-                    self._agent_result = _run_agent(self._agent,
-                        model_config=resolve_agent_model_config(args), context_config=resolve_context_config(args),
-                        channel=args.channel,
-                        save_raw_request=args.telemetry == "debug", save_exchanges=args.save_exchanges,
+                    self._agent_result = _run_agent(self._agent, channel=args.channel,
                         artifacts=assembly.artifacts, tracer=assembly.telemetry.tracer,
                         prompt=assembly.build_prompt(args.instruction), task=args.instruction,
                         toolkit=assembly.toolkit, executor=assembly.entry_executor, max_turns=args.max_turns,
@@ -562,12 +559,7 @@ class Session:
                 else:
                     view = ToolView(assembly.executor, assembly.role_tools[role],
                                     registered=assembly.toolkit.get_tool_names(), job_tools=compiled.role.job_tools, role=role)
-                    result = _run_agent(agent,
-                        model_config=resolve_agent_model_config(role_args),
-                        context_config={"context_policy": role_args.context_policy,
-                                        "context_options": dict(role_args.context_options)},
-                        channel=compiled.channel, save_raw_request=args.telemetry == "debug",
-                        save_exchanges=args.save_exchanges, artifacts=assembly.artifacts,
+                    result = _run_agent(agent, channel=compiled.channel, artifacts=assembly.artifacts,
                         tracer=assembly.telemetry.tracer, prompt=assembly.build_prompt(instruction, role),
                         task=instruction, toolkit=assembly.toolkit, executor=view,
                         max_turns=compiled.role.max_turns, event_bus=self.events, session_dir=run_dir,
@@ -818,64 +810,6 @@ def _finalize_run(assembly, subscriptions, args, result, error_msg, started, *, 
     return RunResult(assembly.session_dir, record, exit_code)
 
 
-SERVE_STATE = Path(os.environ.get("EVOAB_STATE_DIR", Path.home() / ".cache" / "evoab")) / "serve.json"
-
-
-def serve(args) -> None:
-    """Serve one episode's tools over MCP until stopped; no agent runs inside EvoAB.
-
-    Any MCP client (Claude Code, Cursor, ``evoab tools``) becomes the agent. Tool
-    calls go through the same executor, scheduling and records as ``evoab run``.
-    """
-    import signal
-    from evoab.services.mcp.http import HttpMcpServer
-    from evoab.events.subscribers import EventJsonlSubscriber
-
-    if args.channel == "action" or len(args.compiled_recipe.roles) > 1:
-        raise SystemExit("evoab serve exposes the tools of a one-role tools or code recipe "
-                         f"({args.recipe_id!r} is not one)")
-    assembly = assemble_session(args)
-    bus = EventBus()
-    subscriptions = EventSubscriptions(bus)
-    server = None
-    stop = threading.Event()
-    previous = signal.signal(signal.SIGTERM, lambda *_: stop.set())
-    try:
-        subscriptions.add(EventJsonlSubscriber(assembly.session_dir, artifacts=assembly.artifacts))
-        assembly.toolkit.set_event_bus(bus)
-        server = HttpMcpServer(assembly.entry_executor, port=args.mcp_port, event_bus=bus)
-        url = server.start()
-        owner = getattr(args, "_serve_owner_pid", None) or os.getpid()
-        SERVE_STATE.parent.mkdir(parents=True, exist_ok=True)
-        SERVE_STATE.write_text(json.dumps({
-            "url": url, "pid": owner, "integration": args.integration, "task": getattr(args, "task", None),
-            "recipe": args.recipe_id, "run_dir": str(assembly.session_dir),
-            "tools": [spec["name"] for spec in assembly.entry_executor.get_tool_schemas()]}, indent=2) + "\n")
-        print(f"Serving {args.integration} episode tools at {url}\n"
-              f"  evoab tools list                      # what an agent can call\n"
-              f"  evoab tools call NAME --json '{{...}}'  # call one tool\n"
-              f"  claude mcp add --transport http evoab {url}\n"
-              f"  evoab stop                            # end the episode\n"
-              f"Run record: {assembly.session_dir}", flush=True)
-        while not stop.wait(0.5):
-            pass
-    except KeyboardInterrupt:
-        pass
-    finally:
-        signal.signal(signal.SIGTERM, previous)
-        if server is not None:
-            server.stop()
-        try:
-            if json.loads(SERVE_STATE.read_text()).get("run_dir") == str(assembly.session_dir):
-                SERVE_STATE.unlink()
-        except (OSError, ValueError):
-            pass
-        for resource in (assembly.executor, assembly.observation_profile, assembly.integration_session,
-                         assembly.obs_proxy, assembly.telemetry, subscriptions):
-            close_resource(resource)
-        finish_artifacts(assembly.artifacts)
-
-
 def _result_exit_code(*, outcome, task_success, agent_result, error_msg) -> int:
     """Return 75 for retryable outcomes, 0 for success, and 1 for other failures."""
     if outcome.retryable:
@@ -909,43 +843,16 @@ def _run_direct(agent, args, assembly, event_bus):
 def _run_agent(
     agent,
     *,
-    model_config,
-    context_config,
     artifacts=None,
-    save_raw_request=False,
-    save_exchanges=True,
     channel="tools",
     tracer=None,
     announce_finish=True,
     **request,
 ):
-    """Own the model endpoint for one SDK run and finalize its immutable records."""
-    from evoab.provider import ProviderGateway
-
+    """Run the built-in agent once; the code channel reaches the robot through run_program."""
     session_dir = request.get("session_dir")
     event_bus = request.get("event_bus")
-    gateway = None
     code_bridge = None
-    model_runtime = None
-    if model_config is not None and model_config.base_url:
-        model_runtime = agent.model_runtime(model_config.adapter, event_bus)
-        gateway = ProviderGateway(
-            model_config.base_url,
-            adapter=model_runtime.adapter,
-            protocol=model_runtime.protocol,
-            trace_dir=Path(session_dir) / model_runtime.trace_directory if session_dir else None,
-            artifacts=artifacts,
-            request_timeout_s=model_config.request_timeout_s,
-            max_retries=model_config.max_retries,
-            retry_backoff_initial_s=model_config.retry_backoff_initial_s,
-            model_parallel_tool_calls=model_config.parallel_tool_calls,
-            save_raw_request=save_raw_request,
-            save_exchanges=save_exchanges,
-            tracer=tracer,
-            model_binding=model_runtime.binding,
-            event_bus=event_bus,
-            **context_config,
-        )
     result = None
     interruption = None
     cleanup_errors = []
@@ -957,40 +864,28 @@ def _run_agent(
             cleanup_errors.append(f"Cancellation failed: {exc}")
 
     try:
-        endpoint = gateway.start() if gateway is not None else None
         if channel == "code":
             from evoab.context.code_as_policy import prepare_code_policy
             from evoab.execution.code_as_policy.bridge import CodePolicyBridge
+            from evoab.execution.code_as_policy.runner import ProgramTools
 
             code_bridge = CodePolicyBridge(request["executor"], event_bus=event_bus)
             code_url = code_bridge.start()
             code_root = Path(session_dir).resolve()
-            # Agents with their own terminal run programs there; any other agent gets run_program.
-            own_shell = bool(getattr(type(agent), "runs_programs", False))
-            request["prompt"] = prepare_code_policy(
-                code_bridge.get_tool_schemas(), code_root, request["prompt"], own_shell=own_shell,
-            )
+            request["prompt"] = prepare_code_policy(code_bridge.get_tool_schemas(), code_root, request["prompt"])
             env = {"EVOAB_CODE_URL": code_url,
                    "EVOAB_CODE_IMAGES": str(code_root / "images" / "code_as_policy"),
                    # Keep checkout imports available from scratch as well as installed wheels.
                    "PYTHONPATH": os.pathsep.join(filter(None, [
                        str(Path(__file__).resolve().parent.parent), os.environ.get("PYTHONPATH"),
                    ]))}
-            # Only knowledge tools stay native; observations, motion and finish go through programs.
+            # Only knowledge tools stay direct; observations, motion and finish go through programs.
             knowledge = ToolView(code_bridge, {"list_skills", "read_skill"},
                 denial="Only skill discovery and reading are available directly in the code channel; "
                        "call robot operations from your programs")
-            if own_shell:
-                request["code_policy"] = CodePolicyContext(
-                    cwd=str(code_root / "scratch"), env=env,
-                    finish_request=lambda: code_bridge.finish_request, revoke=code_bridge.revoke,
-                )
-                request["executor"] = knowledge
-            else:
-                from evoab.execution.code_as_policy.runner import ProgramTools
-                request["executor"] = ProgramTools(knowledge, cwd=code_root / "scratch", env=env,
-                                                   image_dir=code_root / "images" / "code_as_policy")
-        result = agent.run(model_endpoint=endpoint, **request)
+            request["executor"] = ProgramTools(knowledge, cwd=code_root / "scratch", env=env,
+                                               image_dir=code_root / "images" / "code_as_policy")
+        result = agent.run(**request)
         if result.stop_reason or result.error:
             cancel_agent(result.stop_reason or "agent_error")
     except AgentInterrupted as error:
@@ -1012,39 +907,12 @@ def _run_agent(
                 code_bridge.close()
             except Exception as exc:
                 cleanup_errors.append(f"Code policy cleanup failed: {exc}")
-        if gateway is not None:
-            try:
-                gateway.stop()
-            except Exception as exc:
-                cleanup_errors.append(f"Provider cleanup failed: {exc}")
     if cleanup_errors:
         result.cleanup_error = "; ".join(cleanup_errors)
         result.error = result.error or result.cleanup_error
-        result.train_error = result.cleanup_error
         logger.error(result.cleanup_error)
         if event_bus is not None:
             event_bus.emit(ErrorEvent(message=result.cleanup_error))
-        if gateway is not None:
-            gateway.persist_report(
-                {
-                    "cleanup_error": result.cleanup_error,
-                    "records_frozen": False,
-                    "agent_error": result.error,
-                    "train_error": result.train_error,
-                    "generated_at": time.time(),
-                }
-            )
-    elif gateway is not None:
-        try:
-            model_runtime.finalize_records(gateway, result, session_dir, event_bus)
-        except Exception as exc:
-            result.train_error = f"Model record finalization failed: {exc}"
-            result.error = result.error or result.train_error
-            logger.exception("Model record finalization failed")
-            if event_bus is not None:
-                event_bus.emit(ErrorEvent(message=result.train_error))
-    else:
-        agent.finalize_without_provider(result, session_dir)
     task_success = None
     solved = getattr(request.get("toolkit"), "task_succeeded", None)
     if callable(solved):
