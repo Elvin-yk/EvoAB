@@ -18,7 +18,8 @@ under the same environments and evaluation.
 
 ## Quickstart
 
-Linux with Python 3.11. MetaWorld needs no GPU.
+Linux with Python 3.11 and Docker. Environments run in containers; MetaWorld
+needs no GPU, and `evoab setup` builds its small image once.
 
 ```bash
 git clone https://github.com/Elvin-yk/EvoAB.git && cd EvoAB
@@ -47,8 +48,7 @@ Ask me before any command that needs sudo, and tell me the Studio URL when done.
 ## Methods
 
 A method is a directory with `method.yaml` (the recipe) and `CARD.md` (paper,
-setting, results). Any agent and any model preset runs any method; only external
-evaluators bring their own agent.
+setting, results). The built-in agent runs the method with the selected model preset.
 
 | Method | Paradigm | How it acts |
 |---|---|---|
@@ -70,12 +70,12 @@ evoab run --integration robodojo --task stack_bowls \
 
 | Type | Integrations |
 |---|---|
-| Simulation | RoboDojo, MetaWorld, LIBERO / LIBERO-Plus / LIBERO-PRO, RoboTwin 2.0, RMBench, CALVIN, RoboLab, DexJoCo |
-| Experimental | BEHAVIOR (R1Pro), IsaacLab Arena (G1) |
+| Simulation | RoboDojo, MetaWorld, LIBERO / LIBERO-Plus / LIBERO-PRO, RoboTwin 2.0, CALVIN, your own image |
 | Real robot | ARX ONE, Piper-X |
 
-Benchmarks with a container recipe deploy as Docker runtimes in one step
-(Studio: 设置 → 评测集 → 部署).
+Prepare a benchmark image with `evoab setup` or Studio (设置 → 评测集 → 部署).
+`evoab run` starts its container for each episode. For methods that use a policy
+or SAM3, start that service yourself and pass `--action-model-url` or `--sam3-url`.
 
 ## Documentation
 

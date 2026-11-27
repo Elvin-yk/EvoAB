@@ -8,7 +8,6 @@ class BackendDefinition:
     name: str
     package: str
     backend_class: str
-    deployment_module: str | None = None
 
     def resolve_config(self, settings):
         return import_module(f"{self.package}.config").resolve_config(settings)
@@ -20,18 +19,10 @@ class BackendDefinition:
         factory = getattr(import_module(f"{self.package}.backend"), self.backend_class)
         return factory(config)
 
-    def deployment(self):
-        if self.deployment_module is None:
-            raise ValueError(f"Actor backend {self.name!r} has no managed deployment; launch its service directly")
-        return import_module(self.deployment_module)
-
 
 _PACKAGE = "evoab.services.actor.backends"
 _BACKENDS = {
-    "openpi": BackendDefinition("openpi", f"{_PACKAGE}.openpi", "OpenpiBackend",
-                                f"{_PACKAGE}.openpi.deployment"),
-    "gr00t": BackendDefinition("gr00t", f"{_PACKAGE}.gr00t", "Gr00tBackend",
-                              f"{_PACKAGE}.gr00t.deployment"),
+    "openpi": BackendDefinition("openpi", f"{_PACKAGE}.openpi", "OpenpiBackend"),
     "xpolicylab": BackendDefinition("xpolicylab", f"{_PACKAGE}.xpolicylab", "XPolicyLabBackend"),
     "starvla_calvin": BackendDefinition("starvla_calvin", f"{_PACKAGE}.starvla_calvin", "StarVLACalvinBackend"),
 }

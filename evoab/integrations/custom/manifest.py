@@ -3,9 +3,10 @@
 A benchmark supplies ``make(task_id, seed)`` returning an environment with the
 usual Gym shape: ``reset()`` returns observations (or ``(obs, info)``) and
 ``step(action)`` returns ``(obs, reward, done, info)`` or ``(obs, reward,
-terminated, truncated, info)``. The manifest says where that function lives,
-which interpreter can import it, and how to read its observations, write its
-actions and detect success.
+terminated, truncated, info)``. The manifest names the user's Docker image that
+can import it (EvoAB adds its service package on top and starts one container
+per episode), where the function lives, and how to read its observations, write
+its actions and detect success.
 """
 
 from __future__ import annotations
@@ -82,10 +83,16 @@ class Manifest(_Model):
     name: str = Field(pattern=r"^[a-z][a-z0-9_]{1,40}$")
     title: str
     description: str = ""
-    #: Interpreter that can import the benchmark and the EvoAB runtime package.
-    python: str
-    #: Directory added to ``sys.path`` before importing ``make``.
+    #: Docker image (local or pullable) with the simulator and a Python >= 3.10 that has pip.
+    image: str = Field(min_length=1)
+    #: Interpreter inside the image that can import the benchmark.
+    python: str = Field(default="python3", min_length=1)
+    #: Whether the container needs the GPU (NVIDIA Container Toolkit).
+    gpu: bool = False
+    #: Host directory added to ``sys.path`` before importing ``make``; mounted into the container.
     path: str | None = None
+    #: Further host directories mounted at the same paths (checkouts, assets).
+    mounts: list[str] = Field(default_factory=list)
     make: str = Field(pattern=r"^[\w.]+:[\w]+$")
     tasks: list[Task] = Field(default_factory=list)
     #: Alternatively ``module:attribute`` resolving to a list (or a callable returning one) of task dicts.
@@ -108,12 +115,19 @@ class Manifest(_Model):
             raise ValueError("declare [[tasks]] or tasks_from")
         return self
 
-    @field_validator("python")
+    @field_validator("path")
     @classmethod
-    def absolute_python(cls, value: str) -> str:
-        if not Path(value).expanduser().is_absolute():
-            raise ValueError("python must be an absolute interpreter path")
+    def absolute_path(cls, value: str | None) -> str | None:
+        if value is not None and not Path(value).expanduser().is_absolute():
+            raise ValueError("path must be an absolute host directory")
         return value
+
+    @field_validator("mounts")
+    @classmethod
+    def absolute_mounts(cls, values: list[str]) -> list[str]:
+        if any(not Path(value).expanduser().is_absolute() for value in values):
+            raise ValueError("mounts must be absolute host directories")
+        return values
 
 
 def parse(text: str) -> Manifest:

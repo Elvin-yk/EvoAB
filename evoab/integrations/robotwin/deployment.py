@@ -1,4 +1,4 @@
-"""Run one RoboTwin 2.0 task (aloha-agilex, demo_clean) from a pinned installation or container image."""
+"""Run one RoboTwin 2.0 task (aloha-agilex, demo_clean) in the locally built image of the pinned revision."""
 import json
 from pathlib import Path
 
@@ -19,16 +19,14 @@ def recipe(args):
 def validate(args):
     if getattr(args, "runtime_profile", None):
         raise ValueError("RoboTwin uses one default runtime profile")
-    if args.command == "setup" and not getattr(args, "container", False) and not (args.runtime_python and args.native_root):
-        raise ValueError("Adopt RoboTwin with --runtime-python and --native-root, or use --container")
     if args.command != "setup" and not getattr(args, "task", None):
         raise ValueError("Local RoboTwin deployment requires --task")
 
 
-def external_data(args):
+def image_data(args):
     """Tasks that have both an upstream task class and instruction templates."""
     if not args.native_root:
-        raise ValueError("RoboTwin requires --native-root (the RoboTwin checkout)")
+        raise ValueError("The RoboTwin container recipe names no native_root")
     native = Path(args.native_root).expanduser().resolve()
     tasks = {}
     for path in sorted((native / "description/task_instruction").glob("*.json")):

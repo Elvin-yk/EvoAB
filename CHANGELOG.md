@@ -38,6 +38,50 @@ EvoAB now runs every method on its built-in agent; models come from presets
   removed with the Textual dependency and its file tools.
 - `evoab replay RUN…` replaces `evoab monitor --run-dir` (#45).
 
+### Benchmark environments run only in Docker
+
+Every benchmark environment now runs in a Docker container, like Harbor: an
+upstream image (or the user's own) plus EvoAB's service layer, started by the
+framework for each launch. Native runtimes (isolated venvs and adopted
+installations) are removed. Policy (VLA/WAM actor) and SAM3 services are no
+longer prepared or started by EvoAB: run them yourself and pass
+`--action-model-url` / `--sam3-url`, as is usual for model servers.
+
+- New container recipe for MetaWorld: a small CPU-only image with OSMesa
+  rendering, so the quickstart needs Docker but no GPU.
+- Custom benchmarks name a Docker image in their manifest (`image`, with
+  `python` now the interpreter inside it, `gpu`, and host directories in
+  `path`/`mounts`) instead of a host interpreter.
+- Removed benchmarks that only had native runtimes: RMBench, RoboLab, DexJoCo,
+  BEHAVIOR and IsaacLab Arena, with their actor profiles (`dexjoco_pick_bucket`,
+  `behavior_r1pro_pi05`, `arena_g1_gr00t`), the GR00T actor backend, prompts,
+  skills, examples and the `robolab` extra.
+- Removed the model-service lifecycle: `evoab setup --service actor|sam3`,
+  `evoab deploy actor|sam3`, `--profile`, `--checkpoint` and
+  `--checkpoint-sha256` on setup/deploy, the `service`, `profile` and checkpoint
+  fields of `SetupConfig`/`DeploymentConfig`, the actor and SAM3 deployment
+  modules and the SAM3 recipe. The clients (`ActorClient`, `PerceptionClient`),
+  actor contracts, environment bindings, the `hybrid` capability and scene
+  segmentation are unchanged, and `python -m evoab.services.actor.server` /
+  `python -m evoab.services.perception.server` remain for running those servers
+  yourself.
+- Removed options: `--container` (containers are the only runtime),
+  `--runtime-python`, `--native-root`, `--worker-python`, `--runtime-env` and
+  `setup --python`. Studio no longer shows native installations or a native
+  deploy button.
+- Deployment modules provide `image_data(args)` (run inside the image) or
+  `container_data(args, root, report)` (host side) instead of
+  `external_data`/`prepare`; `services.deployment.setup.Preparation` is now
+  `HostPreparation` (host-side sources and downloads only).
+
+**Migration.** Drop `--container` from scripts. Prepared container runtimes
+keep working (their cache paths and image identities are unchanged). Native
+runtimes and adopted installations are ignored; run `evoab setup --integration X`
+once to build the image. Start actor and SAM3 servers yourself (for example
+`python -m evoab.services.actor.server --config ACTOR.toml`) and pass their URLs.
+Custom benchmark manifests need an `image` (and `python` inside it). To run a
+removed integration, use a release that includes its adapter.
+
 ### Plain recipes and a clearer command line
 
 - `evoab run` starts the benchmark's environment itself by default (`--deploy

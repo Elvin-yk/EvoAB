@@ -1,4 +1,4 @@
-"""Start a previously prepared local runtime and own its cleanup."""
+"""Start a previously prepared environment container and own its cleanup."""
 import argparse
 from evoab import DeploymentConfig, Session, SessionConfig, deploy
 

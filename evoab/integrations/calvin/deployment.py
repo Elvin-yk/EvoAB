@@ -1,4 +1,4 @@
-"""Run one CALVIN task (scene D, native reset) from a pinned installation or container image.
+"""Run one CALVIN task (scene D, native reset) in the pinned AllenAI CALVIN image.
 
 The benchmark checkout (mees/calvin) contains calvin_env as a submodule; the
 native root is that submodule and the benchmark root its parent.
@@ -23,15 +23,13 @@ def recipe(args):
 def validate(args):
     if getattr(args, "runtime_profile", None):
         raise ValueError("CALVIN uses one default runtime profile")
-    if args.command == "setup" and not getattr(args, "container", False) and not (args.runtime_python and args.native_root):
-        raise ValueError("Adopt CALVIN with --runtime-python and --native-root (the calvin_env submodule), or use --container")
     if args.command != "setup" and not getattr(args, "task", None):
         raise ValueError("Local CALVIN deployment requires --task")
 
 
-def external_data(args):
+def image_data(args):
     if not args.native_root:
-        raise ValueError("CALVIN requires --native-root (the calvin_env checkout inside mees/calvin)")
+        raise ValueError("The CALVIN container recipe names no native_root")
     native = Path(args.native_root).expanduser().resolve()
     benchmark = native.parent
     annotations = yaml.safe_load((benchmark / "calvin_models/conf/annotations/new_playtable_validation.yaml").read_text())

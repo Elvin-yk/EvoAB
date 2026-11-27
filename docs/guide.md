@@ -6,8 +6,9 @@ simulator or robot is in [benchmarks](benchmarks.md).
 
 ## Install
 
-Linux with Python 3.11 (3.12 works for the CLI; some native runtimes need 3.11).
-macOS can view runs and drive remote environments.
+Use Linux with Python 3.11 (3.12 works for the CLI) and Docker to run a benchmark.
+Methods that use a policy or SAM3 connect to a service you run separately. macOS can view runs and drive remote
+environments.
 
 ```bash
 git clone https://github.com/Elvin-yk/EvoAB.git ~/evoab && cd ~/evoab
@@ -18,12 +19,13 @@ evoab doctor
 
 If cloning fails, run `gh auth login` and `gh repo clone Elvin-yk/EvoAB ~/evoab`.
 Extras add harness-side dependencies only (`agent` is required; `robodojo`,
-`robolab`, `benchmarks`, `xpolicylab`, `arx_one`, `piper_x`, `dev`); simulators,
-assets and checkpoints are prepared separately ([benchmarks](benchmarks.md)).
+`benchmarks`, `xpolicylab`, `arx_one`, `piper_x`, `dev`); benchmark images, assets
+and model checkpoints are prepared separately ([benchmarks](benchmarks.md)).
 
-**GPU benchmarks run in Docker**: Docker Engine, the user in the `docker` group,
-and the NVIDIA Container Toolkit (`sudo nvidia-ctk runtime configure
---runtime=docker`, then restart Docker). Allow about 120 GiB of disk.
+**Docker**: Docker Engine and the user in the `docker` group. GPU benchmarks
+also need the NVIDIA Container Toolkit (`sudo nvidia-ctk runtime
+configure --runtime=docker`, then restart Docker); MetaWorld runs on the CPU.
+Allow about 120 GiB of disk for the GPU benchmarks.
 `evoab benchmarks check` reports anything missing.
 
 **Networks.** If proxy variables break HTTPS to PyPI, install without them
@@ -94,7 +96,7 @@ evoab run --integration robodojo --task stack_bowls --recipe agentic --model my-
 |---|---|
 | `--integration`, `--recipe`, `--set` | The environment adapter, the method (id, directory or file), recipe overrides |
 | `--task`, `--seed`, `--layout-id`, `--layout`, `--instruction` | The episode and scene |
-| `--env-gpu` | Which GPU the environment uses |
+| `--env-gpu` | Which GPU the environment's container uses |
 | `--sam3-url`, `--action-model-url`, `--action-model-checkpoint-sha256` | Where perception and policy services run, and which checkpoint |
 | `--model`, `--reasoning-effort` | Which model preset, and its effort |
 | `--episode-timeout-s`, `--output-dir`, `--experience-dir`, `--monitor` | Wall-clock budget, outputs, live console |
@@ -216,7 +218,7 @@ print(result.task_success)
 ```
 
 `Session(SessionConfig(...))` gives direct access to the episode's tools;
-`setup()` and `deploy()` prepare and start runtimes. Examples are in
+`setup()` and `deploy()` prepare and start benchmark containers. Examples are in
 [`examples/sdk/`](../examples/sdk/).
 
 ## Replace `planner_direct` with `actor_act`

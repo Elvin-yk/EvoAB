@@ -1,4 +1,4 @@
-"""Shared catalog and launch contract for pinned LIBERO-family installations."""
+"""Shared catalog and launch contract for the pinned LIBERO-family images."""
 import ast
 from pathlib import Path
 
@@ -7,24 +7,9 @@ from evoab.services.deployment.config import LaunchPlan
 from .server import BUDGETS
 
 
-def refresh_catalog(args, runtime, suites, state_path, *, budgets=BUDGETS):
-    """Rescan only the installation named by the validated runtime record."""
-    recorded = runtime.data.get("native_root")
-    if not args.native_root or not recorded:
-        raise ValueError("This runtime record has no native LIBERO installation to rescan; "
-                         "rerun setup with --native-root.")
-    recorded_root = Path(recorded).expanduser().resolve()
-    requested = Path(args.native_root).expanduser().resolve()
-    if requested != recorded_root:
-        raise ValueError(f"This cache entry records the LIBERO installation at {recorded_root}; "
-                         f"--native-root resolves to {requested}. Use the recorded installation "
-                         "or a separate --cache-dir.")
-    return task_catalog(args, suites, state_path, allow_empty=True, budgets=budgets)
-
-
 def task_catalog(args, suites, state_path, *, allow_empty=False, budgets=BUDGETS):
     if not args.native_root:
-        raise ValueError("LIBERO requires a pinned --native-root")
+        raise ValueError("The LIBERO container recipe names no native_root")
     root = args.native_root.expanduser().resolve()
     native = root / "libero/libero"
     # Read the pinned upstream task map as data without importing the simulator.

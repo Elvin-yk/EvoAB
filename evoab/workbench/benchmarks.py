@@ -1,10 +1,10 @@
 """Benchmark registry, preparation status and setup jobs.
 
 Every integration in ``evoab/integrations`` appears here with how it is
-prepared: ``auto`` integrations run ``evoab setup`` (per runtime profile where
-they have several), ``external`` ones connect to a separately prepared
-service, and ``real`` ones are physical robots. Status comes from the runtime
-records that setup writes under the cache directory.
+prepared: ``container`` integrations run ``evoab setup`` to pull or build their
+Docker image (per runtime profile where they have several), ``custom`` ones
+wrap a user's own image, and ``real`` ones are physical robots. Status comes
+from the runtime records that setup writes under the cache directory.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class BenchmarkInfo:
     kind: str  # "simulation" | "real"
     simulator: str
     embodiment: str
-    setup: str  # "auto" | "external" | "real"
+    setup: str  # "container" | "custom" | "real"
     description: str
     profiles: tuple[str, ...] = field(default_factory=tuple)
     requirements: str = ""
@@ -43,43 +43,31 @@ class BenchmarkInfo:
 
 REGISTRY: tuple[BenchmarkInfo, ...] = (
     BenchmarkInfo("robodojo", "RoboDojo", "simulation", "Isaac Sim 5.1", "Dual ARX X5",
-                  "auto", "Bimanual tasks with frozen evaluation layouts",
-                  requirements="Isaac Sim / Isaac Lab runtime; NVIDIA GPU", task_selector="task"),
+                  "container", "Bimanual tasks with frozen evaluation layouts",
+                  requirements="Local Docker build of the pinned upstream checkout (Isaac Sim EULA); NVIDIA GPU",
+                  task_selector="task"),
     BenchmarkInfo("libero", "LIBERO", "simulation", "MuJoCo (robosuite 1.4)", "Franka Panda",
-                  "external", "Original LIBERO task suites and official initial states",
-                  requirements="Public AllenAI LIBERO image, or adopt the pinned original installation",
-                  task_selector="suite/task"),
+                  "container", "Original LIBERO task suites and official initial states",
+                  requirements="Public AllenAI LIBERO image; NVIDIA GPU", task_selector="suite/task"),
     BenchmarkInfo("libero_pro", "LIBERO-PRO", "simulation", "MuJoCo (robosuite)", "Franka Panda",
-                  "external", "LIBERO suites under instruction and position perturbations",
-                  requirements="Adopt a pinned installation with evoab setup --integration libero_pro --runtime-python PYTHON --native-root ROOT", task_selector="suite/task"),
+                  "container", "LIBERO suites under instruction and position perturbations",
+                  requirements="Public AllenAI LIBERO-PRO image; NVIDIA GPU", task_selector="suite/task"),
     BenchmarkInfo("libero_plus", "LIBERO-Plus", "simulation", "MuJoCo (robosuite 1.4)", "Franka Panda",
-                  "external", "Official LIBERO-Plus perturbation suites",
-                  requirements="Adopt an existing LIBERO-Plus installation with --runtime-python and --native-root, or connect with --env-url", task_selector="suite/task"),
+                  "container", "Official LIBERO-Plus perturbation suites",
+                  requirements="Local Docker build of the pinned LIBERO-Plus revision; NVIDIA GPU",
+                  task_selector="suite/task"),
     BenchmarkInfo("robotwin", "RoboTwin 2.0", "simulation", "SAPIEN", "ALOHA AgileX dual-arm",
-                  "external", "Dual-arm tasks with domain randomization",
-                  requirements="Docker build of the pinned RoboTwin revision, or adopt one with --runtime-python and --native-root",
+                  "container", "Dual-arm tasks with domain randomization",
+                  requirements="Local Docker build of the pinned RoboTwin revision; NVIDIA GPU",
                   task_selector="task"),
-    BenchmarkInfo("rmbench", "RMBench", "simulation", "SAPIEN", "Dual-arm, four cameras",
-                  "external", "Memory-dependent dual-arm tasks",
-                  requirements="Separately prepared RMBench service (--env-url)"),
     BenchmarkInfo("calvin", "CALVIN", "simulation", "PyBullet", "Franka Panda",
-                  "external", "Single-task CALVIN episodes",
-                  requirements="Public CALVIN image, or adopt an installation with --runtime-python and --native-root",
-                  task_selector="task"),
+                  "container", "Single-task CALVIN episodes",
+                  requirements="Public AllenAI CALVIN image; NVIDIA GPU", task_selector="task"),
     BenchmarkInfo("metaworld", "MetaWorld MT50", "simulation", "MuJoCo", "Sawyer",
-                  "auto", "50 single-arm tabletop manipulation tasks (MT50)",
-                  requirements="MuJoCo + Meta-World 3.1.1 (isolated venv via evoab setup)", task_selector="task"),
-    BenchmarkInfo("robolab", "RoboLab", "simulation", "Isaac Sim / Isaac Lab", "DROID (Franka)",
-                  "external", "RoboLab tasks for generalist manipulation",
-                  requirements="RoboLab runtime and service (--env-url)"),
-    BenchmarkInfo("dexjoco", "DexJoCo", "simulation", "MuJoCo", "Panda + 16-DoF Allegro hand",
-                  "auto", "Dexterous-hand manipulation (Hybrid Pi0.5)"),
-    BenchmarkInfo("behavior", "BEHAVIOR", "simulation", "OmniGibson", "R1Pro wheeled",
-                  "auto", "Experimental mobile manipulation (Hybrid Pi0.5)"),
-    BenchmarkInfo("isaaclab_arena", "IsaacLab Arena", "simulation", "Isaac Lab", "G1 humanoid",
-                  "auto", "Experimental humanoid loco-manipulation (Hybrid GR00T)"),
+                  "container", "50 single-arm tabletop manipulation tasks (MT50)",
+                  requirements="Small local Docker build (Meta-World 3.1.1); CPU only", task_selector="task"),
     BenchmarkInfo("custom", "Custom benchmark", "simulation", "—", "—", "custom",
-                  "User-defined Gym-style benchmark registered with a manifest", task_selector="profile"),
+                  "User-defined Gym-style benchmark in the user's Docker image", task_selector="profile"),
     BenchmarkInfo("arx_one", "ARX ONE", "real", "—", "Dual ARX X5 + RealSense D405",
                   "real", "Physical dual-arm station behind a device process"),
     BenchmarkInfo("piper_x", "Piper-X", "real", "—", "Dual Piper arms + RealSense",
@@ -159,10 +147,6 @@ class PreparedRuntime:
     native_root: Path | None
     container: dict[str, Any] | None = None
 
-    @property
-    def kind(self) -> str:
-        return "container" if self.container else "native"
-
 
 _parsed: dict[Path, tuple[tuple[int, int, int, int], PreparedRuntime | None]] = {}
 
@@ -180,9 +164,9 @@ def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
             cached = (fingerprint, _parse_runtime(record))
             _parsed[record] = cached
         runtime = cached[1]
-        if runtime is None:
-            continue
-        if runtime.container and runtime.container.get("imported_image") and not runtime.validation.get("launch_verified"):
+        if runtime is None or not runtime.container:
+            continue  # records of native interpreters predate container-only runtimes
+        if runtime.container.get("imported_image") and not runtime.validation.get("launch_verified"):
             continue
         if _BY_INTEGRATION[runtime.integration].task_selector:
             args = SimpleNamespace(integration=runtime.integration, runtime_profile=runtime.profile, cache_dir=root)
@@ -190,15 +174,14 @@ def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
                 recipe = adapter_for(args).recipe(args)
             except (FileNotFoundError, ValueError):
                 continue
-            if runtime.container:
-                from evoab.services.deployment.container import container_root, spec_for
-                # A runtime built from an older container recipe must be deployed again.
-                spec = spec_for(runtime.integration)
-                expected_root = container_root(args, recipe)
-                local = spec is not None and runtime.container.get("recipe_digest") == spec.digest
-            else:
-                expected_root = runtime_root(args, recipe)
-                local = Path(runtime.python).is_file() and (runtime.native_root is None or runtime.native_root.is_dir())
+            from evoab.services.deployment.container import adapter_spec
+            # A runtime built from an older container recipe must be deployed again.
+            try:
+                spec = adapter_spec(args, adapter_for(args))
+            except ValueError:
+                continue
+            expected_root = runtime_root(args, recipe)
+            local = runtime.container.get("recipe_digest") == spec.digest
             if (runtime.root.resolve() != expected_root.resolve() or runtime.recipe_digest != recipe.digest
                     or runtime.package_version != __version__ or not local):
                 continue
@@ -277,12 +260,10 @@ def _setup_record(runs_root: Path, integration: str, profile: str) -> Path:
 
 
 def preferred_runtimes() -> dict[tuple[str, str], PreparedRuntime]:
-    """One runtime per (integration, profile); a container runtime wins over a native one."""
+    """One runtime per (integration, profile)."""
     result: dict[tuple[str, str], PreparedRuntime] = {}
     for runtime in prepared_runtimes():
-        key = (runtime.integration, runtime.profile)
-        if key not in result or (runtime.container and not result[key].container):
-            result[key] = runtime
+        result.setdefault((runtime.integration, runtime.profile), runtime)
     return result
 
 
@@ -327,10 +308,10 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 status = "ready"
             elif failed:
                 status = "setup_failed"
-            elif info.setup == "auto" or container is not None:
+            elif container is not None:
                 status = "not_prepared"
             else:
-                status = info.setup  # external | real
+                status = info.setup  # real (or an integration without a container recipe)
             suites: dict[str, int] = {}
             for task in (runtime.tasks.values() if runtime else ()):
                 suites[task["suite"]] = suites.get(task["suite"], 0) + 1
@@ -348,13 +329,12 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
                 "last_setup_failed": failed,
                 "installed": runtime is not None,
                 "setup_log": jobs.log_tail(record_path, 12) if job else "",
-                "runtime_kind": runtime.kind if runtime else None,
                 "image": (runtime.container or {}).get("image") if runtime else None,
             })
         items.append({
             "container": container,
-            # How Studio deploys it in one step: a Docker recipe wins over a native setup recipe.
-            "deploy": "container" if container else "native" if info.setup == "auto" else None,
+            # Studio deploys a benchmark in one step when it has a Docker recipe.
+            "deploy": "container" if container else None,
             "integration": info.integration,
             "title": info.title,
             "kind": info.kind,
@@ -387,7 +367,7 @@ def _custom_items(runs_root: Path, prepared: dict) -> list[dict[str, Any]]:
         items.append({
             "integration": "custom", "title": manifest.title, "kind": "simulation", "simulator": manifest.simulator,
             "embodiment": manifest.embodiment, "setup": "custom", "description": manifest.description,
-            "requirements": f"{manifest.make} · {manifest.python}", "name": name,
+            "requirements": f"{manifest.make} · {manifest.image}", "name": name,
             "profiles": [{"profile": name, "status": status, "task_count": len(runtime.tasks) if runtime else 0,
                           "suites": {name: len(runtime.tasks)} if runtime else {},
                           "prepared_at": runtime.prepared_at if runtime else None,
@@ -472,9 +452,6 @@ def uninstall(runs_root: Path, integration: str, profile: str = "default", *, ti
     runtime = _shown_runtime(integration, profile, preferred_runtimes())
     if runtime is None:
         raise ValueError(f"{integration}/{profile} is not deployed")
-    if not runtime.container:
-        raise ValueError(f"{integration}/{profile} is a native installation; "
-                         "only Docker deployments are uninstalled here")
     if not runtime.root.resolve().is_relative_to(cache_root().resolve()):
         raise ValueError("The recorded runtime is outside the EvoAB cache; not uninstalling it")
     try:
@@ -489,7 +466,7 @@ def uninstall(runs_root: Path, integration: str, profile: str = "default", *, ti
             jobs.update_record(record_path, uninstalled_at=time.time())
     remaining = _shown_runtime(integration, profile, preferred_runtimes())
     return {**result, "integration": integration, "profile": profile, "runtime_profile": runtime.profile,
-            "remaining": {"profile": remaining.profile, "kind": remaining.kind} if remaining else None}
+            "remaining": {"profile": remaining.profile} if remaining else None}
 
 
 def tasks_for(integration: str, profile: str) -> list[dict[str, Any]]:
@@ -509,43 +486,39 @@ def task_info(integration: str, profile: str, task: str) -> dict[str, Any] | Non
 
 
 def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | None = None, *,
-                container: bool = False, environment: dict[str, str] | None = None,
+                environment: dict[str, str] | None = None,
                 accept_license: str | None = None, image_archive: str | None = None,
                 image_directory: str | Path | None = None) -> int:
-    """Run ``evoab setup`` for one profile in the background.
+    """Run ``evoab setup`` for one profile in the background: pull or build its Docker image.
 
-    ``wheel`` is the evoab-runtime wheel installed into the isolated runtime;
-    without it setup installs ``evoab-runtime`` from the package index.
-    ``image_directory`` fixes the directory the archive name resolves in; the setup
-    child receives it as ``EVOAB_IMAGE_IMPORT_DIR``, so both the pre-check and the
-    child's import read the same path chosen when the job started.
+    ``wheel`` is the evoab-runtime wheel installed into the image; without it setup
+    installs the running ``evoab`` package. ``image_directory`` fixes the directory
+    the archive name resolves in; the setup child receives it as
+    ``EVOAB_IMAGE_IMPORT_DIR``, so both the pre-check and the child's import read
+    the same path chosen when the job started.
     """
     if image_archive:
         from evoab.services.deployment.image_import import DIRECTORY_ENV, archive_path, import_directory
         directory = import_directory(directory=image_directory)
         archive_path(image_archive, directory=directory)
-        if not container or integration == "custom":
+        if integration == "custom":
             raise ValueError("Image import requires a supported container deployment")
         environment = {**(environment or {}), DIRECTORY_ENV: str(directory)}
     info = next((b for b in REGISTRY if b.integration == integration), None)
+    record_path = _setup_record(runs_root, integration, profile)
+    existing = jobs.read_record(record_path)
+    if existing and jobs.is_running(existing):
+        raise ValueError(f"{integration}/{profile} is already being prepared")
     if integration == "custom":
         from evoab.integrations.custom import manifest as manifests
-        manifest = manifests.load(profile)
-        record_path = _setup_record(runs_root, integration, profile)
-        existing = jobs.read_record(record_path)
-        if existing and jobs.is_running(existing):
-            raise ValueError(f"{profile} is already being prepared")
-        command = [sys.executable, "-m", "evoab", "setup", "--integration", "custom", "--runtime-profile", profile,
-                   "--runtime-python", manifest.python]
-        return jobs.start(command, record_path, integration=integration, profile=profile, requested_at=time.time())
-    if container:
+        manifests.load(profile)
+        command = [sys.executable, "-m", "evoab", "setup", "--integration", "custom", "--runtime-profile", profile]
+    else:
         if container_info(integration) is None:
             raise ValueError(f"{integration} has no container recipe")
-        record_path = _setup_record(runs_root, integration, profile)
-        existing = jobs.read_record(record_path)
-        if existing and jobs.is_running(existing):
-            raise ValueError(f"{integration}/{profile} is already being prepared")
-        command = [sys.executable, "-m", "evoab", "setup", "--integration", integration, "--container",
+        if info is not None and info.profiles and profile not in info.profiles:
+            raise ValueError(f"unknown profile {profile!r} for {integration}")
+        command = [sys.executable, "-m", "evoab", "setup", "--integration", integration,
                    "--skip-demo-download", "--check-launch"]
         if image_archive:
             command += ["--image-archive", image_archive]
@@ -553,29 +526,11 @@ def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | No
             command += ["--accept-license", accept_license]
         if info is not None and info.profiles:
             command += ["--runtime-profile", profile]
-        if wheel:
-            wheel_path = Path(wheel).expanduser()
-            if not wheel_path.is_file():
-                raise ValueError(f"runtime wheel not found: {wheel_path}")
-            command += ["--wheel", str(wheel_path)]
-        # Unbuffered so pull/build progress reaches the setup log Studio shows while it runs.
-        return jobs.start(command, record_path, env={**os.environ, **(environment or {}), "PYTHONUNBUFFERED": "1"},
-                          integration=integration,
-                          profile=profile, container=True, requested_at=time.time())
-    if info is None or info.setup != "auto":
-        raise ValueError(f"{integration} cannot be prepared automatically")
-    if info.profiles and profile not in info.profiles:
-        raise ValueError(f"unknown profile {profile!r} for {integration}")
-    record_path = _setup_record(runs_root, integration, profile)
-    existing = jobs.read_record(record_path)
-    if existing and jobs.is_running(existing):
-        raise ValueError(f"{integration}/{profile} is already being prepared")
-    command = [sys.executable, "-m", "evoab", "setup", "--integration", integration, "--check-launch"]
-    if info.profiles:
-        command += ["--runtime-profile", profile]
     if wheel:
         wheel_path = Path(wheel).expanduser()
         if not wheel_path.is_file():
             raise ValueError(f"runtime wheel not found: {wheel_path}")
         command += ["--wheel", str(wheel_path)]
-    return jobs.start(command, record_path, integration=integration, profile=profile, requested_at=time.time())
+    # Unbuffered so pull/build progress reaches the setup log Studio shows while it runs.
+    return jobs.start(command, record_path, env={**os.environ, **(environment or {}), "PYTHONUNBUFFERED": "1"},
+                      integration=integration, profile=profile, container=True, requested_at=time.time())

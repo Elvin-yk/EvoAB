@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Minimal Direct episode using the CLI-managed RoboDojo runtime.
+# Minimal Direct episode using the CLI-managed RoboDojo container.
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"

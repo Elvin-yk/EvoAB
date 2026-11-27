@@ -1,12 +1,18 @@
-"""Container runtimes: a benchmark's simulator in a Docker image, EvoAB's service on top.
+"""Container runtimes: every benchmark environment runs in a Docker image.
 
-An integration declares ``container.toml`` next to its deployment module:
+EvoAB has no other environment runtime. An environment is a simulator image
+with EvoAB's service package installed on top; the framework starts one
+container per launch, like Harbor. Policy (actor) and SAM3 services are not
+deployed here: users run them and pass their URLs. An integration declares
+``container.toml`` next to its deployment module (a custom benchmark's manifest
+names the user's own image instead):
 
-``image``        upstream image reference, pinned by digest, pulled as-is; or
-``dockerfile``   a build recipe (path relative to the integration package) for
+``image``        upstream image reference, pinned by digest, pulled as-is (a
+                 local image is used without pulling); or
+``dockerfile``   a build recipe (path relative to the declaring package) for
                  images nobody publishes; the user's machine builds it once
 ``python``       interpreter inside the image that imports the simulator
-``native_root``  native checkout inside the image (passed as ``--native-root``)
+``native_root``  upstream checkout inside the image (passed as ``--native-root``)
 ``gpu``          whether the service needs the GPU (EGL rendering, Isaac Sim)
 ``prepare``      shell commands run while building EvoAB's local layer
 ``build``        "native": build the Dockerfile at the root of the native checkout
@@ -20,9 +26,12 @@ An integration declares ``container.toml`` next to its deployment module:
                  (proxies, credentials), so builds need no access to the forge
 ``[environment]`` variables for every container process
 
-Integrations may also define ``container_data(args, root, report)``: host-side
-preparation (sources, assets) returning runtime data plus ``mounts``, and
-``container_finalize(python, data)`` for steps that need the built image.
+Deployment modules may also define ``container_spec(args)`` to supply the spec
+themselves, ``container_data(args, root, report)``: host-side preparation
+(sources, assets) returning runtime data plus ``mounts``, and
+``container_finalize(python, data, report)`` for steps that need the built image.
+Without ``container_data``, setup calls the module's ``image_data(args)`` inside
+the image to record its facts (task catalogs, checkout paths).
 
 Setup builds a small local image ``FROM`` the upstream one that adds the
 ``evoab-runtime`` wheel and the ``prepare`` commands. Nothing is pushed
@@ -54,8 +63,11 @@ PROXY_VARIABLES = ("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS
 
 @dataclass(frozen=True)
 class ContainerSpec:
+    #: Name of the runtime image (an integration, ``actor-…`` or ``sam3``); also its label.
     integration: str
     python: str
+    #: Package the ``dockerfile`` path is relative to.
+    package: str = ""
     native_root: str | None = None
     image: str | None = None
     image_id: str | None = None
@@ -83,12 +95,25 @@ def spec_for(integration: str) -> ContainerSpec | None:
         text = resources.files(package).joinpath("container.toml").read_text(encoding="utf-8")
     except (FileNotFoundError, ModuleNotFoundError):
         return None
-    data = tomllib.loads(text)
+    return spec_from(integration, package, tomllib.loads(text), text)
+
+
+def adapter_spec(args, adapter) -> ContainerSpec:
+    """The container recipe a deployment module prepares; every service has one."""
+    custom = getattr(adapter, "container_spec", None)
+    spec = custom(args) if custom is not None else spec_for(args.integration)
+    if spec is None:
+        raise ValueError(f"{args.integration} has no container recipe")
+    return spec
+
+
+def spec_from(integration: str, package: str, data: dict, source: str) -> ContainerSpec:
+    """Validate one container recipe table; ``source`` is the text its identity hashes."""
     if sum(bool(data.get(key)) for key in ("image", "dockerfile", "build")) != 1:
-        raise ValueError(f"{integration}/container.toml must declare exactly one of image, dockerfile or build")
+        raise ValueError(f"{integration} container recipe must declare exactly one of image, dockerfile or build")
     if data.get("build") not in (None, "native"):
-        raise ValueError(f"{integration}/container.toml: build must be 'native'")
-    return ContainerSpec(integration=integration, python=data["python"], native_root=data.get("native_root"),
+        raise ValueError(f"{integration} container recipe: build must be 'native'")
+    return ContainerSpec(integration=integration, package=package, python=data["python"], native_root=data.get("native_root"),
                          image=data.get("image"), image_id=data.get("image_id"), dockerfile=data.get("dockerfile"), gpu=bool(data.get("gpu", True)),
                          prepare=tuple(data.get("prepare", ())),
                          environment={k: str(v) for k, v in data.get("environment", {}).items()},
@@ -96,7 +121,7 @@ def spec_for(integration: str) -> ContainerSpec | None:
                          constraints=tuple(data.get("constraints", ())), build_args=tuple(data.get("build_args", ())),
                          license=data.get("license"),
                          sources=tuple({k: str(v[k]) for k in ("path", "url", "ref")} for v in data.get("sources", ())),
-                         source=text)
+                         source=source)
 
 
 def is_container(python: str) -> bool:
@@ -132,6 +157,8 @@ def run_prefix(image: str, *, gpu: bool | int, environment: dict[str, str], moun
     command = [docker(), "run", "--rm", "--init", "--network", "host", "--ipc", "host"]
     if not root:
         command += ["--user", f"{os.getuid()}:{os.getgid()}", "-e", "HOME=/tmp"]
+        # The host uid has no passwd entry in the image; getpass.getuser() (torch caches) reads USER first.
+        command += ["-e", f"USER={os.environ.get('USER') or 'evoab'}"]
         # Image checkouts are root-owned; simulators that inspect their own git state
         # (CALVIN records its diff) would otherwise fail git's ownership check.
         command += ["-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=*"]
@@ -154,16 +181,16 @@ def run_prefix(image: str, *, gpu: bool | int, environment: dict[str, str], moun
 
 
 def python_command(python: str, arguments, *, environment=None, gpu: bool = False) -> list[str]:
-    """A command running ``<python> <arguments>`` on the host or inside a container runtime."""
+    """A command running ``<python> <arguments>`` inside a container runtime."""
     if not is_container(python):
-        return [str(python), *map(str, arguments)]
+        raise ValueError("Runtimes run only in Docker containers; rerun setup to build this runtime's image")
     image, inner = parse(python)
     root, mounts = options(python)
     return run_prefix(image, gpu=gpu, environment=environment or {}, mounts=mounts, root=root) + [inner, *map(str, arguments)]
 
 
 def wrap_plan(plan, runtime, *, gpu_index: int, name: str):
-    """Run a native launch plan inside the runtime's image."""
+    """Run a launch plan (written for the image's interpreter) inside the runtime's image."""
     from .config import LaunchPlan
     image, inner = parse(runtime.python)
     if plan.command[0] != runtime.python:
@@ -261,7 +288,9 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
         base = f"evoab/imported:{local_image.removeprefix('sha256:')}"
         _stream([docker(), "tag", local_image, base], report)
     elif spec.image:
-        _stream([docker(), "pull", spec.image], report)
+        present = subprocess.run([docker(), "image", "inspect", spec.image], capture_output=True).returncode == 0
+        if not present:
+            _stream([docker(), "pull", spec.image], report)
         base = spec.image
     elif spec.build == "native":
         if context is None or not (Path(context) / "Dockerfile").is_file():
@@ -273,7 +302,8 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
                      for arg in ("--build-arg", f"{key}={os.environ[key]}")]
         _stream([docker(), "build", "-t", base, *_build_args(), *forwarded, str(context)], report)
     else:
-        recipe = Path(str(resources.files(f"evoab.integrations.{spec.integration}").joinpath(spec.dockerfile)))
+        recipe = Path(str(resources.files(spec.package or f"evoab.integrations.{spec.integration}")
+                          .joinpath(spec.dockerfile)))
         base = f"evoab/{spec.integration.replace('_', '-')}-base:{spec.digest[:12]}"
         build_context = _fetch_sources(spec, report) if spec.sources else recipe.parent
         _stream([docker(), "build", "-t", base, "-f", recipe, *_build_args(), build_context], report)
@@ -354,33 +384,31 @@ def query(python: str, code: str, *arguments, environment=None, timeout=600):
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 
-_EXTERNAL_DATA = (
+_IMAGE_DATA = (
     "import json, sys; from importlib import import_module; from pathlib import Path; "
     "from types import SimpleNamespace; "
     "args = SimpleNamespace(**json.loads(sys.argv[2])); "
     "args.native_root = Path(args.native_root) if args.native_root else None; "
-    "print(json.dumps(import_module(sys.argv[1]).external_data(args)))"
+    "print(json.dumps(import_module(sys.argv[1]).image_data(args)))"
 )
 
 
 def prepare(args, adapter, *, report=print):
-    """Prepare a container runtime for ``args.integration`` and publish its record."""
+    """Prepare the container runtime ``adapter`` deploys and publish its record."""
     import time
     from dataclasses import replace
 
     from evoab import __version__
     from evoab.artifacts.run import write_json_atomic
     from .config import Runtime
-    from .runtime import publish_runtime, runtime_lock
+    from .runtime import publish_runtime, runtime_lock, runtime_root
 
-    spec = spec_for(args.integration)
-    if spec is None:
-        raise ValueError(f"{args.integration} has no container recipe")
+    spec = adapter_spec(args, adapter)
     if spec.license and getattr(args, "accept_license", None) != spec.license:
-        raise ValueError(f"Building {args.integration} requires accepting {spec.license}: "
+        raise ValueError(f"Building {spec.integration} requires accepting {spec.license}: "
                          f"rerun with --accept-license '{spec.license}'")
     recipe = adapter.recipe(args)
-    root = container_root(args, recipe)
+    root = runtime_root(args, recipe)
     started = time.time()
     imported = getattr(args, "image_archive", None)
     with runtime_lock(root, args.setup_timeout_s):
@@ -401,7 +429,7 @@ def prepare(args, adapter, *, report=print):
             environment = {**spec.environment, **(host_data or {}).pop("environment", {})}
             # The runtime wheel must not move pins the simulator stack depends on.
             tag = build_runtime_image(spec, args.wheel, __version__, report,
-                                      context=Path(host_data["native_root"]) if host_data else None,
+                                      context=Path(host_data["native_root"]) if spec.build == "native" else None,
                                       constraints=recipe.settings.get("constraints", ()), local_image=local_image)
             if imported:
                 result = subprocess.run([docker(), "image", "inspect", tag, "--format", "{{.Id}}"],
@@ -419,9 +447,8 @@ def prepare(args, adapter, *, report=print):
                     hand_back(python, path)
             else:
                 inputs = {"native_root": spec.native_root, "runtime_profile": getattr(args, "runtime_profile", None),
-                          "command": "setup", "assets_dir": None, "checkpoint": None, "checkpoint_sha256": None,
-                          "worker_python": None, "runtime_python": None}
-                data = query(python, _EXTERNAL_DATA, adapter.__name__, json.dumps(inputs),
+                          "command": "setup"}
+                data = query(python, _IMAGE_DATA, adapter.__name__, json.dumps(inputs),
                              environment=environment)
             runtime = Runtime(recipe.name, python, recipe.digest, __version__, root,
                               {**data, "container": {"image": tag, "upstream": spec.image or spec.dockerfile or "native",
@@ -458,12 +485,6 @@ def prepare(args, adapter, *, report=print):
     if report is not None:
         report(f"Container runtime ready: {tag} ({len(runtime.data.get('tasks') or {})} tasks)")
     return runtime
-
-
-def container_root(args, recipe) -> Path:
-    from .runtime import runtime_root
-    native = runtime_root(args, recipe)
-    return native.with_name(native.name + "-container")
 
 
 # -- uninstall -----------------------------------------------------------------

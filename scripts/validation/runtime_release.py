@@ -1,4 +1,4 @@
-"""Check the native wheel with Isaac-compatible dependencies in a fresh environment."""
+"""Check the runtime wheel (what setup installs into images) with Isaac-compatible pins in a fresh environment."""
 from __future__ import annotations
 
 import argparse
@@ -49,7 +49,7 @@ for name in ('openai-codex', 'openai-codex-cli-bin', 'claude-agent-sdk', 'mcp', 
         metadata.version(name)
     except metadata.PackageNotFoundError:
         continue
-    raise AssertionError(f'Planner dependency installed in native runtime: {name}')
+    raise AssertionError(f'Planner dependency installed in the service runtime: {name}')
 assert metadata.version('fastapi') == '0.115.7'
 assert metadata.version('uvicorn') == '0.29.0'
 assert metadata.version('pydantic') == '2.11.7'

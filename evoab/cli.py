@@ -176,13 +176,11 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     add_ob_proxy_arguments(ob_proxy)
-    setup = subparsers.add_parser("setup", help="Prepare an isolated runtime and resources", allow_abbrev=False)
-    target = setup.add_mutually_exclusive_group(required=True)
-    target.add_argument("--integration")
-    target.add_argument("--service", choices=("actor", "sam3"))
-    setup.add_argument("--profile")
-    setup.add_argument("--python", help="Base interpreter for the isolated runtime")
-    setup.add_argument("--wheel", type=Path, help="Install a matching evoab-runtime wheel in the native environment")
+    setup = subparsers.add_parser("setup", help="Pull or build a benchmark's Docker image and prepare its resources",
+                                  allow_abbrev=False)
+    setup.add_argument("--integration", required=True)
+    setup.add_argument("--wheel", type=Path, help="Install a matching evoab-runtime wheel into the image "
+                       "(default: the running evoab package)")
     setup.add_argument("--setup-timeout-s", type=float, default=14400)
     setup.add_argument("--skip-demo-download", action="store_true", help="Skip optional expert demonstration videos")
     setup.add_argument("--image-archive", metavar="FILENAME",
@@ -193,22 +191,19 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     setup.add_argument("--accept-license", metavar="NAME",
                        help="Accept the named licence a container recipe requires (for example the NVIDIA Isaac Sim EULA)")
     add_runtime_arguments(setup)
-    deploy = subparsers.add_parser("deploy", help="Run a prepared service in the foreground", allow_abbrev=False)
+    deploy = subparsers.add_parser("deploy", help="Run a prepared environment container in the foreground",
+                                   allow_abbrev=False)
     kinds = deploy.add_subparsers(dest="service", required=True)
-    for kind in ("env", "actor", "sam3"):
-        service = kinds.add_parser(kind, allow_abbrev=False)
-        if kind == "env":
-            service.add_argument("--integration", required=True)
-            service.add_argument("--task")
-            service.add_argument("--check", action="store_true",
-                                 help="Start the service, wait until it is ready, print its identity and stop it")
-        else:
-            service.set_defaults(integration=None, task=None)
-        service.add_argument("--profile")
-        service.add_argument("--run-id")
-        service.add_argument("--output-dir", default="runs")
-        add_runtime_arguments(service)
-        add_launch_arguments(service)
+    # Only environments are deployed; policy and SAM3 services are reached by URL.
+    service = kinds.add_parser("env", allow_abbrev=False)
+    service.add_argument("--integration", required=True)
+    service.add_argument("--task")
+    service.add_argument("--check", action="store_true",
+                         help="Start the service, wait until it is ready, print its identity and stop it")
+    service.add_argument("--run-id")
+    service.add_argument("--output-dir", default="runs")
+    add_runtime_arguments(service)
+    add_launch_arguments(service)
     # Resource commands are dispatched before this parser runs (see main); listed here for --help.
     for name, text in WORKBENCH_COMMANDS.items():
         subparsers.add_parser(name, help=text, add_help=False)

@@ -115,9 +115,9 @@ def create_app(runs_root: Path) -> FastAPI:
         return bench.image_imports()
 
     @app.post("/api/benchmarks/{integration}/{profile}/setup")
-    def benchmark_setup(integration: str, profile: str, container: bool = False,
+    def benchmark_setup(integration: str, profile: str,
                         accept_license: str | None = None, image_archive: str | None = None) -> dict[str, Any]:
-        return bench.prepare(integration, profile, container=container, accept_license=accept_license, image_archive=image_archive)
+        return bench.prepare(integration, profile, accept_license=accept_license, image_archive=image_archive)
 
     @app.delete("/api/benchmarks/{integration}/{profile}/setup")
     def benchmark_uninstall(integration: str, profile: str) -> dict[str, Any]:
