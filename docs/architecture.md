@@ -158,6 +158,21 @@ geometry. The core imports neither component nor a concrete integration.
 Native FK, IK, calibration, limits and physical stepping remain in environment
 adapters. See [the extension contract](hybrid.md).
 
+### LIBERO policy execution
+
+Stock LIBERO publishes native relative OSC actions alongside the gripper
+tools. Its `actor_act` binding sends the agent-view and wrist RGB observations
+and robot state to the shared actor service. The adapter executes one native
+control step per acknowledged action.
+
+Start the RoboScope `starvla_libero_policy.py` socket for
+`StarVLA/Qwen2.5-VL-OFT-LIBERO-4in1`. Use the
+[CALVIN actor configuration fields](calvin.md) with `backend = "starvla_libero"`,
+then select the default `agent_policy` recipe with `--integration libero`.
+Use `active_groups=["arm"]`. The binding runs without a chunk reviewer.
+Run `python scripts/validation/libero_actor.py` to check the observation and
+action contracts.
+
 ### Recipes and tool composition
 
 A run's method is a [recipe](composition.md) compiled before any service opens

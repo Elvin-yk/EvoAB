@@ -83,11 +83,14 @@ class LiberoAdapter:
 
     def step_pose(self, command):
         self.validate_commands([command], "pose")
+        return self._step(self.binding.encode(command.arms), float(command.arms["arm"].gripper))
+
+    def _step(self, action, opening):
         if self.ended or self.closed:
             raise RequestRejected("Episode has ended")
-        self.obs, _, done, _ = self.env.step(self.binding.encode(command.arms))
+        self.obs, _, done, _ = self.env.step(action)
         self.steps += 1
-        self.commands = {"arm": float(command.arms["arm"].gripper)}
+        self.commands = {"arm": opening}
         self.success = bool(self.env.check_success())
         self.ended = bool(done or self.success or self.steps >= self.max_steps)
         return StepReceipt(accepted=True, state=self.read_state(), diagnostics={"executed_steps": 1})

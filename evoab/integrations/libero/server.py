@@ -9,8 +9,11 @@ PORT = 18801
 
 def main():
     args = parser(suites=tuple(SUITE_BUDGETS), description=__doc__, port=PORT).parse_args()
-    serve_episode(lambda: prepare(args, benchmark_name="libero", revision=REVISION, budgets=SUITE_BUDGETS),
-                  args, "libero")
+    from .adapter import LiberoPolicyAdapter
+
+    serve_episode(lambda: prepare(args, benchmark_name="libero", revision=REVISION, budgets=SUITE_BUDGETS,
+                                  adapter_factory=LiberoPolicyAdapter),
+                  args, "libero", capabilities=("pose", "native", "published_observations"))
 
 
 if __name__ == "__main__":
