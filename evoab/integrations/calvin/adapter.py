@@ -10,6 +10,8 @@ from evoab.services.environment.contracts import (
 )
 from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
 
+from .relative_action import BINDING_NAME, PROPRIOCEPTION, relative_command
+
 
 def camera_frame(camera, observation, depth_enabled):
     # Native static and wrist camera classes use different attribute names.
@@ -47,7 +49,7 @@ class CalvinAdapter:
                 grasp_site_description="Native Panda TCP between the longer finger pads; binary opening, 0 closed and 1 open.")],
             cameras=[CameraDescription(name=name, has_depth=depth_enabled) for name in self.cameras],
             control_frequency_hz=float(env.control_freq), max_episode_steps=max_steps,
-            observation_interval_steps=1,
+            observation_interval_steps=1, action_binding=BINDING_NAME,
             metadata={"control_constraints": "World-frame absolute TCP poses; gripper targets below 0.5 close, otherwise open.",
                       "evaluation_protocol": "single_task", "observation_source": "native_calvin"})
         from evoab.integrations.robot_resources import add_robot_resources, urdf_kinematics
@@ -68,6 +70,7 @@ class CalvinAdapter:
         # Scene state and oracle inputs remain private to the native service.
         self.frames = {name: camera_frame(camera, observation, self.depth_enabled)
                        for name, camera in self.cameras.items()}
+        self.proprioception = np.asarray(observation["robot_obs"], dtype=np.float32).tolist()
 
     def read_state(self):
         robot, bullet = self.env.robot, self.env.p
@@ -81,7 +84,8 @@ class CalvinAdapter:
                        joints=[j[0] for j in joints], gripper=float(np.clip(opening, 0, 1)),
                        gripper_command=float(robot.gripper_action > 0))
         return EnvironmentState(arms={"arm": arm}, state_version=self.steps, native_steps=self.steps,
-                                ended=self.finished or self.success or self.steps >= self.max_steps)
+                                ended=self.finished or self.success or self.steps >= self.max_steps,
+                                metadata={PROPRIOCEPTION: self.proprioception})
 
     def validate_commands(self, commands, mode):
         if mode != "pose":
@@ -92,12 +96,15 @@ class CalvinAdapter:
 
     def step_pose(self, command):
         self.validate_commands([command], "pose")
-        if self.closed or self.read_state().ended:
-            raise RequestRejected("Episode has ended")
         arm = command.arms["arm"]
         q = arm.pose.quaternion
         # The pinned native API accepts an absolute (position, xyzw, +/-1) tuple.
         action = (list(arm.pose.position), [*q[1:], q[0]], 1 if arm.gripper >= .5 else -1)
+        return self._step(action)
+
+    def _step(self, action):
+        if self.closed or self.read_state().ended:
+            raise RequestRejected("Episode has ended")
         observation, _, _, info = self.env.step(action)
         self.steps += 1
         self.success = bool(self.oracle.get_task_info_for_set(self.start_info, info, {self.task}))
@@ -108,7 +115,12 @@ class CalvinAdapter:
         raise RequestRejected("Joint control is unavailable")
 
     def step_native(self, command):
-        raise RequestRejected("Raw action control is unavailable")
+        action = relative_command(command.values)
+        with np.errstate(over="ignore"):
+            values = np.asarray(action.values, dtype=np.float32)
+        if not np.isfinite(values).all():
+            raise RequestRejected("CALVIN relative actions must fit into finite float32 values")
+        return self._step(values)
 
     def preview_joints(self, commands):
         raise RequestRejected("Joint previews are unavailable")

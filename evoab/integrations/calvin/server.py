@@ -75,7 +75,8 @@ def prepare(args):
 
 def main():
     args = parser().parse_args()
-    serve_episode(lambda: prepare(args), args, "calvin")
+    serve_episode(lambda: prepare(args), args, "calvin",
+                  capabilities=("pose", "native", "published_observations"))
 
 
 if __name__ == "__main__":
