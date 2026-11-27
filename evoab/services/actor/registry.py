@@ -37,6 +37,8 @@ _BACKENDS = {
     "xpolicylab": BackendDefinition("xpolicylab", f"{_PACKAGE}.xpolicylab", "XPolicyLabBackend"),
     "starvla_calvin": BackendDefinition("starvla_calvin", f"{_PACKAGE}.starvla_calvin", "StarVLACalvinBackend"),
     "starvla_libero": BackendDefinition("starvla_libero", f"{_PACKAGE}.starvla_libero", "StarVLALiberoBackend"),
+    "smolvla_metaworld": BackendDefinition("smolvla_metaworld", f"{_PACKAGE}.smolvla_metaworld",
+                                             "SmolVLAMetaWorldBackend"),
 }
 _ALIASES = {"pi05": "openpi"}
 
