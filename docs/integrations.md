@@ -15,7 +15,7 @@ checkpoints remain separate.
 | `robotwin` | RoboTwin 2.0 dual-arm tasks, Direct control | [Pinned RoboTwin runtime and assets](robotwin.md) |
 | `libero_pro` | Selected official LIBERO-PRO suites, Direct control | [Separate pinned LIBERO-PRO runtime](libero-extensions.md#libero-pro) |
 | `rmbench` | Memory-dependent dual-arm manipulation, Direct control | [Pinned RMBench runtime and assets](rmbench.md) |
-| `calvin` | Single-task Panda episodes, Direct control | [Pinned CALVIN environment and annotations](calvin.md) |
+| `calvin` | Single-task Panda episodes, motion tools and `actor_act` | [Pinned CALVIN environment, annotations and StarVLA actor](calvin.md) |
 | `robolab` | RoboLab DROID, Direct scalar-gripper control | Prepared RoboLab/Isaac environment; RGB cameras |
 | `dexjoco` | MuJoCo Panda/Allegro manipulation through Hybrid | Pinned DexJoCo environment and an identified OpenPI actor |
 | `behavior` | Experimental R1Pro wheeled mobile manipulation through Hybrid | [BEHAVIOR runtime/assets and OpenPI actor](behavior.md) |
@@ -24,8 +24,9 @@ checkpoints remain separate.
 
 Each integration composes its supported tools. RoboDojo and RoboLab
 provide Direct and Hybrid profiles; Hybrid requires an admitted controller and
-actor binding. LIBERO-Plus, LIBERO-PRO, RoboTwin, RMBench and CALVIN provide Direct
-only. DexJoCo, BEHAVIOR, Arena and NaVILA provide Hybrid with scene, skill and
+actor binding. CALVIN also exposes both motion and policy tools. LIBERO-Plus,
+LIBERO-PRO, RoboTwin and RMBench provide Direct only. DexJoCo, BEHAVIOR, Arena
+and NaVILA provide Hybrid with scene, skill and
 episode tools, without Direct gripper tools. Actor STOP yields to the planner,
 which decides when to call `finish`; native termination and metrics remain
 authoritative.

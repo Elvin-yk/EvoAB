@@ -29,7 +29,7 @@ from evoab.tools.toolkit import ToolOutput
 
 INTEGRATIONS = ("robodojo", "robolab", "robotwin", "libero", "libero_plus",
                 "libero_pro", "rmbench", "calvin")
-HYBRID = ("robodojo", "robolab")
+HYBRID = ("robodojo", "robolab", "calvin")
 BASE_TOOLS = {"list_skills", "read_skill", "view_env_state", "capture_scene",
               "locate", "move", "grasp", "release", "hold", "finish"}
 JOBS = set(TOOL_GROUPS["@jobs"])

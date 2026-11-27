@@ -1,6 +1,6 @@
 # CALVIN
 
-`--integration calvin` connects shared Direct gripper tools to the official
+`--integration calvin` connects shared motion and policy tools to the official
 [CALVIN](https://github.com/mees/calvin) PyBullet environment and task predicates.
 It provides **one task per episode**, with the native Panda longer fingers,
 static and wrist RGB cameras, optical calibration and optional depth.
@@ -51,8 +51,39 @@ that reset; the service does not repair or synthesize benchmark initial states.
 
 Connect a planner with `--integration calvin --env-url http://127.0.0.1:18786
 --recipe agentic`. Each native service owns one episode and requires a
-new output directory. Automatic setup/deploy recipes and Hybrid actors are not
-included.
+new output directory.
+
+## Use StarVLA through actor_act
+
+The CALVIN actor bridge was validated with RoboScope's StarVLA runtime and the
+`Simplicissimus-S/StarVLA-QwenGR00T_Qwen2.5-VL-3B-Instruct-Action_calvin_D_D`
+checkpoint. Start a fresh StarVLA policy socket, then run
+`python -m evoab.services.actor.server --config ACTOR.toml` in a runtime with
+the RoboScope SDK on its Python path.
+
+```toml
+backend = "starvla_calvin"
+socket_path = "/path/to/starvla.sock"
+checkpoint = "/path/to/the/prepared/checkpoint.pt"
+checkpoint_sha256 = "<checkpoint SHA-256>"
+```
+
+To expose `actor_act` as the only motion tool, connect to the CALVIN service
+and the actor service using the `agent_policy` recipe:
+
+```bash
+evoab run --integration calvin --env-url http://127.0.0.1:18786 \
+  --recipe agent_policy --agent codex --model MODEL_ID --no-sam3 \
+  --set 'roles.main.capabilities=[scene, hybrid, episode]' \
+  --action-model-url http://127.0.0.1:8601 \
+  --action-model-checkpoint-sha256 CHECKPOINT_SHA256
+```
+
+The default `agent_policy` capabilities expose `actor_act` alongside the
+individual motion tools. For each chunk, `actor_act` sends the instruction,
+static and wrist images, and robot state to the actor service. The binding
+executes the predicted relative actions through CALVIN's native controller.
+Use `active_groups=["arm"]`. The binding runs without a chunk reviewer.
 
 ## Control and evaluation
 
@@ -96,5 +127,5 @@ scene D reset with native `task_success=true` after 78 actions (412 seconds).
 It used RGB, calibration, SAM and runtime skills. The final image showed the
 drawer open; the planner exited normally with a complete training trace and no
 reported storage errors. This validates one single-task execution path, not
-the official chain score. Explicit reset files and other scenes/tasks remain
-outside the completed native model validation.
+the official chain score. The StarVLA check uses explicit scene D reset files
+with the same single-task evaluator.

@@ -35,6 +35,7 @@ _BACKENDS = {
     "navila": BackendDefinition("navila", f"{_PACKAGE}.navila", "NaVILABackend",
                                f"{_PACKAGE}.navila.deployment"),
     "xpolicylab": BackendDefinition("xpolicylab", f"{_PACKAGE}.xpolicylab", "XPolicyLabBackend"),
+    "starvla_calvin": BackendDefinition("starvla_calvin", f"{_PACKAGE}.starvla_calvin", "StarVLACalvinBackend"),
 }
 _ALIASES = {"pi05": "openpi"}
 
