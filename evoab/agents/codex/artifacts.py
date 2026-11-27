@@ -654,16 +654,20 @@ def _content(
             if text:
                 parts.append(text)
         elif block_type in {"input_image", "image", "image_url"}:
-            refs.append(_image_path(block))
-            if image_placeholders:
-                parts.append("<image>")
+            path = _image_path(block)
+            if path is not None:
+                refs.append(path)
+                if image_placeholders:
+                    parts.append("<image>")
     return "\n".join(parts), refs
 
 
-def _image_path(block: dict[str, Any]) -> str:
+def _image_path(block: dict[str, Any]) -> str | None:
     reference = block.get("image_url") or block.get("url")
     if isinstance(reference, dict):
         reference = reference.get("url", reference)
+    if isinstance(reference, dict) and reference.get("omitted") is True:
+        return None
     if not isinstance(reference, dict) or not isinstance(reference.get(IMAGE_REF_KEY), str):
         raise ValueError("provider image must reference the session image archive")
     path = reference[IMAGE_REF_KEY]

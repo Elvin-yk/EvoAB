@@ -7,7 +7,7 @@ from evoab.services.environment.contracts import CameraDescription, RequestRejec
 from evoab.services.environment.device_contracts import (
     CoordinatedControlStep, DeviceDescription, DeviceEnvironmentDescription, DeviceState,
 )
-from evoab.services.environment.snapshots import CapturedObservation
+from evoab.services.environment.snapshots import CapturedObservation, image_recording_stride
 
 from .native_compat import CAMERAS, COMPONENTS, CONTROL_DT
 from .observations import project_observation
@@ -33,7 +33,8 @@ class BehaviorAdapter:
         self.devices = {item.name: item for item in devices}
         self.description = DeviceEnvironmentDescription(devices=devices, world_frame="world",
             cameras=[CameraDescription(name=name, has_depth=False, has_calibration=False) for name in CAMERAS],
-            metadata={"control_frequency_hz": 30, "native_step_duration_s": CONTROL_DT,
+            metadata={"image_recording_stride": image_recording_stride(1 / CONTROL_DT),
+                      "control_frequency_hz": 30, "native_step_duration_s": CONTROL_DT,
                       "max_episode_steps": native.metadata["max_steps"], "action_binding": "behavior_r1pro_joint",
                       "control_constraints": "Base, trunk, arms and symmetric grippers advance together."})
         self._cache()

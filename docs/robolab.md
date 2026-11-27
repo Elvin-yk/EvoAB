@@ -24,8 +24,7 @@ SIM_PYTHON=/absolute/path/to/prepared/robolab/python
 ```
 
 The planner needs the normal harness installation and provider configuration. It
-does not need RoboLab, Isaac, Torch, USD or FCL. Recording additionally requires
-`ffmpeg` in the native service's PATH.
+does not need RoboLab, Isaac, Torch, USD or FCL.
 
 ## Prepare and serve an episode
 
@@ -38,7 +37,7 @@ export SIM_PYTHON=/absolute/path/to/prepared/robolab/python
 bash scripts/deploy/services/robolab/start_environment.sh \
   --task BananaInBowlTask --seed 0 --instruction-type default \
   --headless --device cuda:0 --host 127.0.0.1 --port 18770 \
-  --record-video --output-dir /absolute/path/to/new-run/environment
+  --output-dir /absolute/path/to/new-run/environment
 ```
 
 Native operations, including reset, stepping, calibration, capture and shutdown,
@@ -103,7 +102,7 @@ response is reconciled using the existing shared receipt mechanism.
   calibrated views exist; the model must identify corresponding physical points.
 - Only sensor images and measured robot state are public. Robot-only geometry
   and drive parameters use the shared artifact store and scene reference. Native
-  task predicates, object ground truth, HDF5 recordings and results are not
+  task predicates, object ground truth and results are not
   included in observations or tool feedback.
 
 ## Outcomes and evidence
@@ -114,16 +113,15 @@ of the model's completion claim or the reason the agent stopped. An unknown
 native result remains `null` in `native_result`; an incomplete evaluation is
 recorded separately as unsuccessful with `failure_category=episode_incomplete`.
 Native action faults are latched and classified as unaccepted environment errors.
-Finalization and native recording flush run once; a failed flush is not replayed.
+Native finalization runs once.
 If the result request fails, the session records an unaccepted, nonretryable
 `robolab_result_unavailable` outcome with success `null`; it does not fabricate
 a task verdict or resubmit native finalization.
 
 The environment writes `config.json`, shared `artifacts/`, and native evidence
-under `native/`, including `native_outcome.json`. RoboLab owns its own native
-configuration and HDF5 recordings. With `--record-video`, `native/episode.mp4`
-and `native/video.json` contain reset plus each executed tick, timed by native
-simulation time. The planner saves its usual trajectory and outcome copy.
+under `native/`, including `native_outcome.json`. Camera groups are archived
+every six native control steps after the reset frame. The planner saves its
+usual trajectory and outcome copy.
 
 ## Implementation boundaries
 

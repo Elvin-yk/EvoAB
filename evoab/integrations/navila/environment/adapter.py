@@ -1,19 +1,22 @@
 """Execute bounded Go2 velocity segments and publish real intermediate RGB."""
 import hashlib
 import json
+import logging
 import math
 import time
+from collections.abc import Callable
 
 from evoab.services.environment.contracts import CameraDescription, RequestRejected
 from evoab.services.environment.device_contracts import (
     CoordinatedControlStep, DeviceDescription, DeviceEnvironmentDescription, DeviceState,
 )
-from evoab.services.environment.snapshots import CameraFrame, CapturedHistoryFrame, CapturedObservation
+from evoab.services.environment.snapshots import CameraFrame, CapturedHistoryFrame, CapturedObservation, image_recording_stride
 
 from .native_compat import CONTROL_DT, MAX_STEPS, REVISION
 
 HISTORY = {"tick_origin": "post_warmup", "period_ticks": 25, "first_capture_tick": 1,
            "include_initial_frame": True, "control_dt_s": CONTROL_DT, "scope": "episode"}
+logger = logging.getLogger(__name__)
 
 
 class NaVILAAdapter:
@@ -23,6 +26,7 @@ class NaVILAAdapter:
         self.native_ended, self.finished, self.closed = False, False, False
         self.outcome = None
         self.history = []
+        self._record_image: Callable[[CapturedObservation], None] | None = None
         self._cache()
         self._record_frame()
         digest = hashlib.sha256(self.frame.rgb.tobytes() + json.dumps(self.measured, sort_keys=True).encode()).hexdigest()
@@ -37,12 +41,16 @@ class NaVILAAdapter:
                     "controller_inputs": "proprioception, command and LiDAR height map",
                     "max_forward_m_s": .5, "max_yaw_rad_s": math.pi / 6})],
             cameras=[CameraDescription(name="front", has_depth=False, has_calibration=False)],
-            metadata={"action_binding": "navila_go2", "control_frequency_hz": 1 / CONTROL_DT,
+            metadata={"image_recording_stride": image_recording_stride(1 / CONTROL_DT),
+                "action_binding": "navila_go2", "control_frequency_hz": 1 / CONTROL_DT,
                 "camera_history": {"front": dict(HISTORY)}, "max_episode_steps": MAX_STEPS,
                 "max_segment_duration_s": 1.5, "native_step_duration_s": CONTROL_DT})
 
     def episode_identity(self):
         return self.native.instruction, dict(self.metadata)
+
+    def set_image_recording_callback(self, callback: Callable[[CapturedObservation], None]) -> None:
+        self._record_image = callback
 
     def _cache(self, *, capture=True):
         if capture:
@@ -104,6 +112,12 @@ class NaVILAAdapter:
             # Match the pinned evaluator's post-step capture phase, including tick one.
             if (self.steps - 1) % HISTORY["period_ticks"] == 0:
                 self._record_frame()
+            if self._record_image is not None and self.steps % self.description.metadata["image_recording_stride"] == 0:
+                try:
+                    frame = self.frame if capture else CameraFrame(self.native.frame())
+                    self._record_image(self._snapshot(frame))
+                except Exception:  # noqa: BLE001 - a camera error cannot undo a native step.
+                    logger.warning("Could not capture NaVILA recording at step %d", self.steps, exc_info=True)
             if self.read_state().ended:
                 stop_reason = "native_terminal"
                 break
@@ -126,10 +140,13 @@ class NaVILAAdapter:
     def capture(self, cameras=None, *, high_resolution=False):
         if cameras is not None and cameras != ["front"]:
             raise RequestRejected("NaVILA exposes one front RGB camera")
+        return self._snapshot(self.frame, include_history=True)
+
+    def _snapshot(self, frame: CameraFrame, *, include_history: bool = False) -> CapturedObservation:
         state = self.read_state()
         return CapturedObservation(self.episode_id, self.steps, self.measured_at,
-            state.model_dump(mode="json"), {"front": self.frame}, terminated=state.ended,
-            truncated=self.steps >= MAX_STEPS, history={"front": tuple(self.history)})
+            state.model_dump(mode="json"), {"front": frame}, terminated=state.ended,
+            truncated=self.steps >= MAX_STEPS, history={"front": tuple(self.history)} if include_history else {})
 
     def finish(self, reason, status=None):
         if self.outcome is None:

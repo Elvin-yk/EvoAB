@@ -29,6 +29,8 @@ def externalize_images(value: Any, artifacts) -> Any:
 
 
 def _image_reference(media_type: str, encoded: str, artifacts) -> dict:
+    if not artifacts.retain_images:
+        return {"media_type": media_type, "omitted": True}
     try:
         data = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error) as error:

@@ -65,7 +65,7 @@ class ExchangeStore:
             self._records.append({})
         if self._trace_dir is not None:
             def write(directory: Path) -> None:
-                if self._save_exchanges and self._save_raw_request:
+                if self._save_exchanges and self._save_raw_request and self._artifacts.retain_images:
                     _write_gzip(directory / "request.json.gz", request_bytes)
                 self._write_view(
                     directory / f"request.{self._client_name}.json.gz",

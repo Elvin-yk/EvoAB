@@ -9,7 +9,7 @@ from evoab.services.environment.contracts import (
     ArmCommand, ArmDescription, CameraDescription, EnvironmentDescription,
     EnvironmentState, PoseCommand, RequestRejected, StepReceipt,
 )
-from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
+from evoab.services.environment.snapshots import CameraFrame, CapturedObservation, image_recording_stride
 
 CAMERAS = ("agentview", "robot0_eye_in_hand")
 
@@ -55,7 +55,8 @@ class LiberoAdapter:
                 has_depth=depth_enabled and not (name == "agentview" and self.distorted_agentview),
                 has_calibration=not (name == "agentview" and self.distorted_agentview)) for name in CAMERAS],
             control_frequency_hz=20.0, max_episode_steps=max_steps,
-            metadata={"control_constraints": self.binding.constraint, "observation_source": "native_libero_wrapper",
+            metadata={"image_recording_stride": image_recording_stride(20),
+                      "control_constraints": self.binding.constraint, "observation_source": "native_libero_wrapper",
                       "robot_prompt": resources.files("evoab.resources").joinpath(
                           "prompts/direct/libero_panda.md").read_text(encoding="utf-8")},
         )

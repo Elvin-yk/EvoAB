@@ -10,7 +10,7 @@ from evoab.services.environment.contracts import (
     ArmCommand, ArmControlCapabilities, ArmDescription, ArmState, CameraDescription, EnvironmentDescription,
     EnvironmentState, JointCommand, Pose, PoseCommand, RequestRejected, StepReceipt,
 )
-from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
+from evoab.services.environment.snapshots import CameraFrame, CapturedObservation, image_recording_stride
 
 from .controller import Controller
 from .gripper import MAX_OPENING_M, NATIVE_ANGLE_SCALE
@@ -20,7 +20,7 @@ from .native_compat import array
 
 class RoboLabAdapter:
     def __init__(self, env, model, *, episode_id, metadata, output_dir, owner,
-                 make_action=None, end_episode=None, refresh_images=None, record_frame=None,
+                 make_action=None, end_episode=None, refresh_images=None,
                  robot_state=None, camera_state=None):
         if env.num_envs != 1 or env.action_manager.total_action_dim != 8:
             raise ValueError("RoboLab requires exactly one DROID with eight native action dimensions")
@@ -31,7 +31,6 @@ class RoboLabAdapter:
         self._make_action = make_action or self._torch_action
         self._end_episode = end_episode or (lambda current: None)
         self._refresh_images = refresh_images or (lambda observation: observation)
-        self._record_frame = record_frame or (lambda observation: None)
         self._robot_state = robot_state or self._native_robot_state
         self._camera_state = camera_state or self._native_camera_state
         self._obs = None
@@ -52,11 +51,6 @@ class RoboLabAdapter:
         self.env.reset_eval_state()
         self._obs, _ = self.env.reset()
         self._obs = self._refresh_images(self._obs)
-        recorder = self.env.recorder_manager
-        if recorder is not None:
-            recorder.set_hdf5_file("run_0.hdf5")
-            recorder.set_episode_index(0, env_ids=[0])
-        self._record_frame(self._obs)
         measured = self._robot_state()
         self._opening_command = float(np.clip(measured["gripper_opening_m"] / MAX_OPENING_M, 0, 1))
         # Keep the actual initial drive angle rather than inferring it from pad deflection.
@@ -72,7 +66,8 @@ class RoboLabAdapter:
             control_frequency_hz=1. / self.controller.dt,
             max_episode_steps=int(self.env.max_episode_length),
             action_binding="robolab_droid_joint",
-            metadata={"observation_mode": "rgb_and_robot_proprioception",
+            metadata={"image_recording_stride": image_recording_stride(1. / self.controller.dt),
+                "observation_mode": "rgb_and_robot_proprioception",
                 "gripper_opening_models": {"right": {"kind": "affine_pad_gap_v1", "command_offset_m": 0.,
                     "command_scale_m": MAX_OPENING_M, "closed_command": 0.,
                     "min_opening_m": minimum, "max_opening_m": MAX_OPENING_M}},
@@ -181,7 +176,6 @@ class RoboLabAdapter:
             self._steps += 1
             self.controller.acknowledge(row)
             self._opening_command = float(target.gripper)
-            self._record_frame(self._obs)
             state = self._state()
         except Exception as error:
             self._fault = f"{type(error).__name__}: {error}"

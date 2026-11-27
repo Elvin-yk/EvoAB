@@ -19,7 +19,7 @@ from evoab.services.environment.contracts import (
     RequestRejected,
     StepReceipt,
 )
-from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
+from evoab.services.environment.snapshots import CameraFrame, CapturedObservation, image_recording_stride
 
 CAMERAS = ("corner2", "behindGripper")
 IMAGE_HEIGHT = 256
@@ -78,6 +78,7 @@ class MetaWorldAdapter:
         self.outcome = None
         self.command_opening = self._opening()
 
+        control_hz = float(1.0 / (env.model.opt.timestep * getattr(env, "frame_skip", 5)))
         self.description = EnvironmentDescription(
             arms=[
                 ArmDescription(
@@ -91,9 +92,10 @@ class MetaWorldAdapter:
                 )
             ],
             cameras=[CameraDescription(name=name, has_depth=self.depth_enabled, has_calibration=True) for name in CAMERAS],
-            control_frequency_hz=float(1.0 / (env.model.opt.timestep * getattr(env, "frame_skip", 5))),
+            control_frequency_hz=control_hz,
             max_episode_steps=self.max_steps,
             metadata={
+                "image_recording_stride": image_recording_stride(control_hz),
                 "control_constraints": (
                     f"Sawyer 4-DoF delta-XYZ + gripper control (action_scale={self.action_scale:.4f} m/step). "
                     "Wrist orientation is fixed and rotation targets are ignored."

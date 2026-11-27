@@ -89,6 +89,7 @@ class DirectPolicy:
         self.instruction = instruction
         self.config = config or DirectConfig()
         self.description = episode.description.environment
+        self.sampled_images = self.description.metadata.get("image_recording_stride") is not None
         self.representation = REPRESENTATIONS[self.config.representation].bind(self.description)
         self.joint_space = self.representation.space == "joint"
         self.horizon = (self.config.min_horizon, self.config.max_horizon)
@@ -124,7 +125,7 @@ class DirectPolicy:
                  "images": {name: self._relative(path) for name, path in images.items()},
                  "proprio": {"arms": measured} if len(measured) > 1 else next(iter(measured.values()))}
         self.frames.append(frame)
-        _jsonl(self.root / "frames.jsonl", frame)
+        _jsonl(self.root / "frames.jsonl", {**frame, "images": {}} if self.sampled_images else frame)
         return frame
 
     def _relative(self, path) -> str:
@@ -166,7 +167,8 @@ class DirectPolicy:
                 path = frame["images"][camera]
                 live += [label, {"type": "image_url", "image_url": {
                     "url": _data_url(self._absolute(path), self.config.image_max_side, self.config.jpeg_quality)}}]
-                stored += [label, {"$evoab_image": path}]
+                if not self.sampled_images:
+                    stored += [label, {"$evoab_image": path}]
         head = [{"role": "system", "content": system}, {"role": "user", "content": f"Goal: {self.instruction}"}]
         return head + [{"role": "user", "content": live}], head + [{"role": "user", "content": stored}]
 
@@ -190,6 +192,8 @@ class DirectPolicy:
         self.episode.accept_primitive(reply)
         if reply.execution_status != "completed":
             raise RuntimeError(f"Control step {reply.execution_status}: {reply.feedback.get('diagnostics')}")
+        if self.sampled_images and reply.snapshot is not None and set(reply.snapshot["cameras"]) >= set(self.cameras):
+            return self._record_frame(reply.snapshot)
         return self._capture()
 
     def _target(self, proprio: dict, closure: float | None = None):
