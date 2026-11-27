@@ -14,14 +14,16 @@ class ArchivedSnapshots:
         self.media = {}
         self.loaded = False
 
-    def load(self, events):
+    def load(self, events, identity):
         if self.loaded:
             return
         self.loaded = True
         # A shared snapshot identity establishes ownership; directory proximity does not.
         linked = {e['output']['snapshot_id'] for e in events
                   if isinstance(e.get('output'), dict) and e['output'].get('snapshot_id')}
-        if not linked:
+        metadata = identity.get('environment', {}).get('metadata', {})
+        sampled_episode = identity.get('episode_id') if metadata.get('image_recording_stride') else None
+        if not linked and not sampled_episode:
             return
         candidates = set()
         for parent in (self.root, *self.root.parents):
@@ -29,8 +31,11 @@ class ArchivedSnapshots:
                 continue
             for name in ('environment', 'env'):
                 directory = (parent / name).resolve()
-                if directory.is_relative_to(parent) and (directory / 'artifacts').is_dir():
-                    candidates.add(directory)
+                if not directory.is_relative_to(parent):
+                    continue
+                for store in (directory, (directory / 'artifacts').resolve()):
+                    if store.is_relative_to(directory) and (store / 'artifacts').is_dir():
+                        candidates.add(store)
         for directory in sorted(candidates):
             snapshots = []
             for meta in (directory / 'artifacts').glob('*.json'):
@@ -52,7 +57,8 @@ class ArchivedSnapshots:
             episodes = {s['episode_id'] for s in snapshots if s['snapshot_id'] in linked}
             prefix = 'archived/' + hashlib.sha256(str(directory).encode()).hexdigest()[:16]
             for snapshot in snapshots:
-                if snapshot['episode_id'] not in episodes:
+                is_sample = sampled_episode == snapshot['episode_id'] and 'sampled_step' in snapshot
+                if not is_sample and snapshot['episode_id'] not in episodes:
                     continue
                 cameras = {}
                 for name, frame in snapshot.get('cameras', {}).items():

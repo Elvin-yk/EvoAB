@@ -23,7 +23,7 @@ from evoab.services.environment.contracts import (
     StepRequest,
 )
 from evoab.services.environment.primitive import PrimitiveExecutor
-from evoab.services.environment.snapshots import SnapshotStore
+from evoab.services.environment.snapshots import CapturedObservation, SnapshotStore
 
 from .backend import EnvironmentBackend
 
@@ -78,15 +78,22 @@ class EnvironmentService:
         self._outcome: dict | None = None
         self._closed = False
         self._last_published_step = -1
+        self._image_stride = metadata.get("image_recording_stride")
+        if self._image_stride is not None and (type(self._image_stride) is not int or self._image_stride < 1):
+            raise ValueError("Image recording stride must be a positive native step count")
+        self._next_image_step = 0
         self._current_state_version = 0
         self._publication_error: str | None = None
         from .interrupts import Interrupts
         self.interrupts = Interrupts()
         self.primitive = PrimitiveExecutor(backend, on_step=self._on_step)
+        if self._image_stride is not None and hasattr(backend, "set_image_recording_callback"):
+            backend.set_image_recording_callback(self._record_native_sample)
+
     def initialize(self) -> dict:
         """Publish the state prepared by the host; connecting clients never reset it."""
         with self._motion_lock:
-            return self._capture(record=True)
+            return self._capture(record=True, sample=True)
 
     def info(self) -> EpisodeInfo:
         with self._state_lock:
@@ -193,7 +200,7 @@ class EnvironmentService:
                 raise RuntimeError("Invalid native execution status")
             snapshot, publication_error = None, None
             try:
-                snapshot = self._capture(record=True)
+                snapshot = self._capture(record=True, sample=True)
             except Exception as error:
                 publication_error = f"{type(error).__name__}: {error}"
             trace, archive_error = self._archive({"identity": identity.model_dump(),
@@ -332,7 +339,7 @@ class EnvironmentService:
             snapshot = None
             publication_error = None
             try:
-                snapshot = self._capture(record=True)
+                snapshot = self._capture(record=True, sample=True)
             except Exception as error:  # noqa: BLE001 - preserve the physical receipt if publication fails.
                 publication_error = f"{type(error).__name__}: {error}"
             trace, archive_error = self._archive({
@@ -354,21 +361,41 @@ class EnvironmentService:
             self._complete(identity, result)
             return result
 
-    def _capture(self, request: CaptureRequest | None = None, *, record: bool = False) -> dict:
+    def _capture(self, request: CaptureRequest | None = None, *, record: bool = False,
+                 sample: bool = False) -> dict:
         request = request or CaptureRequest(high_resolution=False)
         captured = self.backend.capture(request.cameras, high_resolution=request.high_resolution)
+        return self._publish_capture(captured, record=record, sample=sample)
+
+    def _publish_capture(self, captured: CapturedObservation, *, record: bool, sample: bool) -> dict:
         # Identity is owned by the bound service, not inferred from room numbers.
         captured = replace(captured, episode_id=self._info.episode_id)
-        result = self.snapshots.publish(captured, record=record)
+        stride = self._image_stride
+        step = captured.state.get("native_steps", captured.state_version)
+        sampled_step = step if stride is not None and sample and step >= self._next_image_step and captured.cameras else None
+        result = self.snapshots.publish(captured, record=record, retain=stride is None or sampled_step is not None,
+                                        sampled_step=sampled_step)
+        if sampled_step is not None:
+            self._next_image_step = (sampled_step // stride + 1) * stride
         if "native_steps" in captured.state:
             self._last_published_step = captured.state["native_steps"]
         with self._state_lock:
             self._current_state_version = captured.state_version
         return result
 
+    def _record_native_sample(self, captured: CapturedObservation) -> None:
+        """Record a sample captured inside a multi-step native command."""
+        try:
+            self._publish_capture(captured, record=False, sample=True)
+        except Exception as error:  # noqa: BLE001 - preserve the native command receipt.
+            with self._state_lock:
+                self._publication_error = f"{type(error).__name__}: {error}"
+
     def _on_step(self, state) -> None:
         with self._state_lock:
             self._current_state_version = state.state_version
+        if self._image_stride is not None:
+            return
         interval = self._info.environment.observation_interval_steps
         if state.native_steps - self._last_published_step < interval:
             return

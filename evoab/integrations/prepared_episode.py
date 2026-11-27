@@ -23,6 +23,8 @@ class Episode:
     def __init__(self, env, description, output, *, artifacts):
         self.env, self.description, self.output = env, description, Path(output)
         self.artifacts = artifacts
+        if description.environment.metadata.get("image_recording_stride") is not None:
+            self.artifacts.retain_images = False
         # The service owns the authoritative snapshot sequence.  The episode
         # keeps a local mirror so actor/perception/prompt consumers can
         # use local files after the first HTTP fetch instead of downloading the

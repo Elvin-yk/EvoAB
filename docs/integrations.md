@@ -81,6 +81,25 @@ evoab run --integration robodojo --help
 See [getting started](getting-started.md) for installation and a first offline
 configuration check. The CLI is `evoab`; the Python package is `evoab`.
 
+## Simulation image recording
+
+Direct and Hybrid archive one camera group at step zero and then about every
+400 ms of simulation time. The environment service rounds 400 ms to a whole
+number of native steps and uses that stride throughout the episode.
+
+MetaWorld uses 32 steps, DexJoCo, IsaacLab Arena and NaVILA use 20, CALVIN and
+BEHAVIOR use 12, RoboDojo uses 10, the LIBERO family uses 8, and the standard
+RoboLab DROID setup uses 6. RoboTwin and RMBench sample every 12 native actions
+using a nominal 30 Hz rate. Those actions execute variable-length trajectories,
+so simulated time between samples can vary. Custom integrations set their
+stride through `control_hz`.
+
+The environment artifact store saves one PNG per available camera in `images/`.
+Snapshot manifests in `artifacts/` identify the archived groups by
+`sampled_step` and `captured_at`. Fresh camera observations for policy inference
+and tools use temporary storage. Rebuild and restart existing environment
+services to use this policy.
+
 ## Prepared episodes and shared tools
 
 `--env-url` points to an already prepared episode, including its full allocated

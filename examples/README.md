@@ -91,8 +91,8 @@ bash examples/robolab.sh run --model "$MODEL" --monitor
 Both commands default to `BananaInBowlTask`, seed 0 and instruction type `default`.
 If overriding these, use matching values for `serve` and `run`. For another port,
 pair `serve --port 18771` with `run --env-url http://127.0.0.1:18771`.
-The simulator uses `--device cuda:0` by default. Add `--record-video` to `serve`
-if `ffmpeg` is available in the native environment.
+The simulator uses `--device cuda:0` by default and archives camera groups
+about every 400 ms of simulation time.
 
 The agent finalizes the episode; the foreground service remains owned by terminal
 1. Stop it with Ctrl-C, then restart with a new output directory before another

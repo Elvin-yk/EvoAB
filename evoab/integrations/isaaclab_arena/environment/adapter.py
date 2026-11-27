@@ -7,7 +7,7 @@ from evoab.services.environment.contracts import CameraDescription, RequestRejec
 from evoab.services.environment.device_contracts import (
     CoordinatedControlStep, DeviceDescription, DeviceEnvironmentDescription, DeviceState,
 )
-from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
+from evoab.services.environment.snapshots import CameraFrame, CapturedObservation, image_recording_stride
 
 from ..g1 import CONTROL_DT, CONTROL_GROUPS, JOINT_GROUPS
 from . import native_compat as native
@@ -41,7 +41,8 @@ class ArenaAdapter:
                         metadata={"members": [*JOINT_GROUPS, "base", "body"]})]
         self.description = DeviceEnvironmentDescription(world_frame="world", devices=devices,
             cameras=[CameraDescription(name="head", has_depth=False, has_calibration=False)],
-            metadata={"embodiment": "g1_wbc_joint", "wbc": "homie_v2", "control_frequency_hz": 50,
+            metadata={"image_recording_stride": image_recording_stride(1 / CONTROL_DT),
+                "embodiment": "g1_wbc_joint", "wbc": "homie_v2", "control_frequency_hz": 50,
                 "native_step_duration_s": CONTROL_DT, "max_episode_steps": native.MAX_STEPS,
                 "action_binding": "arena_g1_locomanipulation", "simulation_clock": "synchronous",
                 "native_controlled_joint_groups": ["legs", "waist"]})

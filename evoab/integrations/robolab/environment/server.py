@@ -26,7 +26,6 @@ def build_parser():
     parser.add_argument("--port", type=int, default=18770)
     parser.add_argument("--gripper-torque-limit-nm", type=positive_float, default=16.5)
     parser.add_argument("--compact-gpu-buffers", action="store_true")
-    parser.add_argument("--record-video", action="store_true")
     return parser
 
 
@@ -82,7 +81,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     args.enable_cameras = True
     app = AppLauncher(args).app
-    env = adapter = artifacts = service = video = None
+    env = adapter = artifacts = service = None
     from .executor import MainThreadExecutor
     owner = MainThreadExecutor()
     try:
@@ -111,6 +110,7 @@ def main(argv=None):
         if len(matches) != 1:
             raise ValueError(f"Expected one registered native task; got {matches}")
         cfg = parse_env_cfg(matches[0], device=args.device, seed=args.seed, num_envs=1)
+        cfg.recorders = None
         enable_live_camera_poses(cfg.scene)
         cfg.scene.robot.actuators["gripper"].effort_limit_sim = args.gripper_torque_limit_nm
         if args.compact_gpu_buffers:
@@ -136,21 +136,9 @@ def main(argv=None):
             "gripper_torque_limit_nm": applied, "drive_parameters": drive_parameters(env.scene["robot"], model.arm_names),
             "gpu_buffer_profile": "compact" if args.compact_gpu_buffers else "native"}
         (args.output_dir / "config.json").write_text(json.dumps(metadata, indent=2))
-        if args.record_video:
-            from .video import EpisodeVideo
-            video = EpisodeVideo(args.output_dir / "native", env.step_dt)
-
-        def finish_native(current):
-            try:
-                end_episode(current)
-            finally:
-                if video is not None:
-                    video.close()
-
         adapter = RoboLabAdapter(env, model, episode_id=args.run_id or uuid4().hex,
             metadata=metadata, output_dir=args.output_dir / "native", owner=owner,
-            end_episode=finish_native, refresh_images=lambda obs: refresh_reset_images(env, obs),
-            record_frame=video.add if video is not None else None)
+            end_episode=end_episode, refresh_images=lambda obs: refresh_reset_images(env, obs))
         with torch.inference_mode():
             adapter.reset()
             artifacts = ArtifactStore(args.output_dir / "artifacts")
@@ -174,8 +162,6 @@ def main(argv=None):
                 env.close()
         finally:
             try:
-                if video is not None:
-                    video.close()
                 if artifacts is not None:
                     artifacts.close()
             finally:

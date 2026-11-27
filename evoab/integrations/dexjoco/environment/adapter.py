@@ -14,7 +14,7 @@ from evoab.services.environment.device_contracts import (
     DeviceEnvironmentDescription,
     DeviceState,
 )
-from evoab.services.environment.snapshots import CapturedObservation
+from evoab.services.environment.snapshots import CapturedObservation, image_recording_stride
 
 from .native_compat import (
     CONTROL_DT,
@@ -56,6 +56,7 @@ class DexJoCoAdapter:
             cameras=[CameraDescription(name=name, has_depth=False, has_calibration=True)
                      for name in ("front", "wrist")],
             metadata={
+                "image_recording_stride": image_recording_stride(1 / CONTROL_DT),
                 "layout": [{"group": "right", "arm": "right_arm", "hand": "right_hand"}],
                 "control_frequency_hz": 1 / CONTROL_DT, "native_step_duration_s": CONTROL_DT,
                 "max_episode_steps": MAX_STEPS, "action_binding": "dexjoco_tcp_hand",

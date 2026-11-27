@@ -64,6 +64,18 @@ class RunReader:
         self.version = 0
         self.state = None
         self.metadata = None
+        self.preview = None
+        self.preview_images = {}
+
+    def update_preview(self, record, images):
+        with self.lock:
+            self.preview = record
+            self.preview_images = images
+            self.state = None
+
+    def preview_image(self, path):
+        with self.lock:
+            return self.preview_images.get(path)
 
     def refresh(self):
         from .state import project
@@ -92,8 +104,11 @@ class RunReader:
                     seen.add(key)
                     ordered.append(record)
                 if metadata['result']:
-                    self.archive.load(ordered)
-                snapshots = sorted(self.archive.records + self.frames.records, key=lambda s: s.get('captured_at') or 0)
+                    identity = metadata['result'].get('episode_identity') or {}
+                    self.archive.load(ordered, identity)
+                preview = [self.preview] if self.preview is not None and not metadata['result'] else []
+                snapshots = sorted(self.archive.records + self.frames.records + preview,
+                                   key=lambda s: s.get('captured_at') or 0)
                 self.state = project(ordered, snapshots,
                     metadata, self.root.name)
                 self.state['read_errors'] = self.events.errors + self.frames.errors
