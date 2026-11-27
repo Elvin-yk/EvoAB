@@ -233,12 +233,12 @@ camera capability field.
 
 ### Hybrid control
 
-Hybrid requires `--action-model-url` and an expected
-`--action-model-checkpoint-sha256`. Its reviewer is enabled by default and uses
+External actors require `--action-model-url` and an expected
+`--action-model-checkpoint-sha256`. The Pi0.5 reviewer is enabled by default and uses
 `--vla-review-base-url` or the inherited `--provider-url`. Reviewer model, adapter
 and credentials are independently configurable; see
 [reviewer configuration](running.md#vla-reviewer). `--no-vla-review` leaves the
-[actor execution budgets](running.md#actor-execution-budgets) unchanged.
+[actor execution budgets](running.md#actor-execution-budgets) unchanged. See [RoboDojo Direct policy](hybrid.md#robodojo-direct-policy) for the in-process model-preset binding.
 
 ### Coordinated arm targets
 
@@ -314,13 +314,14 @@ one execution loop. The integration selects its binding through a factory;
 |---|---|---|
 | RoboDojo | `robodojo_pi05` | Explicit legacy Pi0.5 config, images, RNG and clipping |
 | RoboDojo X5 | `robodojo_x5_joint` | Absolute X5 joints and continuous normalized openings at 25 Hz |
+| RoboDojo X5 | `robodojo_direct_eef` | In-process Direct policy with absolute grasp-site targets and normalized openings at 25 Hz |
 | RoboLab DROID | `robolab_droid_joint` | Seven measured joints plus normalized finger angle; joint and physical-gap targets |
 | DexJoCo | `dexjoco_tcp_hand` | Absolute world TCP pose plus named Allegro finger positions in one native step |
 | BEHAVIOR R1Pro | `behavior_r1pro_joint` | Torso, arm and gripper joint targets with local base velocity at 30 Hz |
 | Arena G1 | `arena_g1_locomanipulation` | Arm/hand targets, heading-frame velocity and pelvis height through the native whole-body controller at 50 Hz |
 | NaVILA Go2 | `navila_go2` | Front-camera history to discrete movement; bounded native locomotion segments or yield to the planner |
 
-Except for the pinned legacy Pi0.5 path, bindings validate semantics without
+For external actors aside from the pinned legacy Pi0.5 path, bindings validate semantics without
 requiring a particular backend runtime. XPolicyLab can serve any of these
 contracts when its configured model actually implements them. A compatible
 checkpoint change is deployment configuration. A new representation needs an

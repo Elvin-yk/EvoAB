@@ -18,7 +18,7 @@ A recipe file or method directory can also be passed directly:
 
 | Id | Paradigms | Channel | Roles | Notes |
 |---|---|---|---|---|
-| `tool_team` | orchestrate | tools, optional action delegate | configurable | Studio role cards and per-role tool selection |
+| `tool_team` | orchestrate | tools | configurable | Studio role cards, per-role tool selection, and Direct via `actor_act` on RoboDojo |
 | `agentic` | orchestrate | tools | 1 | Default; skills, scene, gripper, episode |
 | `clean` | orchestrate | tools | 1 | Four tools, compact results, initial RGB observation |
 | `direct_policy` | direct | action | 1 | Astranomy-style Direct; `abs_eef`, `delta_eef` or `joint_abs` |
@@ -27,7 +27,6 @@ A recipe file or method directory can also be passed directly:
 | `rua` | orchestrate | tools | 1 | Paper setting of RUA (arXiv 2611.01560), native |
 | `q0_preview_upstream` | orchestrate | tools | 1 | [Original Q0-Preview policy](../evoab/methods/q0_preview_upstream/CARD.md), RoboDojo simulation reference protocol |
 | `rua_upstream` | orchestrate | tools | 1 | Original uni-robot-agent package as external evaluator, RoboDojo only |
-| `planner_direct` | orchestrate, direct | tools → action | 2 | Planner delegates sub-goals to a Direct controller |
 | `code_iterate` | code | code | 1 | Program library carried across episodes (RAX-style, partial) |
 
 Any agent runs any method (except methods pinned to an external evaluator).

@@ -4,14 +4,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from evoab.composition.recipe import ActionSpec, Brain, Capability, PromptSpec, Role
+from evoab.composition.recipe import Brain, Capability, PromptSpec, Role
 from evoab.integrations import load_integration
-from evoab.tools.delegation.provider import tool_name
 from evoab.tools.selection import TOOL_GROUPS
 from evoab.workbench import benchmarks
 
-DIRECT_ROLE = "direct_controller"
-DIRECT_TOOL = tool_name(DIRECT_ROLE)
+DIRECT_TOOL = "actor_act"
 
 
 class AgentCard(BaseModel):
@@ -30,7 +28,7 @@ def team_catalog(integration: str) -> dict[str, list[str]]:
     groups = {module.name: [name for name in module.tools if name != "write_skill"]
               for module in spec.tool_modules if module.tools and module.name != "hybrid"}
     groups["jobs"] = list(TOOL_GROUPS["@jobs"])
-    groups["action_policy"] = [DIRECT_TOOL] if "move" in groups.get("gripper", ()) else []
+    groups["action_policy"] = [DIRECT_TOOL] if spec.direct_policy_binding else []
     return groups
 
 
@@ -47,12 +45,15 @@ def team_roles(integration: str, cards: list[dict]) -> dict:
         selected = set(card.tools)
         if unknown := selected - allowed:
             raise ValueError(f"Unavailable tools: {sorted(unknown)}")
-        if card.role == "planner" and (motion := selected.intersection((*groups.get("gripper", ()), *groups["action_policy"]))):
+        if card.role == "planner" and (motion := selected.intersection(groups.get("gripper", ()))):
             raise ValueError(f"Planner cannot use execution tools: {sorted(motion)}")
         capabilities = []
         for group, tools in groups.items():
-            subset = [name for name in tools if name in selected and name != DIRECT_TOOL]
-            if subset and group != "jobs":
+            subset = [name for name in tools if name in selected]
+            if subset and group == "action_policy":
+                binding = load_integration(integration).get_integration_spec().direct_policy_binding
+                capabilities.append(Capability(id="hybrid", tools=subset, options={"binding": binding}))
+            elif subset and group != "jobs":
                 capabilities.append(Capability(id=group, tools=subset))
         numbers = card.delegate_to
         if numbers is None:
@@ -61,14 +62,6 @@ def team_roles(integration: str, cards: list[dict]) -> dict:
             raise ValueError(f"Invalid delegation target for Agent {index + 1}")
         targets = [names[n - 1] for n in dict.fromkeys(numbers)]
         delegation.add(names[index], *targets)
-        if DIRECT_TOOL in selected:
-            controller = f"{names[index]}_direct"
-            targets.append(controller)
-            direct = Role(channel="action", description="Execute a motion sub-goal from camera observations.",
-                          action=ActionSpec(max_calls=6))
-            if index and card.model_preset:
-                direct.brain = Brain(model_preset=card.model_preset)
-            roles[controller] = direct
         if targets:
             capabilities.append(Capability(id="delegate", options={"roles": targets}))
         duty = ("Plan the task and verify results." if card.role == "planner"

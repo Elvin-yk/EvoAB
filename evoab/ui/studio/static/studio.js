@@ -464,7 +464,7 @@ const TOOL_GROUP_LABELS = { gripper: "机械臂", action_policy: "动作策略",
 const TOOL_LABELS = {
   [DIRECT_TOOL]: "Direct 控制（按子目标生成动作）", move: "移动机械臂", grasp: "闭合夹爪", release: "打开夹爪", hold: "保持姿态",
   view_env_state: "读取场景状态", capture_scene: "拍摄场景", locate: "定位物体（视相机能力而定）",
-  list_skills: "列出技能", read_skill: "读取技能", finish: "提交整个任务的结果", actor_act: "调用动作模型",
+  list_skills: "列出技能", read_skill: "读取技能", finish: "提交整个任务的结果",
   get_tool_result: "查询作业结果", wait_for_tool: "等待一个作业", wait_for_tools: "等待多个作业",
   list_tool_jobs: "列出作业", cancel_tool: "取消作业", queue_status: "查看队列", flush_queue: "清空队列",
 };

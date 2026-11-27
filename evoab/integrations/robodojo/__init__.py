@@ -29,9 +29,7 @@ def add_cli_args(parser):
 def validate_cli(args):
     from evoab.integrations.gripper import validate_gripper_cli
 
-    if args.vla_review is None:
-        args.vla_review = "hybrid" in args.tool_modules
-    validate_gripper_cli(args)
+    validate_gripper_cli(args, default_vla_review=True)
 
 
 def create_session(context):
@@ -50,6 +48,7 @@ def get_integration_spec():
     spec = build_gripper_spec(name="robodojo", create_session=create_session,
                               tool_modules=HYBRID_TOOL_MODULES,
                               add_cli_args=add_cli_args, validate_cli=validate_cli, config_model=RobodojoOptions)
+    spec.direct_policy_binding = "robodojo_direct_eef"
     spec.deployment_module = "evoab.integrations.robodojo.deployment"
     return spec
 

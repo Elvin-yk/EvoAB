@@ -182,13 +182,16 @@ class ArmGripperBinding:
                     for field, value in zip(layout.joints, state["joints"], strict=True):
                         values[self.indices[field]] = value
                 elif arm not in scope["active_groups"]:
-                    position = [0., 0., 0.] if self.action_kind == "cartesian_delta" else row[arm]["position"]
+                    position = [0., 0., 0.] if self.action_kind == "cartesian_delta" else state["control_pose"]["position"]
                     for field, value in zip(layout.position, position, strict=True):
                         values[self.indices[field]] = value
                     for field in layout.rotation_vector:
                         values[self.indices[field]] = 0.
-                    for field, value in zip(layout.quaternion, row[arm].get("quaternion_wxyz", []), strict=False):
-                        values[self.indices[field]] = value
+                    if layout.quaternion:
+                        orientation = (state["metadata"]["target_quaternion"] if control.rotation_reference == "target"
+                                       else state["control_pose"]["quaternion"])
+                        for field, value in zip(layout.quaternion, orientation, strict=True):
+                            values[self.indices[field]] = value
             # All rows are checked before execution; compilation has no side effects.
             self._compile(row, current)
             rows.append(row)
