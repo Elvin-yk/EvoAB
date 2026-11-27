@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -77,8 +78,13 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
         raise ValueError("the recipe enables scene segmentation: run a SAM3 service and pass --sam3-url")
     from urllib.parse import urlsplit
 
-    for name in ("env_url", "action_model_url", "sam3_url"):
-        value = getattr(args, name)
+    if getattr(args, "command", None) == "run":
+        args.verifier_url = getattr(args, "verifier_url", None) or runtime_env("VERIFIER_URL")
+        timeout = getattr(args, "verifier_timeout_s", 30)
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("--verifier-timeout-s must be positive and finite")
+    for name in ("env_url", "action_model_url", "sam3_url", "verifier_url"):
+        value = getattr(args, name, None)
         if value:
             try:
                 url = urlsplit(value)
@@ -87,6 +93,8 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
                     and url.hostname
                     and (url.port is None or url.port > 0)
                 )
+                if name == "verifier_url":
+                    valid = valid and url.scheme in {"http", "https"} and not (url.query or url.fragment)
             except ValueError:
                 valid = False
             if not valid:
@@ -206,6 +214,8 @@ class SessionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     integration: str = Field(min_length=1)
     env_url: str | None = None
+    verifier_url: str | None = None
+    verifier_timeout_s: float = Field(default=30, gt=0, allow_inf_nan=False)
     agent: AgentConfig | None = None
     integration_options: dict[str, Any] = Field(default_factory=dict, repr=False)
     instruction: str | None = None

@@ -1,11 +1,14 @@
 """Lifecycle and acknowledged state for a prepared environment episode."""
 from __future__ import annotations
 
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from evoab.artifacts.run import write_json_atomic
+from evoab.events.core import ObservationSampled
 from evoab.integrations.base import EpisodeOutcome
 from evoab.integrations.composition import assemble_tools
 from evoab.services.environment.client import EnvironmentClient, EnvironmentRequestError
@@ -35,6 +38,9 @@ class Episode:
         self.state = parse_state(self.latest_snapshot["state"], description)
         self.latest_feedback = None
         self.recent_observations = []
+        self._sample_cursor = 0
+        self._sample_lock = threading.Lock()
+        self._emit_sample: Callable[[ObservationSampled], None] | None = None
         self.finished = False
         self.outcome = None
         self.finish_request = None
@@ -71,11 +77,33 @@ class Episode:
             return ToolOutput(success=False, error="Tool execution failed",
                               extra={"execution_uncertain": self.env.uncertain})
 
+    def bind_sample_events(self, emit: Callable[[ObservationSampled], None]) -> None:
+        if "sampled_image_index" in self.description.capabilities:
+            self._emit_sample = emit
+            self._sync_samples()
+
+    def _sync_samples(self, count: int | None = None) -> None:
+        if self._emit_sample is None:
+            return
+        with self._sample_lock:
+            if count is not None and count <= self._sample_cursor:
+                return
+            try:
+                for item in self.env.sampled_images(self._sample_cursor):
+                    self._emit_sample(ObservationSampled(**item))
+                    self._sample_cursor += 1
+                self.storage_errors.pop("sample_index", None)
+            except Exception as error:
+                # A failed evidence read can be retried independently of the action.
+                self.storage_errors["sample_index"] = str(error)
+                logger.warning("Could not index sampled images: %s", error)
+
     def publish(self, reply):
         self.state = reply.state_after
         self.latest_feedback = reply.feedback
         # Failed image publication cannot replace an acknowledged state with a stale one.
         self.latest_snapshot = reply.snapshot
+        self._sync_samples((reply.snapshot or {}).get("sample_count", 0))
         self.recent_observations.append({**({"command_index": self.state.completed_commands} if isinstance(self.description, DeviceEpisodeInfo)
                    else {"step_id": self.state.native_steps}),
             "state": self.state.model_dump(mode="json"), "feedback": reply.feedback,
@@ -89,6 +117,7 @@ class Episode:
         self.latest_feedback = reply.feedback
         if reply.snapshot is not None:
             self.latest_snapshot = reply.snapshot
+            self._sync_samples(reply.snapshot.get("sample_count", 0))
 
     def observation(self, cameras=None):
         """Resolve current RGB and same-frame calibration without replaying motion."""
@@ -133,6 +162,7 @@ class Episode:
         # A local write failure cannot undo the service's confirmed outcome.
         self.outcome = result["outcome"]
         self.finished = True
+        self._sync_samples()
         for name, value in (("finish_request.json", self.finish_request),
                             ("native_outcome.json", self.outcome)):
             try:

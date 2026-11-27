@@ -81,6 +81,8 @@ class EnvironmentService:
         self._image_stride = metadata.get("image_recording_stride")
         if self._image_stride is not None and (type(self._image_stride) is not int or self._image_stride < 1):
             raise ValueError("Image recording stride must be a positive native step count")
+        if self._image_stride and artifacts.root is not None:
+            self._info.capabilities.append("sampled_image_index")
         self._next_image_step = 0
         self._current_state_version = 0
         self._publication_error: str | None = None

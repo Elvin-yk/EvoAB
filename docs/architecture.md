@@ -125,6 +125,25 @@ check stopping conditions; there are no server-side `move` or `grasp` routes.
   `finish` returns an acknowledgement; the official outcome is recorded for
   evaluation only.
 
+## Session verification
+
+The environment service owns the sampled-image index. Its `GET /samples?start=N`
+endpoint returns references to durable manifests and PNGs. The Session emits
+one `observation_sampled` event per camera group, including groups collected
+inside a multi-step command.
+
+After the trajectory writer closes and the native outcome is available, a
+configured Session writes its initial result with a pending verification
+request ID. It sends `POST /verification/jobs` with `request_id`,
+`native_outcome_path`, `trajectory_path` and `result_path`. The verifier
+serializes jobs through its FIFO worker. All three files belong to the same
+session within its shared runs root. The worker atomically updates only the
+`verification` field and replies with the request ID and completed status.
+Repeating the request with the same ID acknowledges the existing result.
+The stub records the four output fields and labels its response with its backend.
+The client uses a bounded wait and leaves result-file ownership with the worker
+after submission.
+
 ## Scheduling
 
 Each tool declares a policy: return mode (`immediate` or `background`) and

@@ -13,7 +13,7 @@ from typing import IO, TYPE_CHECKING, Any, Literal
 from evoab.artifacts.store import ArtifactStore
 from evoab.events.core import (
     AgentActivity, AgentRunFinished, AgentRunStarted, AssistantText, ErrorEvent,
-    Event, EventBus, ToolCall, ToolCallBatch, ToolResult,
+    Event, EventBus, ObservationSampled, ToolCall, ToolCallBatch, ToolResult,
 )
 
 if TYPE_CHECKING:
@@ -206,7 +206,8 @@ def event_to_record(event: Event) -> dict[str, Any]:
             }
             for image in event.images
         ]
-    record["type"] = {AgentRunStarted: "SessionStart", AgentRunFinished: "SessionEnd"}.get(
+    record["type"] = {AgentRunStarted: "SessionStart", AgentRunFinished: "SessionEnd",
+                      ObservationSampled: "observation_sampled"}.get(
         type(event), type(event).__name__,
     )
     # Omit empty fields to reduce record size.

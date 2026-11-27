@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add an opt-in HTTP verifier stub for Session runs. The trajectory records
+  sampled camera paths, and the worker writes a placeholder verdict to
+  `result.json` before acknowledging completion.
+
 - Removed the built-in `planner_direct` recipe. On RoboDojo, the planner can
   call Direct through `actor_act` using the existing `agent_policy` recipe.
   Standalone `direct_action` remains available.

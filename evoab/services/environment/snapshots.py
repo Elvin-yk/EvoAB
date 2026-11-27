@@ -99,6 +99,7 @@ class SnapshotStore:
         self._lock = threading.RLock()
         self._latest: str | None = None
         self._records: list[str] = []
+        self._samples: list[str] = []
 
     def publish(self, observation: CapturedObservation, *, record: bool = False,
                 retain: bool = True, sampled_step: int | None = None) -> dict:
@@ -153,16 +154,38 @@ class SnapshotStore:
                 history[name] = entries
             manifest["history"] = history
         if retain and sampled_step is not None and "history" in manifest:
-            self.artifacts.put_json({key: value for key, value in manifest.items() if key != "history"})
+            archive = self.artifacts.put_json({key: value for key, value in manifest.items() if key != "history"})
             ref = self.artifacts.put_json(manifest, retain=False)
         else:
-            ref = self.artifacts.put_json(manifest, retain=retain)
+            ref = archive = self.artifacts.put_json(manifest, retain=retain)
         snapshot_id = ref["artifact_id"]
         with self._lock:
             self._latest = snapshot_id
             if record:
                 self._records.append(snapshot_id)
-        return dict(manifest, snapshot_id=snapshot_id, manifest=ref)
+            if sampled_step is not None and cameras and self.artifacts.root is not None:
+                self._samples.append(archive["artifact_id"])
+            count = len(self._samples)
+        result = dict(manifest, snapshot_id=snapshot_id, manifest=ref)
+        if count:
+            result["sample_count"] = count
+        return result
+
+    def sampled_images(self, start: int) -> list[dict]:
+        """Resolve archived paths after the corresponding files are published."""
+        with self._lock:
+            if not 0 <= start <= len(self._samples):
+                raise LookupError("Invalid sample cursor")
+            ids = self._samples[start:]
+        samples = []
+        for snapshot_id in ids:
+            path = self.artifacts.local_path(snapshot_id)
+            manifest = self.artifacts.read_json(snapshot_id)
+            images = {name: str(self.artifacts.local_path(frame["rgb"]["artifact_id"]))
+                      for name, frame in manifest["cameras"].items()}
+            samples.append({"native_step": manifest["sampled_step"], "captured_at": manifest["captured_at"],
+                            "snapshot_ref": str(path), "image_paths": images})
+        return samples
 
     def get(self, snapshot_id: str) -> dict:
         try:
