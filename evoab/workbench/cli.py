@@ -237,7 +237,7 @@ def _methods(bench, args) -> None:
         compiled = compile_recipe(method.recipe, load_integration(args.integration).get_integration_spec(),
                                   base_dir=method.root)
         for name, role in compiled.roles.items():
-            print(f"{name:12} {role.agent or '(run agent)':12} {role.channel:7} tools={', '.join(role.selected_tools) or '—'}"
+            print(f"{name:12} {role.channel:7} tools={', '.join(role.selected_tools) or '—'}"
                   + (f" delegates={', '.join(role.delegates)}" if role.delegates else ""))
         print(f"{method.id}: valid for {args.integration}")
 
