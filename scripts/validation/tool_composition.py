@@ -27,8 +27,8 @@ from evoab.tools.hybrid.contracts import HybridCapabilities
 from evoab.tools.selection import TOOL_GROUPS
 from evoab.tools.toolkit import ToolOutput
 
-INTEGRATIONS = ("robodojo", "robotwin", "libero", "libero_plus", "libero_pro", "calvin")
-HYBRID = ("robodojo", "calvin", "libero")
+INTEGRATIONS = ("robodojo", "robotwin", "libero", "libero_plus", "libero_pro", "calvin", "metaworld")
+HYBRID = ("robodojo", "calvin", "libero", "metaworld")
 BASE_TOOLS = {"list_skills", "read_skill", "view_env_state", "capture_scene",
               "locate", "move", "grasp", "release", "hold", "finish"}
 JOBS = set(TOOL_GROUPS["@jobs"])
