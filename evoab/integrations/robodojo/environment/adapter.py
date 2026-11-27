@@ -46,7 +46,7 @@ from evoab.services.environment.contracts import (
     RequestRejected,
     StepReceipt,
 )
-from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
+from evoab.services.environment.snapshots import CameraFrame, CapturedObservation, image_recording_stride
 
 
 def _quaternion_distance(left, right) -> float:
@@ -102,7 +102,8 @@ class Adapter:
                                        has_depth=depth_enabled, has_calibration=calibration_enabled)
                      for name in CAMERA_ALIASES],
             control_frequency_hz=25, max_episode_steps=int(env.step_lim), action_binding="robodojo_pi05",
-            metadata={"ik_joint_delta_guard": ik_joint_delta_guard,
+            metadata={"image_recording_stride": image_recording_stride(25),
+                      "ik_joint_delta_guard": ik_joint_delta_guard,
                       "robot_prompt": resources.files("evoab.resources").joinpath(
                           "prompts/direct/robodojo_x5.md").read_text(encoding="utf-8"),
                       "layout_sha256": layout_sha256, "physics_per_tick": self.physics_per_tick,
@@ -431,7 +432,6 @@ class Adapter:
                 score = float(self.env.reward_manager.get_reward(final_check=True)[self.slot])
                 self.env.success[self.slot] = score > 1 - 1e-3
                 self.env.end_flag[self.slot] = True
-            self.env.save_video(self.slot, str(self.output / "videos" / "episode.mp4"), reason)
         return self.outcome()
 
     def close(self) -> None:

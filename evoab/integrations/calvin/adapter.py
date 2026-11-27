@@ -8,7 +8,7 @@ from evoab.services.environment.contracts import (
     ArmDescription, ArmState, CameraDescription, EnvironmentDescription,
     EnvironmentState, Pose, PoseCommand, RequestRejected, StepReceipt,
 )
-from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
+from evoab.services.environment.snapshots import CameraFrame, CapturedObservation, image_recording_stride
 
 from .relative_action import BINDING_NAME, PROPRIOCEPTION, relative_command
 
@@ -49,9 +49,10 @@ class CalvinAdapter:
                 grasp_site_description="Native Panda TCP between the longer finger pads; binary opening, 0 closed and 1 open.")],
             cameras=[CameraDescription(name=name, has_depth=depth_enabled) for name in self.cameras],
             control_frequency_hz=float(env.control_freq), max_episode_steps=max_steps,
-            observation_interval_steps=1, action_binding=BINDING_NAME,
+            action_binding=BINDING_NAME,
             metadata={"control_constraints": "World-frame absolute TCP poses; gripper targets below 0.5 close, otherwise open.",
-                      "evaluation_protocol": "single_task", "observation_source": "native_calvin"})
+                      "evaluation_protocol": "single_task", "observation_source": "native_calvin",
+                      "image_recording_stride": image_recording_stride(env.control_freq)})
         from evoab.integrations.robot_resources import add_robot_resources, urdf_kinematics
         robot = env.robot
         model = urdf_kinematics(env.scene.data_path / robot.filename)

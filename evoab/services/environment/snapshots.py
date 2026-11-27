@@ -86,6 +86,11 @@ class CapturedObservation:
         )
 
 
+def image_recording_stride(control_hz: float) -> int:
+    """Use the nearest native control step to a 400 ms sample period."""
+    return max(1, round(0.4 * control_hz))
+
+
 class SnapshotStore:
     """Publish immutable snapshots without holding an environment execution lock."""
 
@@ -95,7 +100,8 @@ class SnapshotStore:
         self._latest: str | None = None
         self._records: list[str] = []
 
-    def publish(self, observation: CapturedObservation, *, record: bool = False) -> dict:
+    def publish(self, observation: CapturedObservation, *, record: bool = False,
+                retain: bool = True, sampled_step: int | None = None) -> dict:
         observation = observation.freeze()
         cameras = {}
         # Encoding and persistence run after copying; native buffers are no longer accessed.
@@ -103,9 +109,9 @@ class SnapshotStore:
             stream = io.BytesIO()
             Image.fromarray(frame.rgb).save(stream, format="PNG")
             cameras[name] = {
-                "rgb": self.artifacts.put_bytes(stream.getvalue(), "image/png"),
+                "rgb": self.artifacts.put_bytes(stream.getvalue(), "image/png", retain=retain),
                 "image_size": list(frame.rgb.shape[:2]),
-                "depth_m": None if frame.depth_m is None else self.artifacts.put_array(frame.depth_m),
+                "depth_m": None if frame.depth_m is None else self.artifacts.put_array(frame.depth_m, retain=retain),
                 "intrinsic_K": None if frame.intrinsic_K is None else frame.intrinsic_K.tolist(),
                 "T_world_from_optical": (
                     None if frame.T_world_from_optical is None else frame.T_world_from_optical.tolist()
@@ -121,6 +127,8 @@ class SnapshotStore:
             "state": dict(observation.state), "cameras": cameras,
             "terminated": observation.terminated, "truncated": observation.truncated,
         }
+        if sampled_step is not None:
+            manifest["sampled_step"] = sampled_step
         if observation.history:
             history = {}
             for name, samples in observation.history.items():
@@ -138,12 +146,17 @@ class SnapshotStore:
                     entries.append({"frame_id": sample.frame_id, "captured_at": sample.captured_at,
                                     "simulation_time_s": sample.simulation_time_s,
                                     "state_version": sample.state_version,
-                                    "rgb": self.artifacts.put_bytes(stream.getvalue(), "image/png")})
+                                    "rgb": self.artifacts.put_bytes(stream.getvalue(), "image/png",
+                                                                    retain=retain and sampled_step is None)})
                     seen.add(sample.frame_id)
                     previous = sample
                 history[name] = entries
             manifest["history"] = history
-        ref = self.artifacts.put_json(manifest)
+        if retain and sampled_step is not None and "history" in manifest:
+            self.artifacts.put_json({key: value for key, value in manifest.items() if key != "history"})
+            ref = self.artifacts.put_json(manifest, retain=False)
+        else:
+            ref = self.artifacts.put_json(manifest, retain=retain)
         snapshot_id = ref["artifact_id"]
         with self._lock:
             self._latest = snapshot_id

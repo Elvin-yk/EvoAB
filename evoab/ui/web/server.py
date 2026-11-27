@@ -23,8 +23,12 @@ IMAGE_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
 
 @lru_cache(maxsize=128)
 def preview_image(path, modified_ns, width):
+    return thumbnail(path, width)
+
+
+def thumbnail(source, width):
     from PIL import Image
-    with Image.open(path) as original:
+    with Image.open(source) as original:
         image = original.convert('RGB')
         image.thumbnail((width, width))
         stream = io.BytesIO()
@@ -122,6 +126,15 @@ def create_monitor_app(collection):
         allowed = {f['path'] for f in reader.refresh()['frames']}
         if relative not in allowed:
             raise HTTPException(404, 'Image unavailable')
+        if width is not None and width not in (320, 960):
+            raise HTTPException(400, 'Unsupported preview size')
+        preview = reader.preview_image(relative)
+        if preview is not None:
+            media_type, data = preview
+            if width is not None:
+                media_type, data = 'image/jpeg', thumbnail(io.BytesIO(data), width)
+            return Response(data, media_type=media_type,
+                            headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
         path = reader.archive.path(relative)
         if path is None:
             path = (reader.root / relative).resolve()
@@ -130,8 +143,6 @@ def create_monitor_app(collection):
         if path.suffix.lower() not in IMAGE_SUFFIXES or not path.is_file():
             raise HTTPException(404, 'Image unavailable')
         if width is not None:
-            if width not in (320, 960):
-                raise HTTPException(400, 'Unsupported preview size')
             return Response(preview_image(str(path), path.stat().st_mtime_ns, width), media_type='image/jpeg',
                             headers={'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff'})
         return FileResponse(path, headers={'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff'})

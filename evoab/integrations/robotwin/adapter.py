@@ -8,7 +8,7 @@ from evoab.services.environment.contracts import (
     ArmCommand, ArmDescription, ArmState, CameraDescription, EnvironmentDescription,
     EnvironmentState, Pose, PoseCommand, RequestRejected, StepReceipt,
 )
-from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
+from evoab.services.environment.snapshots import CameraFrame, CapturedObservation, image_recording_stride
 
 ARMS = ("left", "right")
 CAMERAS = ("head_camera", "left_camera", "right_camera")
@@ -75,8 +75,9 @@ class RoboTwinAdapter:
             arms=[ArmDescription(name=name, control_frame="world", rotation_radius_m=.15,
                 grasp_site_description="Native gripper TCP centre, local X approach axis; normalized scalar opening.") for name in ARMS],
             cameras=[CameraDescription(name=name, has_depth=depth_enabled) for name in self.camera_names],
-            control_frequency_hz=30.0, max_episode_steps=int(env.step_lim), observation_interval_steps=1,
-            metadata={"control_constraints": "Both arms receive coordinated absolute TCP poses and scalar openings.",
+            control_frequency_hz=30.0, max_episode_steps=int(env.step_lim),
+            metadata={"image_recording_stride": image_recording_stride(30),
+                      "control_constraints": "Both arms receive coordinated absolute TCP poses and scalar openings.",
                       "step_unit": "native_policy_action", "native_action_type": "ee",
                       "control_timing": "30 Hz is the upstream nominal policy rate; native trajectory duration varies."},
         )

@@ -28,7 +28,8 @@ class ActorArchive:
         self._errors[name] = self.storage_errors[name] = message
 
     def _relative_images(self, images):
-        return {name: str(Path(path).relative_to(self.output)) for name, path in images.items()}
+        return {name: str(Path(path).relative_to(self.output)) for name, path in images.items()
+                if Path(path).is_relative_to(self.output)}
 
     def write_chunk(self, index, record, *, proposal=None):
         path = self.directory / f"{index:02d}.npz"

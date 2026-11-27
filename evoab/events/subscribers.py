@@ -163,10 +163,13 @@ class EventJsonlSubscriber:
 
         record = event_to_record(event)
         if isinstance(event, ToolResult) and event.images:
-            for image, item in zip(event.images, record["images"]):
-                ref = self._artifacts.put_bytes(image.data, image.mime_type)
-                item["artifact_id"] = ref["artifact_id"]
-                item["path"] = self._artifacts.relative_path(ref["artifact_id"])
+            if self._artifacts.retain_images:
+                for image, item in zip(event.images, record["images"]):
+                    ref = self._artifacts.put_bytes(image.data, image.mime_type)
+                    item["artifact_id"] = ref["artifact_id"]
+                    item["path"] = self._artifacts.relative_path(ref["artifact_id"])
+            else:
+                record["images"] = []
         self._file.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
         if isinstance(event, AgentRunFinished):

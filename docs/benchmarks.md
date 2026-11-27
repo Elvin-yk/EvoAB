@@ -16,6 +16,24 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 | `custom` | Your Gym-style benchmark | Your image | Motion | See [custom benchmarks](#custom-benchmarks) |
 | `arx_one`, `piper_x` | Real dual-arm robots | Operator setup | Motion | See [real robots](#real-robots) |
 
+## Simulation image recording
+
+Direct and Hybrid archive one camera group at step zero and then about every
+400 ms of simulation time. The environment service rounds 400 ms to a whole
+number of native steps and uses that stride throughout the episode.
+
+MetaWorld uses a stride of 32 steps, CALVIN uses 12, RoboDojo uses 10 and the
+LIBERO family uses 8. RoboTwin samples every 12 native actions using a nominal
+30 Hz rate. Those actions execute variable-length trajectories, so simulated
+time between samples can vary. Custom integrations set their stride through
+`control_hz`.
+
+The environment artifact store saves one PNG per available camera in `images/`.
+Snapshot manifests in `artifacts/` identify the archived groups by
+`sampled_step` and `captured_at`. Fresh camera observations for policy inference
+and tools use temporary storage. Rebuild and restart existing environment
+services to use this policy.
+
 ## Preparing a runtime
 
 Benchmark simulators run in Docker. To prepare a benchmark, `evoab setup` pulls the

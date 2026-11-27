@@ -60,7 +60,8 @@ class LiveMonitor:
                 if self.url:
                     try:
                         if reader is None:
-                            reader = SnapshotReader(self.url, self.root)
+                            run_reader = next(iter(self.collection.readers.values()))
+                            reader = SnapshotReader(self.url, self.root, on_preview=run_reader.update_preview)
                         info = reader.poll(self.stop_event)
                         if info is not None and not self.stop_event.is_set():
                             self.update(max_episode_steps=info.environment.max_episode_steps, instruction=info.task)
