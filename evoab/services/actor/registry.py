@@ -33,6 +33,7 @@ _BACKENDS = {
     "gr00t": BackendDefinition("gr00t", f"{_PACKAGE}.gr00t", "Gr00tBackend",
                               f"{_PACKAGE}.gr00t.deployment"),
     "xpolicylab": BackendDefinition("xpolicylab", f"{_PACKAGE}.xpolicylab", "XPolicyLabBackend"),
+    "starvla_calvin": BackendDefinition("starvla_calvin", f"{_PACKAGE}.starvla_calvin", "StarVLACalvinBackend"),
 }
 _ALIASES = {"pi05": "openpi"}
 
