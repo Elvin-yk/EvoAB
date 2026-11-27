@@ -56,7 +56,9 @@ def recipe_graph(recipe: Recipe) -> dict[str, Any]:
             if capability.options:
                 detail = "; ".join(filter(None, [detail, json.dumps(capability.options, sort_keys=True)]))
             cap = node(f"{name}:cap:{capability.id}", "capability", capability.id, detail=detail,
-                       tools=capability.tools, style=role.style)
+                       tools=capability.tools, style=role.style,
+                       **({"binding": capability.options["binding"]} if capability.id == "hybrid"
+                          and capability.options.get("binding") else {}))
             edges.append({"from": channel, "to": cap, "kind": "calls"})
             edges.append({"from": cap, "to": body, "kind": "operates"})
     episodes = recipe.loop.episodes

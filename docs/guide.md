@@ -116,23 +116,19 @@ A method is a directory in `evoab/methods/` with `method.yaml` (the recipe) and
 **roles** and the **loop** connecting them.
 
 ```yaml
-id: planner_direct
-label: Planner + Direct controller
+id: use_direct_actor
+label: Call the Direct actor
 inputs: {depth: false}                 # optional; null keeps the environment's default
 roles:
-  planner:
+  main:
     channel: tools
     capabilities:
       - skills
       - {id: scene, tools: [view_env_state, capture_scene], options: {segmentation: false}}
+      - {id: hybrid, tools: [actor_act], options: {binding: robodojo_direct_eef}}
       - episode
-      - {id: delegate, options: {roles: [controller]}}
-    prompt: {append: "Split the task into short, verifiable sub-goals …"}
     max_turns: 0
-  controller:
-    channel: action
-    action: {representation: abs_eef, horizon: [3, 15], history: [15, 7], max_calls: 6}
-loop: {entry: planner}
+loop: {entry: main}
 execution: {return_mode: immediate}
 ```
 
@@ -215,7 +211,7 @@ from evoab import AgentConfig, SessionConfig, run
 
 result = run(SessionConfig(
     integration="robodojo", env_url="http://127.0.0.1:18760",
-    recipe="planner_direct", recipe_overrides={"roles.controller.action.max_calls": 4, "inputs.depth": False},
+    recipe="agent_policy", recipe_overrides={"roles.main.capabilities.hybrid.options.binding": "robodojo_direct_eef"},
     agent=AgentConfig(model="my-model"),
 ))
 print(result.task_success)
@@ -224,3 +220,19 @@ print(result.task_success)
 `Session(SessionConfig(...))` gives direct access to the episode's tools;
 `setup()` and `deploy()` prepare and start benchmark containers. Examples are in
 [`examples/sdk/`](../examples/sdk/).
+
+## Replace `planner_direct` with `actor_act`
+
+On RoboDojo, select **Direct** on the Planner card in Studio. The Planner calls
+`actor_act` with a sub-goal and the arms to use. Direct reads the current camera
+frames and arm poses and proposes an action chunk. The tool executes the
+requested steps and returns the result to the Planner. This uses one Agent and
+an in-process policy.
+
+On the CLI, select the existing `agent_policy` recipe and its Direct binding:
+
+```bash
+evoab run --integration robodojo --task stack_bowls --deploy local \
+  --recipe agent_policy --model my-preset \
+  --set roles.main.capabilities.hybrid.options.binding=robodojo_direct_eef
+```

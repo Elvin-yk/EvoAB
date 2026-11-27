@@ -29,7 +29,7 @@ from pathlib import Path
 
 
 from evoab.direct import prompts
-from evoab.direct.actions import REPRESENTATIONS, JointRow, Limits, OutputError, Target
+from evoab.direct.actions import REPRESENTATIONS, JointRow, Limits, OutputError, Target, decode_completion
 from evoab.services.environment.contracts import (
     ArmCommand, CaptureRequest, JointCommand, JointTarget, PoseCommand, Pose, StepRequest,
 )
@@ -171,22 +171,7 @@ class DirectPolicy:
         return head + [{"role": "user", "content": live}], head + [{"role": "user", "content": stored}]
 
     def _decode(self, completion, measured: dict[str, Target]):
-        calls = completion.tool_calls
-        if completion.error:
-            raise OutputError(f"provider error: {completion.error}")
-        if len(calls) != 1:
-            raise OutputError(f"expected exactly one {self.representation.tool} call, got {len(calls)}")
-        call = calls[0]
-        if call["name"] != self.representation.tool:
-            raise OutputError(f"expected tool {self.representation.tool}, got {call['name']}")
-        arguments = call["arguments"]
-        if isinstance(arguments, str):
-            try:
-                arguments = json.loads(arguments)
-            except ValueError as error:
-                raise OutputError(f"arguments are not valid JSON: {error}") from error
-        targets = self.representation.decode_chunk(arguments, measured, self.horizon, self.limits)
-        return arguments, targets
+        return decode_completion(completion, self.representation, measured, self.horizon, self.limits)
 
     # -- execution ------------------------------------------------------------
 

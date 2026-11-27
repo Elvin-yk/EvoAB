@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Removed the built-in `planner_direct` recipe. On RoboDojo, the planner can
+  call Direct through `actor_act` using the existing `agent_policy` recipe.
+  Standalone `direct_action` remains available.
+
 ### One agent: the built-in agent over model presets
 
 EvoAB now runs every method on its built-in agent; models come from presets

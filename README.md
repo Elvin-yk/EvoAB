@@ -56,15 +56,14 @@ setting, results). The built-in agent runs the method with the selected model pr
 | `clean` | orchestrate | Four tools, compact results |
 | `direct_action` | direct | One action chunk per stateless inference ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/) Direct) |
 | `code_as_policy` | code | Python programs against the robot API |
-| `agent_policy` | orchestrate + policy | Tool calls plus a VLA actor |
-| `planner_direct` | orchestrate + direct | A planner delegates sub-goals to a Direct controller |
+| `agent_policy` | orchestrate + policy | Tool calls plus a policy actor, including Direct |
 | `tool_team` | orchestrate | Studio agent cards: roles, tools and delegation |
 | `code_iterate` | code | Programs carried across episodes |
 
 ```bash
 evoab methods list --integration robodojo     # ids and where each method.yaml lives
 evoab run --integration robodojo --task stack_bowls \
-  --recipe planner_direct --model my-model --set roles.controller.action.max_calls=4
+  --recipe agent_policy --model my-model --set roles.main.capabilities.hybrid.options.binding=robodojo_direct_eef
 ```
 
 ## Environments

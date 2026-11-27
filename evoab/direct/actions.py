@@ -8,6 +8,7 @@ the environment advances; a malformed chunk is never partially executed.
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 
@@ -16,6 +17,25 @@ import numpy as np
 
 class OutputError(ValueError):
     """The model's reply cannot be decoded into a complete action chunk."""
+
+
+def decode_completion(completion, representation, measured, horizon, limits):
+    """Check the Direct response envelope and decode a complete action chunk."""
+    calls = completion.tool_calls
+    if completion.error:
+        raise OutputError(f"provider error: {completion.error}")
+    if len(calls) != 1:
+        raise OutputError(f"expected exactly one {representation.tool} call, got {len(calls)}")
+    call = calls[0]
+    if call["name"] != representation.tool:
+        raise OutputError(f"expected tool {representation.tool}, got {call['name']}")
+    arguments = call["arguments"]
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except ValueError as error:
+            raise OutputError(f"arguments are not valid JSON: {error}") from error
+    return arguments, representation.decode_chunk(arguments, measured, horizon, limits)
 
 
 @dataclass(frozen=True)

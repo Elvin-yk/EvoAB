@@ -15,7 +15,7 @@ method as a **recipe** over them:
 | What the model sees | Multi-view RGB, proprioception, calibration; optional depth and perception | `inputs.depth: false`, SAM3 segmentation |
 | How it acts | Tool calls, code, or direct action chunks; end-effector targets with host-side IK, or joints | `agentic` (tools), PyRUA-Lean (code), Astranomy Direct (chunks) |
 | Policies | A VLA/WAM or other policy as one callable tool, or none | `agent_policy` |
-| Roles | One agent, or roles that delegate to each other | `planner_direct`, Agent team |
+| Roles | One agent, or roles that delegate to each other | Agent team |
 | Experience | Skills or programs carried across episodes | `code_iterate` |
 | Context | Full history, sliding window, recent observations | per role |
 
@@ -87,7 +87,7 @@ checked against:
   | `scene` | `view_env_state`, `capture_scene`, `locate` | `segmentation` (SAM3) |
   | `skills` | `list_skills`, `read_skill`, optional `write_skill` | `write` |
   | `episode` | `finish` | |
-  | `hybrid` | `actor_act`: run a policy (VLA/WAM) from the actor service | `binding`, `review` |
+  | `hybrid` | `actor_act`: run a policy (VLA/WAM or Direct) from the actor service | `binding`, `review` |
   | `user_tools` | your `@tool` functions (every environment) | `file` |
   | `delegate` | `delegate_<role>` (harness) | `roles` |
   | `observation` | observation sidecar profile (harness) | |

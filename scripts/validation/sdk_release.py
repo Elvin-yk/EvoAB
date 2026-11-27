@@ -114,9 +114,9 @@ except ValueError as error:
     assert "no capability 'hybrid'" in str(error)
 else:
     raise AssertionError('A method needing an unavailable capability was accepted')
-assert {'agentic', 'clean', 'direct_action', 'code_as_policy', 'planner_direct'} <= {
+assert {'agentic', 'clean', 'direct_action', 'code_as_policy', 'agent_policy'} <= {
     m.id for m in __import__('evoab.composition.methods', fromlist=['x']).list_methods()}
-for resource in ('methods/agentic/method.yaml', 'methods/planner_direct/CARD.md'):
+for resource in ('methods/agentic/method.yaml', 'methods/direct_action/CARD.md'):
     assert (root / resource).is_file(), resource
 SetupConfig(integration='robodojo')
 DeploymentConfig(integration='robodojo', task='stack_bowls')

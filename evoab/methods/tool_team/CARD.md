@@ -7,9 +7,9 @@ to change the same relationship. A role can accept multiple callers and returns
 each report to the caller for that invocation. All agents must be reachable from
 the entry, and Studio rejects delegation cycles.
 
-Planner cards can use skills, scene, episode and job tools. Actor cards can
-also control the arm and optionally enable the Direct action policy with their own model preset. Each
-Direct call takes a sub-goal and runs up to six Direct inferences. The common
+Planner cards can use skills, scene, episode and job tools. On RoboDojo, a
+Planner or Actor card can select Direct and call it through `actor_act`.
+Actor cards can also use the individual arm tools. The common
 presets for both roles include all job controls. Applying a tool preset changes
 only that card's tool selection. The component graph follows the current team.
 

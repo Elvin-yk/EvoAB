@@ -30,6 +30,20 @@ def recipe(**roles) -> dict:
     return {"id": "fixture", "label": "Fixture", "roles": roles, "loop": {"entry": next(iter(roles))}}
 
 
+def delegation_recipe() -> Recipe:
+    data = recipe(
+        planner={
+            "channel": "tools",
+            "capabilities": ["skills", {"id": "scene", "tools": ["view_env_state", "capture_scene"]}, "episode",
+                             {"id": "delegate", "options": {"roles": ["controller"]}}],
+            "prompt": {"append": "Split the task into sub-goals and hand them to the controller."},
+        },
+        controller={"channel": "action", "action": {"max_calls": 6}},
+    )
+    data["execution"] = {"return_mode": "immediate"}
+    return Recipe.model_validate(data)
+
+
 class RecipeValidation(unittest.TestCase):
     def test_structure_errors(self):
         cases = {
@@ -72,7 +86,7 @@ class RecipeValidation(unittest.TestCase):
         from types import SimpleNamespace
         from evoab.composition.compiler import apply_to_args
         spec = load_integration("robodojo").get_integration_spec()
-        for method in ("agentic", "code_as_policy", "direct_action", "planner_direct", "code_iterate"):
+        for method in ("agentic", "code_as_policy", "direct_action", "agent_policy", "code_iterate"):
             args = SimpleNamespace(model="preset")
             apply_to_args(args, compile_recipe(get_method(method).recipe, spec))
             self.assertEqual(args.agent_backend, "native", method)
@@ -125,6 +139,13 @@ class RecipeValidation(unittest.TestCase):
                          {"scene": ["capture_scene"], "gripper": ["move"], "episode": ["finish"]})
         self.assertEqual(role.job_tools, ["wait_for_tool"])
 
+    def test_planner_calls_direct_without_a_delegate(self):
+        from evoab.workbench.team import team_roles
+        roles = team_roles("robodojo", [{"role": "planner", "tools": ["actor_act"]}])
+        self.assertEqual(set(roles), {"main"})
+        self.assertEqual(roles["main"]["capabilities"], [
+            {"id": "hybrid", "tools": ["actor_act"], "options": {"binding": "robodojo_direct_eef"}}])
+
     def test_run_program_tool(self):
         from evoab.execution.code_as_policy.runner import ProgramTools
         from evoab.execution.serial import SerialToolExecutor
@@ -149,8 +170,8 @@ class RecipeValidation(unittest.TestCase):
 
     def test_method_library(self):
         ids = {method.id for method in list_methods()}
-        self.assertTrue({"agentic", "clean", "direct_action", "code_as_policy", "agent_policy",
-                         "planner_direct", "code_iterate"} <= ids)
+        self.assertTrue({"agentic", "clean", "direct_action", "code_as_policy", "agent_policy", "code_iterate"} <= ids)
+        self.assertNotIn("planner_direct", ids)
         for method in list_methods():
             self.assertTrue(method.card.startswith("# "), method.id)
         with tempfile.TemporaryDirectory() as directory:
@@ -168,10 +189,10 @@ class RecipeValidation(unittest.TestCase):
 
     def test_review_regressions(self):
         spec = load_integration("robodojo").get_integration_spec()
-        serial = with_overrides(get_method("planner_direct").recipe,
+        serial = with_overrides(delegation_recipe(),
                                 {"execution.resource_scheduling": "global-serial"})
         compile_recipe(serial, spec)  # an action delegate steps the environment itself
-        data = get_method("planner_direct").recipe.model_dump(mode="json")
+        data = delegation_recipe().model_dump(mode="json")
         data["roles"]["controller"] = {"channel": "tools", "capabilities": ["scene"]}
         data["execution"]["resource_scheduling"] = "global-serial"
         with self.assertRaisesRegex(ValueError, "global-serial"):
@@ -188,7 +209,7 @@ class RecipeValidation(unittest.TestCase):
         self.assertEqual(text.entry.action.custom_prompt, '"Red" cup first')
 
     def test_graph(self):
-        graph = recipe_graph(get_method("planner_direct").recipe)
+        graph = recipe_graph(delegation_recipe())
         kinds = {(edge["from"], edge["to"], edge["kind"]) for edge in graph["edges"]}
         self.assertIn(("planner:channel", "role:controller", "delegates"), kinds)
         self.assertIn(("controller:channel", "body", "action chunks"), kinds)
@@ -213,7 +234,9 @@ class MultiRoleAssembly(unittest.TestCase):
 
     def test_planner_sees_its_tools_and_the_delegate(self):
         with patch("evoab.provider.catalog.presets", return_value=[{"name": "fixture"}]):
-            cfg = config(recipe="planner_direct")
+            path = self.directory.parent / "delegation.yaml"
+            path.write_text(delegation_recipe().model_dump_json())
+            cfg = config(recipe=str(path))
             with assembled(cfg, self.directory) as (assembly, *_):
                 self.assertEqual(surface(assembly) & {"move", "grasp"}, set())
                 visible = {spec["name"] for spec in assembly.entry_executor.get_tool_schemas()}
@@ -232,13 +255,13 @@ class MultiRoleAssembly(unittest.TestCase):
                 denied = assembly.entry_executor.call("move", {})
                 self.assertFalse(denied.output.success)
                 prompt = assembly.build_prompt("Stack the cups").flatten()
-                self.assertIn("You cannot move the robot directly", prompt)
+                self.assertIn("Split the task into sub-goals", prompt)
                 self.assertIn("delegate_controller", (self.directory / "tools.json").read_text())
                 recorded = json.loads((self.directory / "recipe.json").read_text())
-                self.assertEqual(recorded["id"], "planner_direct")
+                self.assertEqual(recorded["id"], "fixture")
 
     def test_sub_role_prompt_is_separate(self):
-        data = get_method("planner_direct").recipe.model_dump(mode="json")
+        data = delegation_recipe().model_dump(mode="json")
         data["roles"]["helper"] = {"description": "Moves only.",
                                    "channel": "tools", "capabilities": [{"id": "gripper", "tools": ["move"]}]}
         data["roles"]["planner"]["capabilities"][-1]["options"]["roles"].append("helper")
@@ -253,7 +276,7 @@ class MultiRoleAssembly(unittest.TestCase):
                 assembly.build_prompt("Stack the cups")
                 helper = assembly.build_prompt("Move up", "helper").flatten()
                 self.assertTrue((self.directory / "prompts" / "helper.md").is_file())
-                self.assertNotIn("You cannot move the robot directly", helper)
+                self.assertNotIn("Split the task into sub-goals", helper)
                 effective = (self.directory / "effective_prompt.md").read_text()
                 self.assertNotIn("Move up", effective)
 
@@ -268,7 +291,7 @@ class MultiRoleAssembly(unittest.TestCase):
             seen["prompt"] = prompt.flatten()
             return AgentResult(success=True, message="helped")
 
-        data = get_method("planner_direct").recipe.model_dump(mode="json")
+        data = delegation_recipe().model_dump(mode="json")
         data["roles"]["helper"] = {"channel": "tools",
                                    "capabilities": [{"id": "gripper", "tools": ["hold"]}]}
         data["roles"]["planner"]["capabilities"][-1]["options"]["roles"].append("helper")
