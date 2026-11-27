@@ -41,7 +41,8 @@ class RemoteArtifactMirror:
         if expected_sha256 and hashlib.sha256(data).hexdigest() != expected_sha256:
             raise ValueError(f"Remote artifact hash mismatch: {remote_id}")
 
-        local = self.store.put_bytes(data, reference.get("media_type") or "application/octet-stream")
+        local = self.store.put_bytes(data, reference.get("media_type") or "application/octet-stream",
+                                     retain=False if reference.get("temporary") else None)
         # Local IDs include the media type and may differ from remote IDs.
         # Keep both identities: local storage reads use the returned artifact_id.
         result = {

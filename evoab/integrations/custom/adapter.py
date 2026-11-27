@@ -17,7 +17,7 @@ from evoab.services.environment.contracts import (
     ArmDescription, ArmState, CameraDescription, EnvironmentDescription, EnvironmentState, Pose, PoseCommand,
     RequestRejected, StepReceipt,
 )
-from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
+from evoab.services.environment.snapshots import CameraFrame, CapturedObservation, image_recording_stride
 
 
 def resolve(path: str | None, target: str):
@@ -83,7 +83,8 @@ class GymAdapter:
                                  grasp_site_description=self.obs_map.get("pose_description") or "end effector")],
             cameras=[CameraDescription(name=name, has_depth=False, has_calibration=False) for name in cameras],
             control_frequency_hz=float(manifest["control_hz"]), max_episode_steps=self.max_steps,
-            metadata={"observation_source": "custom_gym", "benchmark": manifest["name"],
+            metadata={"image_recording_stride": image_recording_stride(manifest["control_hz"]),
+                      "observation_source": "custom_gym", "benchmark": manifest["name"],
                       **({"robot_prompt": manifest["prompt"]} if manifest.get("prompt") else {})})
 
     # -- identity and state ---------------------------------------------------

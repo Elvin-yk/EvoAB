@@ -9,6 +9,7 @@ import os
 import threading
 from collections import OrderedDict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import uuid4
 
@@ -36,43 +37,57 @@ class ArtifactStore:
         self._bytes: OrderedDict[str, bytes] = OrderedDict()
         self._memory_bytes = 0
         self._metadata: dict[str, dict[str, Any]] = {}
+        self.retain_images = True
+        self._temporary: TemporaryDirectory | None = None
 
-    def put_bytes(self, data: bytes, media_type: str = "application/octet-stream") -> dict:
+    def put_bytes(self, data: bytes, media_type: str = "application/octet-stream", *, retain: bool | None = None) -> dict:
         data = bytes(data)
         digest = hashlib.sha256(data).hexdigest()
         artifact_id = hashlib.sha256(media_type.encode() + b"\0" + data).hexdigest()
+        if retain is None:
+            retain = self.retain_images or not media_type.startswith("image/")
+        temporary = self.root is not None and not retain
         with self._lock:
-            if artifact_id in self._metadata:
-                return dict(self._metadata[artifact_id])
+            existing = self._metadata.get(artifact_id)
+            if existing is not None and (temporary or not existing.get("temporary")):
+                return dict(existing)
+            if temporary and self._temporary is None:
+                self._temporary = TemporaryDirectory(prefix="evoab-observations-")
             ref = {
                 "artifact_id": artifact_id, "media_type": media_type,
                 "size_bytes": len(data), "sha256": digest,
                 "persistence": "pending" if self.root is not None else "memory",
             }
+            if temporary:
+                ref["temporary"] = True
+            previous = self._bytes.get(artifact_id)
+            if previous is not None:
+                self._memory_bytes -= len(previous)
             self._bytes[artifact_id] = data
             self._memory_bytes += len(data)
             self._metadata[artifact_id] = ref
         if self.root is not None:
             try:
                 self._writer.submit(
-                    artifact_id, lambda: self._persist(artifact_id, data),
+                    ("temporary-" if temporary else "") + artifact_id,
+                    lambda: self._persist(artifact_id, data, ref),
                     estimated_bytes=len(data),
                 )
             except Exception as error:
-                self._failed(artifact_id, error)
+                self._failed(artifact_id, error, ref)
         return self.describe(artifact_id)
 
-    def put_json(self, value: Any) -> dict:
+    def put_json(self, value: Any, *, retain: bool = True) -> dict:
         data = json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True).encode()
-        return self.put_bytes(data, "application/json")
+        return self.put_bytes(data, "application/json", retain=retain)
 
-    def put_array(self, value: np.ndarray) -> dict:
+    def put_array(self, value: np.ndarray, *, retain: bool = True) -> dict:
         array = np.asarray(value)
         if array.dtype.hasobject:
             raise ValueError("artifact arrays cannot contain Python objects")
         stream = io.BytesIO()
         np.save(stream, array, allow_pickle=False)
-        return self.put_bytes(stream.getvalue(), "application/x-npy")
+        return self.put_bytes(stream.getvalue(), "application/x-npy", retain=retain)
 
     def read_bytes(self, artifact_id: str) -> bytes:
         self._validate_id(artifact_id)
@@ -130,7 +145,8 @@ class ArtifactStore:
                 ref = self.describe(artifact_id)
             if ref["persistence"] == "failed":
                 raise OSError(f"Artifact {artifact_id}: {ref['persistence_error']}")
-        path = self.root / self.relative_path(artifact_id)
+        root = Path(self._temporary.name) if ref.get("temporary") else self.root
+        path = root / self.relative_path(artifact_id)
         if not path.is_file():
             raise FileNotFoundError(path)
         return path
@@ -147,16 +163,26 @@ class ArtifactStore:
             }
 
     def close(self) -> None:
-        if self._owns_writer:
-            self._writer.close()
-
-    def _persist(self, artifact_id: str, data: bytes) -> None:
         try:
-            self._atomic_write(self.root / self.relative_path(artifact_id), data)
-            ref = self.describe(artifact_id)
-            ref["persistence"] = "persisted"
-            self._atomic_write(self.root / "artifacts" / f"{artifact_id}.json", json.dumps(ref).encode())
+            if self._owns_writer:
+                self._writer.close()
+        finally:
+            if self._temporary is not None:
+                self._temporary.cleanup()
+
+    def _persist(self, artifact_id: str, data: bytes, pending: dict) -> None:
+        try:
+            temporary = pending.get("temporary", False)
+            root = Path(self._temporary.name) if temporary else self.root
+            path = root / self.relative_path(artifact_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._atomic_write(path, data)
+            ref = {**pending, "persistence": "persisted"}
+            if not temporary:
+                self._atomic_write(self.root / "artifacts" / f"{artifact_id}.json", json.dumps(ref).encode())
             with self._lock:
+                if self._metadata[artifact_id] is not pending:
+                    return
                 self._metadata[artifact_id] = ref
                 cached = self._bytes.pop(artifact_id, None)
                 if cached is not None:
@@ -166,14 +192,13 @@ class ArtifactStore:
                     self._memory_bytes -= len(evicted)
                 self._ready.notify_all()
         except Exception as error:
-            self._failed(artifact_id, error)
+            self._failed(artifact_id, error, pending)
             raise
 
-    def _failed(self, artifact_id: str, error: Exception) -> None:
+    def _failed(self, artifact_id: str, error: Exception, pending: dict) -> None:
         with self._lock:
-            self._metadata[artifact_id].update(
-                persistence="failed", persistence_error=f"{type(error).__name__}: {error}",
-            )
+            if self._metadata[artifact_id] is pending:
+                pending.update(persistence="failed", persistence_error=f"{type(error).__name__}: {error}")
             self._ready.notify_all()
 
     @staticmethod

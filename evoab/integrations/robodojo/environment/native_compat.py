@@ -71,6 +71,8 @@ def create_native(task, app, output, *, root):
         env = eval_env.create_eval_env(cfg, app)
     finally:
         eval_env.WsModelClient = original
+    # Native observation reads also feed an MP4 writer. The service owns image recording.
+    env._stream_vision = lambda _env_idx, _frame: None
     env.save_dir = str(Path(output) / "native")
     env._stream_dir = str(Path(env.save_dir) / "_stream")
     env.obs_manager.obs_config["save_dir"] = env.save_dir
