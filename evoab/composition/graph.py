@@ -13,7 +13,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from evoab.composition.recipe import Recipe
+from evoab.composition.recipe import Recipe, Role, FlowAPI
 
 
 def recipe_graph(recipe: Recipe) -> dict[str, Any]:
@@ -25,9 +25,18 @@ def recipe_graph(recipe: Recipe) -> dict[str, Any]:
         return id_
 
     body = node("body", "body", "Environment", detail="Simulation benchmark or real embodiment")
-    for name, role in recipe.roles.items():
+    for name, api in recipe.apis.items():
+        if not isinstance(api, Role):
+            node(f"api:{name}", api.kind, name, detail=api.description)
+    for name, role in recipe.controllers.items():
         role_id = node(f"role:{name}", "role", name, entry=name == recipe.loop.entry,
                        detail=role.description)
+        for ref in recipe.call_targets(role):
+            if ref in recipe.apis or ref in recipe.controllers:
+                target = f"role:{ref}" if ref in recipe.controllers else f"api:{ref}"
+                edges.append({"from": role_id, "to": target, "kind": "calls"})
+        if isinstance(role, FlowAPI):
+            continue
         brain = role.brain
         label = "model" if role.channel == "action" else "agent"
         edges.append({"from": node(f"{name}:brain", "brain", label,
@@ -35,8 +44,10 @@ def recipe_graph(recipe: Recipe) -> dict[str, Any]:
                       "to": role_id, "kind": "drives"})
         channel_detail = ""
         if role.channel == "action" and role.action is not None:
-            channel_detail = (f"{role.action.representation}, {role.action.horizon[0]}–{role.action.horizon[1]} rows, "
-                              f"history {role.action.history[0]}:{role.action.history[1]}")
+            output = role.output or role.action
+            window = role.inputs.history or role.action.history
+            channel_detail = (f"{output.representation}, {output.horizon[0]}–{output.horizon[1]} rows, "
+                              f"history {window[0]}:{window[1]}")
         channel = node(f"{name}:channel", "channel", role.channel, detail=channel_detail)
         edges.append({"from": role_id, "to": channel, "kind": "acts through"})
         context = "stateless_window" if role.channel == "action" else "identity"

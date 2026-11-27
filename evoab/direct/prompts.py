@@ -9,8 +9,7 @@ A Direct prompt is assembled from blocks:
 ``camera``  camera extrinsics and intrinsics from the environment's calibration
 ``action``  the representation's output contract (always included)
 
-``robot``, ``timing`` and ``action`` are required; ``gripper`` and ``camera`` are
-optional geometry, both on by default. Geometry is computed from what the
+The representation always supplies its output contract. Recipes select the input blocks. Geometry is computed from what the
 environment reports, so it stays correct when a benchmark changes cameras.
 """
 
@@ -23,7 +22,6 @@ import numpy as np
 from evoab.direct.actions import Limits, Representation
 
 BLOCKS = ("robot", "timing", "gripper", "camera")
-OPTIONAL_BLOCKS = ("gripper", "camera")
 
 
 def embodiment_text(description) -> str:
@@ -120,13 +118,12 @@ def assemble(*, description, representation: Representation, horizon, limits: Li
     unknown = set(blocks) - set(BLOCKS)
     if unknown:
         raise ValueError(f"unknown Direct prompt blocks: {sorted(unknown)}")
-    parts = {
-        "robot": (robot_text or embodiment_text(description)).strip(),
-        "timing": timing_text(description.control_frequency_hz, limits, representation.space),
-    }
-    parts["robot"] += "\n\nControlled arms:\n" + "\n".join(
-        f"- {arm.name}: {arm.control_frame}; {arm.grasp_site_description}" for arm in description.arms
-    )
+    parts = {}
+    if "robot" in blocks:
+        parts["robot"] = (robot_text or embodiment_text(description)).strip() + "\n\nControlled arms:\n" + "\n".join(
+            f"- {arm.name}: {arm.control_frame}; {arm.grasp_site_description}" for arm in description.arms)
+    if "timing" in blocks:
+        parts["timing"] = timing_text(description.control_frequency_hz, limits, representation.space)
     if "gripper" in blocks:
         if "arms" in initial_state:
             parts["gripper"] = "\n".join(

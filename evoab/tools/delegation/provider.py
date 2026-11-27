@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import json
 
 from evoab.execution.scheduler import ToolExecutionPolicy
 from evoab.tools.toolkit import ActionOutcome, ToolOutput, ToolProvider, ToolSpec, bind_tools, schema
@@ -28,6 +29,9 @@ class DelegateTarget:
     description: str
     channel: str
     agent: str
+    input_schema: dict | None = None
+    named_api: bool = False
+    output_schema: dict | None = None
 
 
 def tool_name(role: str) -> str:
@@ -54,8 +58,12 @@ def tool_specs(targets: Mapping[str, DelegateTarget]) -> list[ToolSpec]:
                        + (target.description.strip() + " " if target.description.strip() else "")
                        + "Give a self-contained instruction. Observe the scene afterwards; the report "
                          "does not prove that the sub-goal succeeded.")
+        if target.named_api:
+            description = target.description.strip() or f"Call the {name} API with its declared arguments."
+            if target.output_schema is not None:
+                description += " The result's value follows this JSON Schema: " + json.dumps(target.output_schema)
         specs.append(ToolSpec(tool_name(name), description,
-                              schema({"instruction": {"type": "string", "minLength": 1}}, ("instruction",))))
+                              target.input_schema or schema({"instruction": {"type": "string", "minLength": 1}}, ("instruction",))))
     return specs
 
 
@@ -71,7 +79,8 @@ class DelegationTools(ToolProvider):
         return bind_tools(tool_specs(self.targets), provider_id=self.provider_id, handlers=handlers)
 
     def _handler(self, role: str):
-        def delegate(instruction: str) -> ToolOutput:
+        def delegate(**values) -> ToolOutput:
+            instruction = json.dumps(values, ensure_ascii=False) if self.targets[role].input_schema else values["instruction"]
             report = self.run_role(role, instruction)
             action = None
             if self.targets[role].channel == "action":
@@ -80,6 +89,9 @@ class DelegationTools(ToolProvider):
                 executed = "unknown" if steps is None else ("some" if steps > 0 else "none")
                 action = ActionOutcome(complete=bool(report.get("success")) and not report.get("error"),
                                        executed=executed)
-            return ToolOutput(success=not report.get("error"), error=report.get("error"),
-                              extra={"role": role, "report": report}, action=action)
+            extra = {"role": role, "report": report}
+            if "value" in report:
+                extra["value"] = report["value"]
+            return ToolOutput(success=report.get("success", True) and not report.get("error"),
+                              error=report.get("error"), extra=extra, action=action)
         return delegate

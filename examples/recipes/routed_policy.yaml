@@ -1,0 +1,49 @@
+id: routed_policy
+label: Select a CALVIN policy from a scene report
+loop: {entry: run_episode}
+apis:
+  run_episode:
+    kind: flow
+    steps:
+      - id: perception
+        call: inspect_scene
+        args: {task: {from: input.instruction}}
+      - id: routing
+        call: choose
+        args: {objects: {from: perception.objects}, task: {from: input.instruction}}
+      - id: execute
+        call: {source: routing.policy, choices: {open: drawer_open, close: drawer_close}}
+        args: {instruction: {from: input.instruction}, active_groups: [arm], max_chunks: 1}
+  inspect_scene:
+    kind: http
+    description: Return the objects visible to the external scene service.
+    url: http://127.0.0.1:8801/inspect
+    input_schema: {type: object, properties: {task: {type: string}}, required: [task]}
+    output_schema: {type: object, properties: {objects: {type: array, items: {type: string}}}, required: [objects]}
+  choose:
+    kind: model
+    description: Pick the policy that can execute the task.
+    calls: [second_opinion]
+    input_schema:
+      type: object
+      properties: {objects: {type: array, items: {type: string}}, task: {type: string}}
+      required: [objects, task]
+    output_schema:
+      type: object
+      properties: {policy: {type: string, enum: [open, close]}}
+      required: [policy]
+    max_turns: 4
+  second_opinion:
+    kind: model
+    description: Review the proposed routing decision on request.
+    max_turns: 2
+  drawer_open:
+    kind: policy
+    url: http://127.0.0.1:8802
+    binding: calvin_relative
+    checkpoint_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  drawer_close:
+    kind: policy
+    url: http://127.0.0.1:8803
+    binding: calvin_relative
+    checkpoint_sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

@@ -29,6 +29,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from .interfaces import HttpAPI, Name, PolicyAPI, Step, checked_schema, references
+
 Channel = Literal["tools", "code", "action"]
 Style = Literal["full", "compact"]
 ROLE_NAME = r"^[a-z][a-z0-9_]{0,31}$"
@@ -107,8 +109,54 @@ class PromptSpec(Spec):
     files: list[str] = Field(default_factory=list)
 
 
+class PromptStages(Spec):
+    start: list[str] = Field(default_factory=list)
+    each_call: list[str] = Field(default_factory=list)
+
+
+class ModelInputs(Spec):
+    environment: bool | None = None
+    blocks: list[str] | None = None
+    history: tuple[int, int] | None = None
+    robot_prompt_file: str | None = None
+
+    @field_validator("history")
+    @classmethod
+    def valid_window(cls, value):
+        if value is not None and min(value) < 1:
+            raise ValueError("history length and stride must be positive")
+        return value
+
+
+class ActionOutput(Spec):
+    representation: Literal["abs_eef", "delta_eef", "joint_abs"] = "abs_eef"
+    horizon: tuple[int, int] = (3, 15)
+
+
+class InferenceBudget(Spec):
+    max_calls: int = Field(default=0, ge=0)
+    repair_attempts: int = Field(default=2, ge=0)
+
+
 class Role(Spec):
     description: str = ""
+    inputs: ModelInputs = Field(default_factory=ModelInputs)
+    prompts: PromptStages = Field(default_factory=PromptStages)
+    output: ActionOutput | None = None
+    budget: InferenceBudget | None = None
+    calls: list[Name] = Field(default_factory=list)
+    input_schema: dict | None = None
+    output_schema: dict | None = None
+
+    @field_validator("input_schema", "output_schema")
+    @classmethod
+    def valid_contract(cls, value, info):
+        if value is not None:
+            if info.field_name == "input_schema" and value.get("type") != "object":
+                raise ValueError("model API arguments require a JSON object")
+            checked_schema(value)
+        return value
+
     brain: Brain = Field(default_factory=Brain)
     channel: Channel = "tools"
     capabilities: list[Capability] = Field(default_factory=list)
@@ -128,6 +176,18 @@ class Role(Spec):
 
     @model_validator(mode="after")
     def channel_requirements(self):
+        if self.channel != "action" and (self.output is not None or self.budget is not None):
+            raise ValueError("output representation and inference budget require the action channel")
+        if self.output and not 1 <= self.output.horizon[0] <= self.output.horizon[1] <= 64:
+            raise ValueError("output.horizon must satisfy 1 <= MIN <= MAX <= 64")
+        if len(set(self.calls)) != len(self.calls):
+            raise ValueError("each callable API should be named once")
+        if self.channel == "action" and self.inputs.environment is False:
+            raise ValueError("action controllers require environment observations")
+        if self.channel == "action" and (self.calls or self.output_schema is not None):
+            raise ValueError("an action controller returns the selected action representation")
+        if self.channel != "action" and self.inputs.model_dump(exclude={"environment"}, exclude_none=True):
+            raise ValueError("frame history and robot prompt blocks require the action channel")
         if self.job_tools is not None:
             from evoab.tools.selection import TOOL_GROUPS
             if self.channel == "action" or set(self.job_tools) - set(TOOL_GROUPS["@jobs"]):
@@ -150,6 +210,31 @@ class Role(Spec):
         return next((item for item in self.capabilities if item.id == name), None)
 
 
+class ModelAPI(Role):
+    kind: Literal["model"]
+
+
+class FlowAPI(Role):
+    kind: Literal["flow"]
+    steps: list[Step] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def valid_steps(self):
+        if self.channel != "tools" or self.calls:
+            raise ValueError("flows derive their callable APIs from steps")
+        seen = {"input"}
+        for step in self.steps:
+            paths = list(references(step.args))
+            if not isinstance(step.call, str):
+                paths.append(step.call.source)
+            if any(not isinstance(p, str) or p.split(".")[0] not in seen for p in paths):
+                raise ValueError(f"{step.id}: reference must start with input or an earlier step")
+            if step.id in seen:
+                raise ValueError(f"duplicate flow step {step.id}")
+            seen.add(step.id)
+        return self
+
+
 class Experience(Spec):
     """What a sequence of episodes carries forward."""
 
@@ -161,6 +246,7 @@ class Experience(Spec):
 
 class Loop(Spec):
     entry: str = "main"
+    arguments: dict[str, Any] = Field(default_factory=dict)
     episodes: Experience = Field(default_factory=Experience)
 
 
@@ -169,6 +255,7 @@ class ExecutionSpec(Spec):
     resource_scheduling: Literal["per-resource", "global-serial"] = "per-resource"
     # None selects the integration's mode (IntegrationSpec.execution_mode).
     mode: Literal["parallel", "replanning"] | None = None
+    max_call_depth: int = Field(default=8, ge=1, le=64)
     observation_profile: str = "none"
 
 
@@ -210,23 +297,30 @@ class Recipe(Spec):
     integrations: list[str] | None = None
     references: list[Reference] = Field(default_factory=list)
     inputs: Inputs = Field(default_factory=Inputs)
-    roles: dict[str, Role]
+    prompts: PromptStages = Field(default_factory=PromptStages)
+    apis: dict[Name, ModelAPI | HttpAPI | PolicyAPI | FlowAPI] = Field(default_factory=dict)
+    roles: dict[str, Role] = Field(default_factory=dict)
     loop: Loop = Field(default_factory=Loop)
     execution: ExecutionSpec = Field(default_factory=ExecutionSpec)
 
     @model_validator(mode="after")
     def roles_and_loop(self):
         import re
-        if not self.roles:
+        if self.roles.keys() & self.apis.keys():
+            raise ValueError("API and role names must be unique")
+        roles = self.controllers
+        if len(roles) == 1 and "entry" not in self.loop.model_fields_set:
+            self.loop.entry = next(iter(roles))
+        if not roles:
             raise ValueError("a recipe needs at least one role")
-        for name in self.roles:
+        for name in roles:
             if not re.fullmatch(ROLE_NAME, name):
                 raise ValueError(f"invalid role name {name!r}")
-        if self.loop.entry not in self.roles:
+        if self.loop.entry not in roles:
             raise ValueError(f"loop.entry names an unknown role {self.loop.entry!r}")
-        if self.execution.return_mode != "background" and any(role.job_tools for role in self.roles.values()):
+        if self.execution.return_mode != "background" and any(role.job_tools for role in roles.values()):
             raise ValueError("job tools require execution.return_mode: background")
-        entry = self.roles[self.loop.entry]
+        entry = roles[self.loop.entry]
         if "programs" in self.loop.episodes.carry and entry.channel != "code":
             raise ValueError("carrying programs requires a code entry role")
         if "skills" in self.loop.episodes.carry:
@@ -236,23 +330,39 @@ class Recipe(Spec):
         reachable = {self.loop.entry}
         frontier = [self.loop.entry]
         while frontier:
-            role = self.roles[frontier.pop()]
+            name = frontier.pop()
+            role = roles[name]
             delegate = role.capability("delegate")
-            for target in (delegate.options.get("roles", []) if delegate else []):
-                if target not in self.roles:
+            calls = self.call_targets(role)
+            unknown = set(calls) - self.apis.keys() - roles.keys()
+            if unknown and not isinstance(role, FlowAPI):
+                raise ValueError(f"{name}: unknown APIs {sorted(unknown)}")
+            for target in [*(delegate.options.get("roles", []) if delegate else []),
+                           *(item for item in calls if item in roles)]:
+                if target not in roles:
                     raise ValueError(f"delegate names an unknown role {target!r}")
-                if target == self.loop.entry:
+                if target == self.loop.entry and target not in calls:
                     raise ValueError("a role cannot delegate back to the loop entry")
                 if target not in reachable:
                     reachable.add(target)
                     frontier.append(target)
-        if unreachable := sorted(set(self.roles) - reachable):
+        if unreachable := sorted(set(roles) - reachable):
             raise ValueError(f"roles not reachable from loop.entry through delegate: {unreachable}")
         return self
 
     @property
+    def controllers(self) -> dict[str, Role]:
+        return {**self.roles, **{k: v for k, v in self.apis.items() if isinstance(v, Role)}}
+
+    @staticmethod
+    def call_targets(role):
+        if isinstance(role, FlowAPI):
+            return list(dict.fromkeys(name for step in role.steps for name in step.targets()))
+        return role.calls
+
+    @property
     def entry(self) -> Role:
-        return self.roles[self.loop.entry]
+        return self.controllers[self.loop.entry]
 
 
 # -- paths and overrides ------------------------------------------------------

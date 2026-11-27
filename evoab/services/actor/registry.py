@@ -1,6 +1,7 @@
 """Actor configuration and lifecycle entry points without native imports."""
 from dataclasses import dataclass
 from importlib import import_module
+from importlib.metadata import entry_points
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,8 @@ _ALIASES = {"pi05": "openpi"}
 
 
 def backend_names():
-    return (*_BACKENDS, *_ALIASES)
+    plugins = {p.name for p in entry_points(group="evoab.actor_backends")}
+    return (*_BACKENDS, *_ALIASES, *sorted(plugins - _BACKENDS.keys() - _ALIASES.keys()))
 
 
 def get_backend(name):
@@ -38,4 +40,10 @@ def get_backend(name):
     try:
         return _BACKENDS[canonical]
     except KeyError:
-        raise ValueError(f"Unsupported actor backend: {name}") from None
+        matches = list(entry_points(group="evoab.actor_backends", name=name))
+        if len(matches) != 1:
+            raise ValueError(f"Expected one installed actor backend named {name!r}, found {len(matches)}") from None
+        backend = matches[0].load()
+        if not isinstance(backend, BackendDefinition) or backend.name != name:
+            raise ValueError(f"{name}: entry point must export a matching BackendDefinition")
+        return backend

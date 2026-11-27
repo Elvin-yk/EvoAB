@@ -1,0 +1,11 @@
+id: direct_api
+label: Three Direct inferences
+apis:
+  hands:
+    kind: model
+    channel: action
+    inputs:
+      history: [15, 7]
+      blocks: [robot, timing, gripper, camera]
+    output: {representation: abs_eef, horizon: [3, 15]}
+    budget: {max_calls: 3, repair_attempts: 2}

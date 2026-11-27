@@ -4,18 +4,19 @@ from __future__ import annotations
 from threading import Event, Lock
 
 from evoab.execution import ExecutionResult, ToolExecutor
+from evoab.execution.correlation import invocation_path
 from evoab.services.mcp.http import HttpMcpServer
-from evoab.tools.client import ToolClient
+from evoab.tools.client import ToolJob
 
 
 class CodePolicyBridge(ToolExecutor):
     """Serialize program calls and retain only an executed finish receipt."""
 
     def __init__(self, executor: ToolExecutor, *, event_bus=None):
+        self._invocation_path = invocation_path.get()
         self._executor = executor
         self._closed = Event()
         self._lock = Lock()
-        self._client = ToolClient(executor, self._require_active)
         self._server = HttpMcpServer(self, event_bus=event_bus)
         self.finish_request: dict | None = None
 
@@ -40,12 +41,18 @@ class CodePolicyBridge(ToolExecutor):
     def call(self, name, arguments):
         with self._lock:
             self._require_active()
+            token = invocation_path.set(self._invocation_path)
             try:
-                output = self._client.call(name, arguments)
+                # Program calls wait for a result. Foreground delegation allows nested
+                # programs to call another model without occupying a pool worker.
+                receipt = self._executor.call(name, arguments)
+                output = receipt.output if receipt.output is not None else ToolJob(self._executor, receipt).result()
             except Exception:
                 # An exception after submission does not establish zero execution.
                 self.revoke()
                 raise
+            finally:
+                invocation_path.reset(token)
             if (output.extra.get("execution_uncertain")
                     or output.extra.get("execution", {}).get("execution_uncertain")):
                 self.revoke()

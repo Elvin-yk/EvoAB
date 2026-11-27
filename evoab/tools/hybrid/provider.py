@@ -1,4 +1,6 @@
 """Independent model-facing actor collaboration tools."""
+from dataclasses import replace
+
 from evoab.execution.scheduler import ToolExecutionPolicy
 from evoab.tools.presentation import state_for_model
 from evoab.tools.scene.perception import snapshot_images, snapshot_metadata
@@ -56,15 +58,18 @@ def tool_specs(binding=None, reviewer=None):
 class HybridTools(ToolProvider):
     provider_id = "hybrid"
 
-    def __init__(self, episode, *, actor, binding, reviewer):
+    def __init__(self, episode, *, actor, binding, reviewer, tool_name="actor_act", description=""):
         if actor is None or binding is None:
             raise ValueError("HybridTools requires a configured actor and binding")
         self.episode, self.binding, self.reviewer = episode, binding, reviewer
+        self.name, self.description = tool_name, description
         self.runner = ActorRunner(episode, actor=actor, binding=binding, reviewer=reviewer)
 
     def get_tools(self):
-        return bind_tools(tool_specs(self.binding, self.reviewer), provider_id=self.provider_id,
-                          handlers={"actor_act": self.actor_act}, invoke=self.invoke)
+        spec, = tool_specs(self.binding, self.reviewer)
+        spec = replace(spec, name=self.name, description=" ".join(filter(None, (self.description, spec.description))))
+        return bind_tools([spec], provider_id=self.provider_id,
+                          handlers={self.name: self.actor_act}, invoke=self.invoke)
 
     def invoke(self, handler, **arguments):
         return self.episode.invoke(handler, **arguments)

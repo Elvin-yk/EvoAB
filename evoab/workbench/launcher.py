@@ -83,7 +83,7 @@ def methods(integration: str | None = None) -> tuple[dict, ...]:
             "file": _recipe_file(method),
             "external_evaluator": False,
             "fixed_effort": None,
-            "channel": entry.channel, "agent": default_agent, "roles": list(recipe.roles),
+            "channel": entry.channel, "agent": default_agent, "roles": list(recipe.controllers),
             "references": [reference.model_dump(mode="json") for reference in recipe.references],
             "episodes": recipe.loop.episodes.model_dump(mode="json"),
             "agents": agents if unavailable is None else [], "unavailable": unavailable,
@@ -266,7 +266,7 @@ def validate(request: LaunchRequest) -> dict:
         raise ValueError("The entry Agent preset must match the launch model")
     presets = {request.model}
     if request.team:
-        presets.update(role.brain.model_preset for role in recipe.roles.values() if role.brain.model_preset)
+        presets.update(role.brain.model_preset for role in recipe.controllers.values() if role.brain.model_preset)
     if agent.validate_preset is not None:
         for preset in presets:
             agent.validate_preset(preset)
@@ -290,7 +290,7 @@ def resolve_run_recipe(request: LaunchRequest, method: dict) -> Recipe:
         from evoab.workbench.team import team_roles
         if request.params or request.visible_tools is not None:
             raise ValueError("Agent cards already define the tools and role parameters")
-        if recipe.entry.channel != "tools" or recipe.execution.return_mode != "immediate" or len(recipe.roles) != 1:
+        if recipe.entry.channel != "tools" or recipe.execution.return_mode != "immediate" or len(recipe.controllers) != 1:
             raise ValueError("Agent cards require a single tool-calling role with immediate results")
         roles = team_roles(request.integration, request.team)
         return_mode = "background" if any(role.get("job_tools") for role in roles.values()) else "immediate"
@@ -320,7 +320,8 @@ def _narrow_entry_tools(recipe: Recipe, compiled, chosen: set[str]) -> Recipe:
     jobs = [name for name in TOOL_GROUPS["@jobs"] if name in chosen] \
         if recipe.execution.return_mode == "background" else None
     role = entry.role.model_copy(update={"capabilities": capabilities, "job_tools": jobs})
-    return recipe.model_copy(update={"roles": {**recipe.roles, recipe.loop.entry: role}})
+    group = "apis" if recipe.loop.entry in recipe.apis else "roles"
+    return recipe.model_copy(update={group: {**getattr(recipe, group), recipe.loop.entry: role}})
 
 
 def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:

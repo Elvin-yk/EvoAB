@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from evoab.composition.components import HARNESS_CAPABILITIES
-from evoab.composition.recipe import Recipe, Role
+from evoab.composition.recipe import Capability, FlowAPI, Recipe, Role
 from evoab.integrations.composition import SelectedModule, module_catalog
 
 
@@ -29,6 +29,7 @@ class CompiledRole:
     observation_profile: str = "none"
     direct: Any | None = None
     prompt_text: str = ""
+    start_prompt: str = ""
 
     @property
     def channel(self) -> str:
@@ -68,7 +69,10 @@ def compile_recipe(recipe: Recipe, spec: Any, *, base_dir: Path | None = None) -
     if recipe.inputs.task_supplements and not getattr(spec, "task_supplements", False):
         raise ValueError(f"inputs.task_supplements: {spec.name} publishes no task supplements")
     catalog = module_catalog(spec)
-    roles = {name: _compile_role(name, role, catalog, spec, base_dir) for name, role in recipe.roles.items()}
+    from evoab.integrations.api_modules import extend_catalog
+    extend_catalog(catalog, recipe.apis)
+    roles = {name: _compile_role(name, role, catalog, spec, base_dir, recipe)
+             for name, role in recipe.controllers.items()}
     for name, role in roles.items():
         if role.observation_profile != "none" and name != recipe.loop.entry:
             raise ValueError("the observation capability is available to the loop entry role only")
@@ -79,10 +83,14 @@ def compile_recipe(recipe: Recipe, spec: Any, *, base_dir: Path | None = None) -
     return CompiledRecipe(recipe, roles, base_dir)
 
 
-def _compile_role(name: str, role: Role, catalog: dict, spec: Any, base_dir: Path | None) -> CompiledRole:
+def _compile_role(name: str, role: Role, catalog: dict, spec: Any, base_dir: Path | None, recipe: Recipe) -> CompiledRole:
     where = f"role {name!r}"
     modules, delegates, observation = [], (), "none"
-    for capability in role.capabilities:
+    calls = recipe.call_targets(role)
+    declared = {cap.id for cap in role.capabilities}
+    named_services = [Capability(id=ref) for ref in calls
+                      if ref in recipe.apis and ref not in recipe.controllers and ref not in declared]
+    for capability in [*role.capabilities, *named_services]:
         if capability.id == "delegate":
             delegates = tuple(capability.options.get("roles") or ())
             if not delegates or set(capability.options) - {"roles"} or capability.tools:
@@ -110,35 +118,49 @@ def _compile_role(name: str, role: Role, catalog: dict, spec: Any, base_dir: Pat
         modules.append(module.select(capability.tools, options, role.style))
     if role.initial_observation and not any(item.name == "scene" for item in modules):
         raise ValueError(f"{where}: initial_observation requires the scene capability")
-    direct = _direct_config(role, base_dir) if role.channel == "action" else None
+    delegates = tuple(dict.fromkeys([*delegates, *(ref for ref in calls if ref in recipe.controllers)]))
+    if isinstance(role, FlowAPI):
+        exposed = {t for m in modules for t in (m.selection.tools or m.module.tools)}
+        if unknown := set(calls) - set(delegates) - exposed:
+            raise ValueError(f"{where}: flow calls unavailable tools {sorted(unknown)}")
+    start = _read_files([*recipe.prompts.start, *role.prompts.start], base_dir)
+    each = _read_files([*recipe.prompts.each_call, *role.prompts.each_call], base_dir)
+    direct = _direct_config(role, base_dir, start, each) if role.channel == "action" else None
     return CompiledRole(name, role, tuple(modules), delegates, observation, direct,
-                        _prompt_text(role, base_dir))
+                        "\n\n".join(filter(None, (_prompt_text(role, base_dir), each))), start)
 
 
-def _direct_config(role: Role, base_dir: Path | None):
+def _direct_config(role: Role, base_dir: Path | None, start: str, each: str):
     from evoab.direct import prompts
     from evoab.direct.actions import REPRESENTATIONS
     from evoab.direct.runner import DirectConfig
 
     action = role.action
-    if action.representation not in REPRESENTATIONS:
-        raise ValueError(f"unknown action representation {action.representation!r}; "
+    output = role.output or action
+    budget = role.budget or action
+    if output.representation not in REPRESENTATIONS:
+        raise ValueError(f"unknown action representation {output.representation!r}; "
                          f"choose from {', '.join(REPRESENTATIONS)}")
-    blocks = tuple(action.blocks) if action.blocks is not None else prompts.BLOCKS
+    if role.inputs.blocks is not None:
+        blocks = tuple(role.inputs.blocks)
+    elif action.blocks is not None:
+        # Legacy action.blocks only toggled optional gripper and camera details.
+        blocks = tuple(dict.fromkeys(("robot", "timing", *action.blocks)))
+    else:
+        blocks = prompts.BLOCKS
     if unknown := sorted(set(blocks) - set(prompts.BLOCKS)):
         raise ValueError(f"unknown direct prompt blocks {unknown}; choose from {list(prompts.BLOCKS)}")
-    if not {"robot", "timing"} <= set(blocks):
-        raise ValueError("action.blocks must include robot and timing")
     robot = None
-    if action.robot_prompt_file:
-        robot = _resolve(action.robot_prompt_file, base_dir).read_text(encoding="utf-8")
-    custom = "\n\n".join(part for part in (action.custom_prompt, _prompt_text(role, base_dir)) if part)
+    if path := role.inputs.robot_prompt_file or action.robot_prompt_file:
+        robot = _resolve(path, base_dir).read_text(encoding="utf-8")
+    custom = "\n\n".join(part for part in (action.custom_prompt, _prompt_text(role, base_dir), each) if part)
+    history = role.inputs.history or action.history
     return DirectConfig(
-        representation=action.representation, min_horizon=action.horizon[0], max_horizon=action.horizon[1],
-        history_length=action.history[0], history_stride=action.history[1], blocks=blocks,
+        representation=output.representation, min_horizon=output.horizon[0], max_horizon=output.horizon[1],
+        history_length=history[0], history_stride=history[1], blocks=blocks, start_prompt=start,
         robot_prompt=robot, custom_prompt=custom, translation_limit_m=float(action.step_limits[0]),
         rotation_limit_rad=float(action.step_limits[1]), joint_step_limit_rad=action.joint_step_limit_rad,
-        repair_attempts=action.repair_attempts, max_calls=action.max_calls)
+        repair_attempts=budget.repair_attempts, max_calls=budget.max_calls)
 
 
 def _resolve(path: str, base_dir: Path | None) -> Path:
@@ -152,6 +174,10 @@ def _resolve(path: str, base_dir: Path | None) -> Path:
     if not candidate.is_file():
         raise ValueError(f"prompt file {path!r} does not exist")
     return candidate
+
+
+def _read_files(paths, base_dir):
+    return "\n\n".join(_resolve(path, base_dir).read_text(encoding="utf-8").strip() for path in paths)
 
 
 def _prompt_text(role: Role, base_dir: Path | None) -> str:

@@ -152,8 +152,47 @@ Tools report what an action did in `ToolOutput.action` (`executed` none/some/unk
 | **A channel or action representation** | Representations in `direct/actions.py`; channels in `session.py`, and every agent must be able to drive it. |
 | **An environment** | An integration package with `get_integration_spec()`: native execution, observations and outcome in the adapter, an accurate description (arms, frames, units, limits, cameras, calibration), the tool modules it supports, a deployment module with a `container.toml` (a pinned upstream image or a `Dockerfile`; see `services/deployment/container.py`), and a section in [benchmarks](benchmarks.md). Environments run only in containers. It must not define its own model tools. |
 | **A real robot** | As an environment, plus the device process that owns the hardware, physical limits, interruption and operator commands; follow ARX ONE as the reference. The shared IK contract is tracked in [#18](https://github.com/Elvin-yk/EvoAB/issues/18) and [#22](https://github.com/Elvin-yk/EvoAB/issues/22). |
-| **An action model** | An `ActorBackend` registered in `services/actor/registry.py`; environment-specific conversion stays in the integration's binding. |
+| **An action model** | An actor service, or an installed `evoab.actor_backends` plugin for the EvoAB actor server. The integration binding converts observations and actions. |
 | **A model vendor** | Add a provider and preset with `evoab models` (or Studio, 设置 → 模型); no code changes. |
+
+## Named APIs and policy backends
+
+A method can declare model controllers, typed HTTP tools, policies and ordered
+flows under `apis`. The compiler resolves the call graph and tool visibility
+before startup. Runtime checks apply to concrete inputs, outputs and route
+choices. Models and flows share the episode executor. A flow waits for a
+submitted step's receipt before admitting a dependent step. Explicit data
+references and model delegation are described in [the guide](guide.md#compose-apis-in-a-recipe).
+
+A policy provider can serve the existing actor protocol from its own process.
+To use EvoAB's actor server with new model code, install a Python distribution
+in the **model service's environment** with this entry point:
+
+```toml
+[project.entry-points."evoab.actor_backends"]
+my_policy = "my_policy:definition"
+```
+
+Export `definition = BackendDefinition("my_policy", "my_policy", "MyPolicy")`
+from the package (import the class from `evoab.services.actor.registry`).
+Supply `my_policy.config.resolve_config(settings)` and `service_limits(config)`
+and `my_policy.backend.MyPolicy(config)` implementing `ActorBackend`. The backend
+loads its checkpoint, verifies its contents and publishes the actual digest
+and action profile in `ActorInfo`. These model-specific steps also cover remote
+weight stores or a vendor SDK. Start the service with
+`python -m evoab.services.actor.server --config actor.toml`. For example:
+
+```toml
+backend = "my_policy"
+checkpoint = "/models/my-policy/weights"
+checkpoint_sha256 = "<digest>"
+[http]
+port = 8802
+```
+
+An existing binding works when the observations, coordinates and action layout
+match. An incompatible embodiment needs its own conversion. See the CALVIN
+binding and StarVLA backend for concrete examples.
 
 ## Validation
 

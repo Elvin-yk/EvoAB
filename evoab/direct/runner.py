@@ -55,6 +55,7 @@ class DirectConfig:
     jpeg_quality: int = 85
     max_calls: int = 0  # 0: until the episode ends
     custom_prompt: str = ""
+    start_prompt: str = ""
 
 
 @dataclass
@@ -280,6 +281,8 @@ class DirectPolicy:
         build_started = time.perf_counter()
         history = self._history()
         current = history[-1]
+        if index == 1 and self.config.start_prompt:
+            system += "\n\n" + self.config.start_prompt
         messages, stored = self._messages(system, history)
         request_build_s = time.perf_counter() - build_started
         request_path = self.root / "requests" / f"call_{index:04d}.json"

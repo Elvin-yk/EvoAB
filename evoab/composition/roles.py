@@ -30,10 +30,11 @@ def role_namespace(args: Any, role: CompiledRole) -> Any:
 def validate_roles(args: Any) -> None:
     """Check every non-entry role offline, as the CLI checks the entry role."""
     from evoab.agents.registry import get_agent_backend
+    from evoab.composition.recipe import FlowAPI
 
     compiled = args.compiled_recipe
     for name, role in compiled.roles.items():
-        if name == compiled.recipe.loop.entry:
+        if name == compiled.recipe.loop.entry or isinstance(role.role, FlowAPI):
             continue
         namespace = role_namespace(args, role)
         get_agent_backend("native").validate_config(namespace, set())

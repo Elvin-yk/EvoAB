@@ -5,6 +5,7 @@ from contextvars import ContextVar
 _call = ContextVar("tool_call_identity", default=None)
 
 
+invocation_path: ContextVar[tuple[str, ...]] = ContextVar("invocation_path", default=())
 current_role: ContextVar[str] = ContextVar("execution_role", default="")
 
 

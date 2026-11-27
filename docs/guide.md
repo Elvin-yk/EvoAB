@@ -208,6 +208,63 @@ what the agent saw), `trajectory.jsonl`, content-addressed `images/` and
 `artifacts/`, `roles/NNN_<role>/` for delegations and `direct/` for action-chunk
 requests. `evoab replay ./runs` replays saved runs in the browser without a model.
 
+## Compose APIs in a recipe
+
+Name each interface under `apis`. `kind: model` uses a model preset and the built-in
+agent. Its `calls` list exposes named APIs to that model and `capabilities` selects
+environment tools. Each model can have its own `brain.model`, `input_schema`,
+`output_schema`, and tool list. A caller sees another model as
+`delegate_<name>`; the harness validates the arguments and returns its validated
+JSON result in `value`. A child starts with the explicit arguments, its own prompt
+and any selected environment context. A named model that only calls other APIs
+receives the handoff without the robot prompt. Set `inputs.environment` to choose
+explicitly. Its transcript stays in its own run directory.
+The parent receives its report. The same model preset can serve several independent
+interfaces. `execution.max_call_depth` bounds nested calls (default 8).
+
+A single model or flow is the default entry. With multiple controllers set
+`loop.entry`. The harness starts the environment first. `loop.arguments` supplies
+additional JSON input fields to the entry (its initial input includes `instruction`).
+Existing methods under `roles` run through the same compiler.
+
+- **Model input.** Global `prompts.start` and `prompts.each_call` are ordered lists
+  of text file paths. Each model can add its own paths with the same fields. Paths
+  resolve relative to the recipe. Start text enters the first request of each
+  invocation. In a conversational model it then stays in that invocation's history.
+  Each-call text is part of the system instructions. Direct builds an independent
+  request each time. The method can also append inline text with `prompt.append`.
+- **Direct output.** Use `channel: action`, with `inputs.history` and `inputs.blocks`
+  for observation history and prompt content, `output.representation` and
+  `output.horizon` for the emitted actions, and `budget.max_calls` and
+  `budget.repair_attempts` for inference. The top-level environment `inputs` cover
+  depth, calibration, and optional task supplements. See [the Direct API recipe](../examples/recipes/direct_api.yaml).
+- **External services.** `kind: http` calls a user-operated JSON service with
+  `url`, `input_schema` and `output_schema`. POST sends a JSON object, GET sends
+  query parameters. For bearer authentication set `bearer_env` to the environment
+  variable name. Use the actor protocol for policies that drive the robot.
+- **Policies.** Give each `kind: policy` its own actor URL, expected checkpoint
+  SHA-256, and environment binding. The policy server owns loading the model and
+  weights. The harness checks its identity and uses the integration's existing
+  observation and action binding. Each selected policy owns its own client and
+  shares the episode's exclusive motion resource. `review` and `review_model`
+  can be set per policy.
+- **Explicit wiring.** A `kind: flow` executes ordered `steps`. Each step names a
+  callable and builds its argument object from literals and `{from: step.field}`
+  references. A `call` with `source` and `choices` routes a string returned by
+  an earlier step to one of the declared APIs. A failed request, missing field,
+  invalid response or unknown choice stops the flow at that step. Its result
+  is the last successful step's value on normal completion. A flow with only
+  HTTP services and tools can run without an LLM preset.
+
+[The routing example](../examples/recipes/routed_policy.yaml) wires a scene
+service to a model that can consult a second model, then calls the chosen CALVIN
+policy. Replace its example URLs and checkpoint digests with the identities
+of your running services. Validate offline with
+`evoab methods validate ./examples/recipes/routed_policy.yaml --integration calvin`.
+Use this path as `--recipe` in `evoab run`. Inspect `flow.jsonl` for the route,
+`roles/*/handoff.json` for parent invocation and transferred input, and each
+invocation's model records for its actual requests.
+
 ## Python SDK
 
 ```python

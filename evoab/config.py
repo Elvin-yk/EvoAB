@@ -54,7 +54,8 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     resolve_recipe(args, integration_spec, explicit=explicit)
     if not agent_enabled:
         args.agent_backend, args.model = None, None
-    if agent_enabled:
+    from evoab.composition.recipe import FlowAPI
+    if agent_enabled and not isinstance(args.recipe.entry, FlowAPI):
         if not getattr(args, "model", None):
             raise ValueError(f"--model is required (or pin roles.{args.recipe.loop.entry}.brain.model "
                              f"in method {args.recipe_id!r})")
@@ -123,7 +124,8 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
         load_observation_profile(args.observation_profile)
     if agent_enabled:
         # The built-in agent: --model names a model preset (evoab models).
-        get_agent_backend(args.agent_backend).validate_config(args, explicit)
+        if not isinstance(args.recipe.entry, FlowAPI):
+            get_agent_backend(args.agent_backend).validate_config(args, explicit)
         from evoab.composition.roles import validate_roles
         validate_roles(args)
     get_prompt_builder(args.integration)

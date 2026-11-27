@@ -56,28 +56,31 @@ def validate_hybrid_cli(args: Any) -> None:
             raise ValueError("Actor endpoint must be an absolute HTTP(S) base URL")
 
 
-def configure_hybrid(session, selection=None):
+def configure_hybrid(session, selection=None, *, endpoint=None, checkpoint=None, named_options=None,
+                     tool_name="actor_act", description="", review_model=None):
     """Own services here; bindings only translate between declared contracts."""
     args, episode = session.args, session.episode
     binding_factory = session.binding_factory
     if binding_factory is None:
         raise ValueError("This integration has no hybrid binding factory")
-    checkpoint = args.action_model_checkpoint_sha256
+    checkpoint = checkpoint or args.action_model_checkpoint_sha256
     if not checkpoint:
         raise ValueError("Hybrid requires --action-model-checkpoint-sha256")
-    actor = session.own(ActorClient(args.action_model_url,
+    actor = session.own(ActorClient(endpoint or args.action_model_url,
         checkpoint_sha256=checkpoint, tracer=session.context.tracer))
-    options = selection.options if selection is not None else PolicyToolOptions()
+    options = named_options or (selection.options if selection is not None else PolicyToolOptions())
     name = options.binding or getattr(episode.description.environment, "action_binding", None)
     binding = binding_factory(name, args, episode.description, actor.info)
     enabled = binding.reviewer_supported if options.review is None else options.review
     if enabled and not binding.reviewer_supported:
         raise ValueError("The selected binding does not support actor review")
-    reviewer = session.own(ChunkReviewer(enabled=enabled, model=args.vla_review_model,
+    reviewer = session.own(ChunkReviewer(enabled=enabled, model=review_model or args.vla_review_model,
         prompt_path=binding.reviewer_prompt, validator=binding.validate_decision,
         tracer=session.context.tracer))
-    session.action_model_name = actor.info.model
-    return HybridTools(episode, actor=actor, binding=binding, reviewer=reviewer)
+    if endpoint is None:
+        session.action_model_name = actor.info.model
+    return HybridTools(episode, actor=actor, binding=binding, reviewer=reviewer,
+                       tool_name=tool_name, description=description)
 
 
 HYBRID_MODULE = ToolModule("hybrid", configure_hybrid, tool_policies(), tools=HYBRID_NAMES, options=PolicyToolOptions,

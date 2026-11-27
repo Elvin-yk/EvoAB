@@ -16,6 +16,8 @@ from evoab.artifacts.run import build_run_result, write_result_json
 from evoab.artifacts.records import RunResult
 from evoab.tools.client import ToolClient
 from evoab.config import SessionConfig
+from evoab.composition import flow
+from evoab.composition.recipe import FlowAPI, ModelAPI
 from evoab.events import SessionOpened, SessionClosed
 from evoab.artifacts.store import ArtifactStore
 from evoab.events.subscribers import (
@@ -24,7 +26,8 @@ from evoab.events.subscribers import (
     EventSubscriptions,
 )
 from evoab.config import runtime_env
-from evoab.context.prompt import PromptContext, assemble_prompt, get_prompt_builder
+from evoab.context.prompt import Prompt, PromptContext, assemble_prompt, get_prompt_builder
+from evoab.execution.correlation import invocation_path
 from evoab.events import ErrorEvent, EventBus, AgentRunFinished, Event
 from evoab.observation import load_observation_profile
 from evoab.agents import create_agent, get_agent_backend
@@ -181,7 +184,8 @@ def assemble_session(args) -> SessionAssembly:
                 target = compiled.roles[name]
                 from evoab.tools.delegation.provider import DelegateTarget
                 targets[name] = DelegateTarget(name, target.role.description, target.channel,
-                                               "native")
+                                               "native", target.role.input_schema,
+                                               name in args.recipe.apis, target.role.output_schema)
         if targets:
             from evoab.tools.delegation.provider import DelegationTools, tool_policies as delegation_policies
             dispatch = RoleDispatch()
@@ -302,8 +306,12 @@ def assemble_session(args) -> SessionAssembly:
                     tool_prompt_resources=tuple(path for item in compiled_role.modules
                                                 for path in item.module.runtime_prompts),
                     skill_writing=compiled_role.skill_writing)
-            base_prompt = prompt_builder(context)
-            if references:
+            include_environment = compiled_role.role.inputs.environment
+            if include_environment is None:
+                include_environment = not isinstance(compiled_role.role, ModelAPI) or bool(compiled_role.role.capabilities)
+            base_prompt = prompt_builder(context) if include_environment else Prompt(
+                user=task, system=compiled_role.role.description or None)
+            if include_environment and references:
                 base_prompt = base_prompt.append(user=(
                     "Robot reference resources (read-only exact paths; use native file tools when needed):\n"
                     + json.dumps(references, allow_nan=False)))
@@ -318,13 +326,19 @@ def assemble_session(args) -> SessionAssembly:
                 base_prompt = base_prompt.append(
                     system=contribution.system, user=contribution.user, source=contribution.source,
                 )
+            if compiled_role.start_prompt and compiled_role.channel != "action":
+                base_prompt = base_prompt.append(user=compiled_role.start_prompt)
+            if compiled_role.role.output_schema:
+                base_prompt = base_prompt.append(system="Return the final answer as JSON matching this schema: "
+                                                  + json.dumps(compiled_role.role.output_schema))
             if compiled_role.prompt_text and compiled_role.channel != "action":
                 base_prompt = base_prompt.append(system=compiled_role.prompt_text,
                                                  source=f"recipe:{args.recipe_id}:{compiled_role.name}")
             if is_entry and getattr(args, "programs_dir", None):
                 base_prompt = base_prompt.append(system=experience.PROGRAMS_NOTE.format(path=args.programs_dir),
                                                  source="experience:programs")
-            prompt = assemble_prompt(base_prompt, context, contributions if is_entry else ())
+            prompt = (assemble_prompt(base_prompt, context, contributions if is_entry else ())
+                      if include_environment else base_prompt)
             if not is_entry:
                 directory = session_dir / "prompts"
                 directory.mkdir(exist_ok=True)
@@ -410,6 +424,7 @@ class Session:
         self._agent_result = None
         self._agent_started = False
         self._closed = False
+        self._cancelled = threading.Event()
         self._started = time.time()
         self._deadline = None
         self._tools = None
@@ -458,7 +473,7 @@ class Session:
         if timeout_s:
             self._deadline = time.monotonic() + timeout_s
         try:
-            if args.agent_backend is not None:
+            if args.agent_backend is not None and not isinstance(args.recipe.entry, FlowAPI):
                 self._agent = create_agent(args.agent_backend, model=args.model, timeout_s=timeout_s,
                     **get_agent_backend(args.agent_backend).config_options(args))
             self._assembly = assemble_session(args)
@@ -498,18 +513,32 @@ class Session:
         error_msg = None
         try:
             logger.info("Task: %s", args.instruction)
+            payload = {"instruction": args.instruction, **args.recipe.loop.arguments}
+            if args.recipe.entry.input_schema:
+                from jsonschema import validate
+                validate(payload, args.recipe.entry.input_schema)
+            entry_instruction = (json.dumps(payload, ensure_ascii=False)
+                                 if args.recipe.entry.input_schema or args.recipe.loop.arguments else args.instruction)
             if assembly.delegation is not None:
                 assembly.delegation.bind(self._run_role)
             with assembly.telemetry.tracer.span("agent.run", agent_backend=args.agent_backend, model=args.model,
                                                 recipe=args.recipe_id, channel=args.channel):
-                if args.channel == "action":
-                    self._agent_result = _run_direct(self._agent, args, assembly, self.events)
+                if isinstance(args.recipe.entry, FlowAPI):
+                    self._agent_result = flow.run_flow(args.recipe.entry, args.delegates,
+                        payload, assembly.entry_executor, assembly.session_dir, self._require_flow_active)
+                    flow.validate_output(self._agent_result, args.recipe.entry.output_schema)
+                    self.events.emit(AgentRunFinished(success=self._agent_result.success,
+                        tool_calls=self._agent_result.tool_calls, elapsed_s=self._agent_result.elapsed_s,
+                        message=self._agent_result.error or self._agent_result.message))
+                elif args.channel == "action":
+                    self._agent_result = _run_direct(self._agent, args, assembly, self.events, entry_instruction)
                 else:
                     self._agent_result = _run_agent(self._agent, channel=args.channel,
                         artifacts=assembly.artifacts, tracer=assembly.telemetry.tracer,
-                        prompt=assembly.build_prompt(args.instruction), task=args.instruction,
+                        prompt=assembly.build_prompt(entry_instruction), task=entry_instruction,
                         toolkit=assembly.toolkit, executor=assembly.entry_executor, max_turns=args.max_turns,
-                        event_bus=self.events, session_dir=assembly.session_dir)
+                        event_bus=self.events, session_dir=assembly.session_dir,
+                        output_schema=args.recipe.entry.output_schema)
             _log_agent_result(self._agent_result)
         except KeyboardInterrupt as error:
             self.cancel()
@@ -535,6 +564,9 @@ class Session:
         args, assembly = self._args, self._assembly
         compiled = args.compiled_recipe.roles[role]
         role_args = role_namespace(args, compiled)
+        parents = invocation_path.get()
+        if len(parents) >= args.recipe.execution.max_call_depth:
+            return {"role": role, "error": "API call depth budget exhausted"}
         with self._role_lock:
             self._role_runs += 1
             run_dir = assembly.session_dir / "roles" / f"{self._role_runs:03d}_{role}"
@@ -542,14 +574,28 @@ class Session:
         timeout_s = None if self._deadline is None else max(0.001, self._deadline - time.monotonic())
         started = time.time()
         agent_name = role_args.agent_backend
-        agent = create_agent(agent_name, model=role_args.model, timeout_s=timeout_s,
-                             **get_agent_backend(agent_name).config_options(role_args))
-        with self._role_lock:
-            self._role_agents.add(agent)
+        agent = None
+        token = invocation_path.set((*parents, run_dir.name))
         try:
+            if not isinstance(compiled.role, FlowAPI):
+                agent = create_agent(agent_name, model=role_args.model, timeout_s=timeout_s,
+                                     **get_agent_backend(agent_name).config_options(role_args))
+                with self._role_lock:
+                    self._role_agents.add(agent)
+            from evoab.execution.correlation import current_role, current_call
+            (run_dir / "handoff.json").write_text(json.dumps({
+                "invocation": run_dir.name, "parent": parents[-1] if parents else "entry",
+                "caller": current_role.get() or args.recipe.loop.entry, "callee": role,
+                "model": role_args.model, **current_call(), "input": instruction,
+            }, ensure_ascii=False))
             with assembly.telemetry.tracer.span("role.run", role=role, agent_backend=agent_name,
                                                 model=role_args.model, channel=compiled.channel):
-                if compiled.channel == "action":
+                if isinstance(compiled.role, FlowAPI):
+                    view = ToolView(assembly.executor, assembly.role_tools[role],
+                                    registered=assembly.toolkit.get_tool_names(), role=role)
+                    data = json.loads(instruction) if compiled.role.input_schema else {"instruction": instruction}
+                    result = flow.run_flow(compiled.role, compiled.delegates, data, view, run_dir, self._require_flow_active)
+                elif compiled.channel == "action":
                     try:
                         result = agent.run_direct(episode=assembly.integration_session.episode,
                                                   integration=args.integration, instruction=instruction,
@@ -564,17 +610,24 @@ class Session:
                         task=instruction, toolkit=assembly.toolkit, executor=view,
                         max_turns=compiled.role.max_turns, event_bus=self.events, session_dir=run_dir,
                         announce_finish=False)
-        except Exception as error:  # noqa: BLE001 - a failed sub-run is a report, not a crashed episode.
+                schema = compiled.role.output_schema
+                if schema is None and isinstance(compiled.role, FlowAPI):
+                    schema = {}
+                value = flow.validate_output(result, schema)
+            report = {"success": result.success, "message": result.message[:4000], "error": result.error,
+                      "stop_reason": result.stop_reason, "turns": result.turns_used,
+                      "tool_calls": result.tool_calls, "steps": result.steps_used}
+            if schema is not None and result.success:
+                report["value"] = value
+        except Exception as error:  # A failed sub-run is reported to its caller.
             logger.exception("Role %s failed", role)
-            return {"role": role, "channel": compiled.channel, "error": f"{type(error).__name__}: {error}",
-                    "run_dir": str(run_dir), "elapsed_s": round(time.time() - started, 3)}
+            report = {"success": False, "error": f"{type(error).__name__}: {error}"}
         finally:
+            invocation_path.reset(token)
             with self._role_lock:
                 self._role_agents.discard(agent)
-        report = {"role": role, "channel": compiled.channel, "success": result.success,
-                  "message": result.message[:4000], "error": result.error, "stop_reason": result.stop_reason,
-                  "turns": result.turns_used, "tool_calls": result.tool_calls, "steps": result.steps_used,
-                  "elapsed_s": round(time.time() - started, 3), "run_dir": str(run_dir)}
+        report.update(role=role, channel=compiled.channel, run_dir=str(run_dir),
+                      elapsed_s=round(time.time() - started, 3))
         (run_dir / "report.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
         return report
 
@@ -584,10 +637,16 @@ class Session:
             raise RuntimeError("Session is closed")
         self._subscriptions.add(callback)
 
+    def _require_flow_active(self):
+        self._require_active()
+        if self._cancelled.is_set():
+            raise RuntimeError("Flow cancelled")
+
     def cancel(self) -> None:
         """Request planner cancellation; this is not a physical emergency stop."""
         if self._closed:
             return
+        self._cancelled.set()
         with self._role_lock:
             agents = [self._agent, *self._role_agents]
         for agent in agents:
@@ -823,11 +882,11 @@ def _result_exit_code(*, outcome, task_success, agent_result, error_msg) -> int:
     return 0 if ok else 1
 
 
-def _run_direct(agent, args, assembly, event_bus):
+def _run_direct(agent, args, assembly, event_bus, instruction=None):
     """Run a Direct policy against the episode; no model-visible tools are involved."""
     try:
         result = agent.run_direct(episode=assembly.integration_session.episode, integration=args.integration,
-                                  instruction=args.instruction, session_dir=assembly.session_dir)
+                                  instruction=instruction or args.instruction, session_dir=assembly.session_dir)
     except KeyboardInterrupt:
         agent.cancel("interrupted")
         raise
@@ -847,6 +906,7 @@ def _run_agent(
     channel="tools",
     tracer=None,
     announce_finish=True,
+    output_schema=None,
     **request,
 ):
     """Run the built-in agent once; the code channel reaches the robot through run_program."""
@@ -920,6 +980,8 @@ def _run_agent(
             task_success = solved()
         except Exception as exc:
             logger.warning("Failed to read task_success: %s", exc)
+    if output_schema is not None:
+        flow.validate_output(result, output_schema)
     if event_bus is not None and announce_finish:
         event_bus.emit(
             AgentRunFinished(
