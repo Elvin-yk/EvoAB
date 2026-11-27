@@ -139,6 +139,13 @@ class RecipeValidation(unittest.TestCase):
                          {"scene": ["capture_scene"], "gripper": ["move"], "episode": ["finish"]})
         self.assertEqual(role.job_tools, ["wait_for_tool"])
 
+    def test_planner_calls_direct_without_a_delegate(self):
+        from evoab.workbench.team import team_roles
+        roles = team_roles("robodojo", [{"role": "planner", "tools": ["actor_act"]}])
+        self.assertEqual(set(roles), {"main"})
+        self.assertEqual(roles["main"]["capabilities"], [
+            {"id": "hybrid", "tools": ["actor_act"], "options": {"binding": "robodojo_direct_eef"}}])
+
     def test_run_program_tool(self):
         from evoab.execution.code_as_policy.runner import ProgramTools
         from evoab.execution.serial import SerialToolExecutor

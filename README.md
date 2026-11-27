@@ -63,7 +63,7 @@ evaluators bring their own agent.
 ```bash
 evoab methods list --integration robodojo     # ids and where each method.yaml lives
 evoab run --integration robodojo --task stack_bowls \
-  --recipe direct_action --model my-model --set roles.main.action.max_calls=4
+  --recipe agent_policy --model my-model --set roles.main.capabilities.hybrid.options.binding=robodojo_direct_eef
 ```
 
 ## Environments

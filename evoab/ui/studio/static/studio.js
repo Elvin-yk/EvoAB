@@ -642,7 +642,7 @@ function stepConfirm(body) {
     ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(method.fixed_effort || w.effort)],
     ...(method.external_evaluator ? [["评测器", agent.label]] : []),
-    ...(method.external_evaluator ? [["模型", w.model]] : w.team.map((card, i) => [`Agent ${i + 1} · ${TEAM_ROLE[card.role]}`, [`模型 · ${card.model_preset || w.model}`, card.tools.map((name) => name === DIRECT_TOOL ? `Direct（${card.model_preset || w.model}）` : name).join("、") || "无工具", card.delegate_to.length ? "可委托给 " + card.delegate_to.map((n) => "Agent " + n).join("、") : "", card.instructions].filter(Boolean).join(" · ")])),
+    ...(method.external_evaluator ? [["模型", w.model]] : w.team.map((card, i) => [`Agent ${i + 1} · ${TEAM_ROLE[card.role]}`, [`模型 · ${card.model_preset || w.model}`, card.tools.map((name) => name === DIRECT_TOOL ? "Direct" : name).join("、") || "无工具", card.delegate_to.length ? "可委托给 " + card.delegate_to.map((n) => "Agent " + n).join("、") : "", card.instructions].filter(Boolean).join(" · ")])),
     ...agent.options.filter((option) => option.name in options).map((option) => [option.label, options[option.name]]),
   ];
   body.append(

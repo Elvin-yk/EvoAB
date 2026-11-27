@@ -114,8 +114,8 @@ A method is a directory in `evoab/methods/` with `method.yaml` (the recipe) and
 **roles** and the **loop** connecting them.
 
 ```yaml
-id: observe_and_act
-label: Observe and act
+id: use_direct_actor
+label: Call the Direct actor
 inputs: {depth: false}                 # optional; null keeps the environment's default
 roles:
   main:
@@ -123,7 +123,7 @@ roles:
     capabilities:
       - skills
       - {id: scene, tools: [view_env_state, capture_scene], options: {segmentation: false}}
-      - gripper
+      - {id: hybrid, tools: [actor_act], options: {binding: robodojo_direct_eef}}
       - episode
     max_turns: 0
 loop: {entry: main}
@@ -209,7 +209,7 @@ from evoab import AgentConfig, SessionConfig, run
 
 result = run(SessionConfig(
     integration="robodojo", env_url="http://127.0.0.1:18760",
-    recipe="direct_action", recipe_overrides={"roles.main.action.max_calls": 4, "inputs.depth": False},
+    recipe="agent_policy", recipe_overrides={"roles.main.capabilities.hybrid.options.binding": "robodojo_direct_eef"},
     agent=AgentConfig(model="my-model"),
 ))
 print(result.task_success)
@@ -219,22 +219,18 @@ print(result.task_success)
 `setup()` and `deploy()` prepare and start runtimes. Examples are in
 [`examples/sdk/`](../examples/sdk/).
 
-## Use Direct through `actor_act`
+## Replace `planner_direct` with `actor_act`
 
-In Studio, choose RoboDojo and check **Direct** on an Actor card. When that
-Actor calls `actor_act`, Direct uses its model preset, including the run preset
-if the Actor inherits it. Direct reads one current frame per camera and the
-measured arm poses, then predicts absolute grasp-site targets for the sub-goal.
-By default the tool executes one chunk and records it under `actor_sessions/`.
+On RoboDojo, select **Direct** on the Planner card in Studio. The Planner calls
+`actor_act` with a sub-goal and the arms to use. Direct reads the current camera
+frames and arm poses and proposes an action chunk. The tool executes the
+requested steps and returns the result to the Planner. This uses one Agent and
+an in-process policy.
 
-For the CLI, replace the former `planner_direct` recipe with:
+On the CLI, select the existing `agent_policy` recipe and its Direct binding:
 
 ```bash
 evoab run --integration robodojo --task stack_bowls --deploy local \
   --recipe agent_policy --model my-preset \
   --set roles.main.capabilities.hybrid.options.binding=robodojo_direct_eef
 ```
-
-This starts the policy in the run process. Explicit CLI actor URL and checkpoint
-options still select an external policy. Standalone `direct_action` uses its
-own action channel and observation history.

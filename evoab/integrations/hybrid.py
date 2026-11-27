@@ -46,9 +46,9 @@ def validate_hybrid_cli(args: Any) -> None:
     args.vla_review_model = args.vla_review_model or args.model
     binding = getattr(args, "action_model_binding", None)
     checkpoint = getattr(args, "action_model_checkpoint_sha256", None)
-    if binding and not args.action_model_url and _is_direct_binding(args.integration, binding):
-        if checkpoint:
-            raise ValueError("An external actor checkpoint requires --action-model-url")
+    if binding and _is_direct_binding(args.integration, binding):
+        if args.action_model_url or checkpoint:
+            raise ValueError("Direct runs in-process and does not accept an actor URL or checkpoint")
         return
     if "hybrid" in args.tool_modules or binding:
         if not args.action_model_url:
@@ -69,7 +69,6 @@ def _is_direct_binding(integration, binding):
 
 def _direct_actors(session):
     from evoab.composition.roles import role_namespace
-    from evoab.services.actor.backends.direct.config import DirectActorConfig
     from evoab.services.actor.backends.direct.local import LocalDirectActor
 
     args = session.args
@@ -79,10 +78,7 @@ def _direct_actors(session):
         if "hybrid" not in role.tool_modules:
             continue
         preset = args.model if name == args.recipe.loop.entry else role_namespace(args, role).model
-        config = DirectActorConfig(model_preset=preset,
-            arms=[arm.name for arm in environment.arms], cameras=[camera.name for camera in environment.cameras],
-            control_frequency_hz=environment.control_frequency_hz)
-        actors[name] = session.own(LocalDirectActor(config))
+        actors[name] = session.own(LocalDirectActor(preset, environment))
     return actors
 
 
@@ -95,7 +91,7 @@ def configure_hybrid(session, selection=None):
     options = selection.options if selection is not None else PolicyToolOptions()
     name = options.binding or getattr(episode.description.environment, "action_binding", None)
     role_actors = {}
-    if not args.action_model_url and _is_direct_binding(args.integration, name):
+    if _is_direct_binding(args.integration, name):
         role_actors = _direct_actors(session)
         actor = next(iter(role_actors.values()))
     else:

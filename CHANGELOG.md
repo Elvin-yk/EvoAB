@@ -2,10 +2,9 @@
 
 ## Unreleased
 
-- Direct can serve absolute EEF chunks through the actor service. On RoboDojo,
-  use `agent_policy` with the `robodojo_direct_eef` binding in place of the
-  `planner_direct` recipe. In Studio, selecting Direct uses the calling Actor's
-  model preset and requires no separate policy service. Standalone `direct_action` still uses the action channel.
+- Removed the built-in `planner_direct` recipe. On RoboDojo, the planner can
+  call Direct through `actor_act` using the existing `agent_policy` recipe.
+  Standalone `direct_action` remains available.
 
 ### One agent: the built-in agent over model presets
 

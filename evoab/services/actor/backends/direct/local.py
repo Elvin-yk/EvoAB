@@ -5,12 +5,11 @@ from evoab.services.actor.contracts import ActorObservation, CreateSession, Pred
 from evoab.services.actor.service import ActorService
 
 from .backend import DirectBackend
-from .config import DirectActorConfig
 
 
 class LocalDirectActor:
-    def __init__(self, config: DirectActorConfig):
-        self.service = ActorService(DirectBackend(config), max_batch_size=1)
+    def __init__(self, model_preset, environment):
+        self.service = ActorService(DirectBackend(model_preset, environment), max_batch_size=1)
         self.info = self.service.info
         self.sequence = 0
         self.session = self.service.create_session(CreateSession(

@@ -165,10 +165,9 @@ function roleCard(card, index, groups, team, updateGraph) {
     card.tools = teamPresets(card.role, groups)["常用工具"];
     route();
   } }, Object.entries(TEAM_ROLE).map(([value, label]) => h("option", { value, selected: value === card.role }, label)));
-  const toolGroup = (key, names) => h("fieldset", {disabled: card.role === "planner" && ["gripper", "action_policy"].includes(key)}, h("legend", {}, TOOL_GROUP_LABELS[key] || key),
+  const toolGroup = (key, names) => h("fieldset", {disabled: card.role === "planner" && key === "gripper"}, h("legend", {}, TOOL_GROUP_LABELS[key] || key),
     key === "gripper" && card.role === "planner" ? h("small", { class: "muted" }, "机械臂由 Actor 执行") : null,
-    key === "action_policy" ? h("small", { class: "muted" }, card.role === "planner" ? "委托给 Actor 执行。" :
-      names.length ? "Actor 通过 actor_act 调用 Direct。策略使用当前 Actor 的模型，根据画面和子目标生成动作。" : "当前评测集暂无可用的动作策略。") : null,
+    key === "action_policy" ? h("small", { class: "muted" }, names.length ? "通过 actor_act 把子目标交给 Direct，Direct 根据画面生成动作。" : "当前评测集暂无可用的动作策略。") : null,
     key === "jobs" ? h("small", { class: "muted" }, "勾选查询结果或等待工具后，动作可在后台执行。") : null,
     names.map((name) => h("label", { class: "check" }, h("input", { type: "checkbox", checked: card.tools.includes(name),
       onchange: (e) => {
@@ -187,7 +186,7 @@ function roleCard(card, index, groups, team, updateGraph) {
     collaborationFields(team, index + 1),
     !reachableAgents(team, 1).has(index + 1) ? h("small", {class: "notice error"}, "尚未接入任务，请从入口直接或间接委托给此 Agent。") : null,
     card.role === "planner" && !card.delegate_to.length ? h("div", {class: "toolbar"},
-      h("small", {class: "muted"}, "此 Planner 可规划与观察。需要执行动作时，可委托给 Actor。"),
+      h("small", {class: "muted"}, "需要其他 Agent 配合时，可添加执行 Actor。"),
       h("button", {class: "btn small", onclick: () => addActor(team, card, groups)}, "添加执行 Actor")) : null,
     h("label", { class: "field" }, "角色指令（可选）", h("textarea", { class: "input", rows: 2, maxlength: 8192,
       placeholder: index ? "例如：根据腕部画面调整抓取位置。" : "例如：每次移动前先观察目标。",

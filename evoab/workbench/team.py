@@ -45,7 +45,7 @@ def team_roles(integration: str, cards: list[dict]) -> dict:
         selected = set(card.tools)
         if unknown := selected - allowed:
             raise ValueError(f"Unavailable tools: {sorted(unknown)}")
-        if card.role == "planner" and (motion := selected.intersection((*groups.get("gripper", ()), *groups["action_policy"]))):
+        if card.role == "planner" and (motion := selected.intersection(groups.get("gripper", ()))):
             raise ValueError(f"Planner cannot use execution tools: {sorted(motion)}")
         capabilities = []
         for group, tools in groups.items():
