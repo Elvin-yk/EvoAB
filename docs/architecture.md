@@ -173,6 +173,26 @@ Use `active_groups=["arm"]`. The binding runs without a chunk reviewer.
 Run `python scripts/validation/libero_actor.py` to check the observation and
 action contracts.
 
+### MetaWorld policy execution
+
+MetaWorld MT50 exposes native Sawyer XYZ and gripper steps alongside the
+motion tools. The `actor_act` binding encodes a 480 × 480 RGB view at
+LeRobot's `corner2` pose and the four Sawyer proprioceptive values. Both
+action paths use the same environment state and step receipts.
+
+Serve the public [`lerobot/smolvla_metaworld` checkpoint](https://huggingface.co/lerobot/smolvla_metaworld)
+with `python -m evoab.services.actor.server --config ACTOR.toml`. Use
+`backend = "smolvla_metaworld"`, the checkpoint directory, the SHA-256 of
+`model.safetensors` and `vlm_config` pointing to the local
+`HuggingFaceTB/SmolVLM2-500M-Video-Instruct` configuration and tokenizer files.
+The policy checkpoint supplies the weights. Use a LeRobot runtime with SmolVLA
+and `num2words`. The reference checkpoint was tested with LeRobot 0.4.4.
+
+Select the `agent_policy` recipe with `--integration metaworld`, the actor URL
+and its checkpoint SHA-256. Use `active_groups=["arm"]`. The binding runs without
+a chunk reviewer. Run `python scripts/validation/metaworld_actor.py` to check
+the observation and action contracts.
+
 ### Recipes and tool composition
 
 A run's method is a [recipe](composition.md) compiled before any service opens
