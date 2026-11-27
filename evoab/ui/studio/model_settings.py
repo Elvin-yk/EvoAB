@@ -4,13 +4,12 @@ import re
 from functools import lru_cache, partial
 from importlib.resources import files
 from pathlib import Path
-import secrets
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
-from evoab.provider import antigravity_acp, catalog
+from evoab.provider import catalog
 
 STATIC = Path(__file__).parent / "static"
 MODEL_ASSETS = STATIC / "model-assets"
@@ -98,8 +97,7 @@ def model_settings_router():
     def settings():
         from nanobot.webui import settings_api
         catalog._activate()
-        payload = settings_api.settings_payload(config_path=catalog.config_path())
-        return antigravity_acp.decorate_settings_payload(payload, config_path=catalog.config_path())
+        return settings_api.settings_payload(config_path=catalog.config_path())
 
     @router.get("/settings/nanobot-features")
     def features():
@@ -109,14 +107,6 @@ def model_settings_router():
     @router.get("/settings/{kind}")
     def model_catalog(kind: str, request: Request):
         from nanobot.webui import settings_api
-        provider = (request.query_params.get("provider") or "").strip()
-        if provider == antigravity_acp.PROVIDER_NAME:
-            if kind == "provider-models":
-                return antigravity_acp.provider_models_payload(
-                    refresh=request.query_params.get("refresh") == "1"
-                )
-            if kind == "model-api":
-                return {"provider": antigravity_acp.PROVIDER_NAME, "api": "responses"}
         readers = {"provider-models": settings_api.provider_models_payload,
                    "model-api": settings_api.model_api_resolution_payload}
         if kind not in readers:
@@ -132,73 +122,13 @@ def model_settings_router():
         from nanobot.webui import settings_api
         from nanobot.webui.nanobot_features_api import nanobot_features_action
         from nanobot.webui.settings_contracts import WebUISettingsError
-        from nanobot.webui.settings_services import WebUIOAuthFlowRegistry, WebUISettingsConfig
+        from nanobot.webui.settings_services import WebUISettingsConfig
 
         origin = request.headers.get("origin")
         if origin and urlsplit(origin).netloc != request.headers.get("host"):
             raise HTTPException(403)
         catalog._activate()
         config_path = catalog.config_path()
-        if payload.get("provider") == antigravity_acp.PROVIDER_NAME:
-            if action == "settings.provider.oauth_login":
-                flow = antigravity_acp.AntigravityOAuthLoginFlow(
-                    config_path=config_path,
-                    open_browser=not bool(payload.get("remote_browser")),
-                )
-                flow_id = secrets.token_urlsafe(24)
-                try:
-                    oauth_flows().register(antigravity_acp.PROVIDER_NAME, flow_id, flow)
-                    flow.start()
-                except Exception as error:
-                    oauth_flows().remove(antigravity_acp.PROVIDER_NAME, flow_id, flow)
-                    raise HTTPException(502, f"Google Antigravity OAuth login failed: {error}") from error
-                return {
-                    "status": "authorization_required",
-                    "provider": antigravity_acp.PROVIDER_NAME,
-                    "flow_id": flow_id,
-                    "authorization_url": flow.authorization_url,
-                    "expires_in": flow.remaining_seconds,
-                    "completion_input": "callback_url",
-                }
-            if action == "settings.provider.oauth_complete":
-                flow_id = str(payload.get("flow_id") or "").strip()
-                if not flow_id:
-                    raise HTTPException(400, "flow_id is required")
-                flow = oauth_flows().get(antigravity_acp.PROVIDER_NAME, flow_id)
-                if flow is None:
-                    raise HTTPException(410, "Google Antigravity sign-in expired. Start again.")
-                if payload.get("cancel"):
-                    oauth_flows().remove(antigravity_acp.PROVIDER_NAME, flow_id, flow)
-                    return {
-                        "status": "cancelled",
-                        "provider": antigravity_acp.PROVIDER_NAME,
-                        "flow_id": flow_id,
-                    }
-                try:
-                    token = flow.complete(payload.get("authorization_response"))
-                except ValueError as error:
-                    raise HTTPException(400, str(error)) from error
-                except Exception as error:
-                    oauth_flows().remove(antigravity_acp.PROVIDER_NAME, flow_id, flow)
-                    raise HTTPException(502, f"Google Antigravity OAuth login failed: {error}") from error
-                oauth_flows().remove(antigravity_acp.PROVIDER_NAME, flow_id, flow, cancel=False)
-                if token is None or not token.access:
-                    raise HTTPException(401, "Google Antigravity OAuth login failed")
-                return antigravity_acp.decorate_settings_payload(
-                    settings_api.settings_payload(config_path=config_path),
-                    config_path=config_path,
-                )
-            if action == "settings.provider.oauth_logout":
-                antigravity_acp.logout(config_path)
-                return antigravity_acp.decorate_settings_payload(
-                    settings_api.settings_payload(config_path=config_path),
-                    config_path=config_path,
-                )
-            if action in ("settings.model_configuration.create", "settings.model_configuration.update"):
-                if not antigravity_acp.oauth_status()["configured"]:
-                    raise HTTPException(400, "Sign in to Google Antigravity before creating a preset.")
-                antigravity_acp.sync_config_provider(config_path, enabled=True)
-
         if action == "settings.runtime_config.update":
             values = payload.get("values")
             if not isinstance(values, dict) or set(values) != {"network.proxy"}:
@@ -222,8 +152,6 @@ def model_settings_router():
             result = WebUISettingsConfig(config_path).run_serialized(
                 lambda path: operation(config_path=path)
             )
-            if isinstance(result, dict) and "providers" in result:
-                return antigravity_acp.decorate_settings_payload(result, config_path=config_path)
             return result
         except (WebUISettingsError, catalog.CatalogError, OptionalFeatureError) as error:
             raise HTTPException(getattr(error, "status", 400), str(error)) from error

@@ -1,1 +1,0 @@
-"""Tencent TokenHub provider adapters."""

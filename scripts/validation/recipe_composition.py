@@ -10,7 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
-from dataclasses import replace
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -82,22 +82,16 @@ class RecipeValidation(unittest.TestCase):
         narrowed = with_overrides(agentic, {"roles.main.capabilities.gripper.tools": ["move"]})
         self.assertEqual(narrowed.entry.capability("gripper").tools, ["move"])
 
-    def test_methods_are_agent_independent(self):
+    def test_every_method_runs_on_the_built_in_agent(self):
         from types import SimpleNamespace
         from evoab.composition.compiler import apply_to_args
         spec = load_integration("robolab").get_integration_spec()
         for method in ("agentic", "code_as_policy", "direct_action", "agent_policy", "code_iterate"):
-            recipe = get_method(method).recipe
-            self.assertTrue(all(role.brain.agent is None for role in recipe.roles.values()), method)
-            for agent in ("native", "codex", "claude_code", "opencode"):
-                pinned = with_overrides(recipe, {f"roles.{recipe.loop.entry}.brain.agent": agent})
-                compile_recipe(pinned, spec)
-        args = SimpleNamespace(agent_backend="codex", model="preset")
-        apply_to_args(args, compile_recipe(get_method("direct_action").recipe, spec), explicit={"--agent"})
-        self.assertEqual(args.agent_backend, "native")  # the action channel has no agent loop
-        with self.assertRaisesRegex(ValueError, "external evaluator"):
-            apply_to_args(SimpleNamespace(agent_backend="q0_preview", model="m"),
-                          compile_recipe(get_method("agentic").recipe, spec), explicit={"--agent"})
+            args = SimpleNamespace(model="preset")
+            apply_to_args(args, compile_recipe(get_method(method).recipe, spec))
+            self.assertEqual(args.agent_backend, "native", method)
+        with self.assertRaisesRegex(ValueError, "Extra inputs"):
+            with_overrides(get_method("agentic").recipe, {"roles.main.brain.agent": "codex"})
 
     def test_agent_settings_live_in_the_recipe(self):
         from evoab.composition.compiler import check_inputs
@@ -167,63 +161,6 @@ class RecipeValidation(unittest.TestCase):
             self.assertEqual(failed.extra["exit_code"], 3)
             self.assertTrue((root / "program_002.py").is_file())
 
-    def test_upstream_q0_selection_preserves_the_policy(self):
-        from evoab.agents.q0_preview.runtime import _owns_listener
-        from evoab.cli import build_parser
-        from evoab.composition.components import components
-        from evoab.config import resolve_settings
-        from evoab.workbench.launcher import LaunchRequest, resolve_run_recipe, resolve_selection, tool_groups
-        from evoab.workbench.runs import summarize_run
-
-        request = LaunchRequest("robodojo", "default", "stack_bowls", "fixture-opus",
-                                method="q0_preview_upstream")
-        resolved, method, _ = resolve_selection(request)
-        self.assertEqual([choice["id"] for choice in method["agents"]], ["q0_preview"])
-        self.assertEqual(resolved.reasoning_effort, "xhigh")
-        recipe = resolve_run_recipe(resolved, method)
-        self.assertEqual(recipe.entry.brain.agent, "q0_preview")
-        self.assertFalse(recipe.entry.capabilities)
-        with self.assertRaisesRegex(ValueError, "external evaluator"):
-            resolve_run_recipe(replace(resolved, team=[]), method)
-        with self.assertRaisesRegex(ValueError, "tool selection"):
-            tool_groups("robodojo", "q0_preview_upstream", "q0_preview")
-        brain = next(c for c in components("brain") if c.id == "q0_preview")
-        self.assertEqual(brain.label, "Q0-Preview")
-        self.assertFalse(_owns_listener(99999999, 18760))
-        spec = load_integration("robodojo").get_integration_spec()
-        parser = build_parser(spec)
-        cli_args = parser.parse_args([
-            "run", "--integration", "robodojo", "--recipe", "q0_preview_upstream",
-            "--task", "stack_bowls", "--env-url", "http://127.0.0.1:18760",
-            "--provider-url", "https://example.test",
-        ])
-        with patch.dict(os.environ, {"Q0_PREVIEW_API_KEY": "q0-fixture-key"}, clear=False):
-            os.environ.pop("EVOAB_API_KEY", None)
-            settings = resolve_settings(cli_args, spec, explicit={"--provider-url"})
-            self.assertEqual(settings._q0_base, "https://example.test")
-            self.assertEqual(settings._q0_key, "q0-fixture-key")
-        with tempfile.TemporaryDirectory() as directory:
-            run_dir = Path(directory) / "robodojo_1_abcd1234"
-            meta_dir = run_dir / "q0/sessions/s1/api/00001_plan_obs_00000/attempt_0"
-            meta_dir.mkdir(parents=True)
-            (run_dir / "result.json").write_text(json.dumps({
-                "agent_backend": "q0_preview", "integration": "robodojo", "task_id": "stack_bowls",
-                "model": "claude-opus-5-5", "recipe": "q0_preview_upstream", "channel": "tools",
-                "roles": ["main"], "reasoning_effort": "xhigh", "task_success": True, "steps": 320, "elapsed_s": 12.5,
-            }))
-            (run_dir / "native_outcome.json").write_text(json.dumps({"steps": 320, "step_limit": 800, "task_success": True}))
-            (meta_dir / "meta.json").write_text(json.dumps({
-                "http_status": 200,
-                "usage": {"input_tokens": 1000, "output_tokens": 200, "cache_read_input_tokens": 400, "total_tokens": 1200},
-            }))
-            summary = summarize_run(run_dir)
-            self.assertEqual(summary["environment_steps"], 320)
-            self.assertEqual(summary["max_steps"], 800)
-            self.assertEqual(summary["usage"], {
-                "requests": 1, "input_tokens": 1000, "cached_input_tokens": 400,
-                "output_tokens": 200, "reasoning_tokens": 0, "total_tokens": 1200,
-            })
-
     def test_method_library(self):
         ids = {method.id for method in list_methods()}
         self.assertTrue({"agentic", "clean", "direct_action", "code_as_policy", "agent_policy", "code_iterate"} <= ids)
@@ -249,7 +186,7 @@ class RecipeValidation(unittest.TestCase):
                                 {"execution.resource_scheduling": "global-serial"})
         compile_recipe(serial, spec)  # an action delegate steps the environment itself
         data = delegation_recipe().model_dump(mode="json")
-        data["roles"]["controller"] = {"brain": {"agent": "native"}, "channel": "tools", "capabilities": ["scene"]}
+        data["roles"]["controller"] = {"channel": "tools", "capabilities": ["scene"]}
         data["execution"]["resource_scheduling"] = "global-serial"
         with self.assertRaisesRegex(ValueError, "global-serial"):
             compile_recipe(Recipe.model_validate(data), spec)
@@ -318,7 +255,7 @@ class MultiRoleAssembly(unittest.TestCase):
 
     def test_sub_role_prompt_is_separate(self):
         data = delegation_recipe().model_dump(mode="json")
-        data["roles"]["helper"] = {"description": "Moves only.", "brain": {"agent": "native"},
+        data["roles"]["helper"] = {"description": "Moves only.",
                                    "channel": "tools", "capabilities": [{"id": "gripper", "tools": ["move"]}]}
         data["roles"]["planner"]["capabilities"][-1]["options"]["roles"].append("helper")
         path = self.directory.parent / "custom.yaml"
@@ -339,45 +276,16 @@ class MultiRoleAssembly(unittest.TestCase):
 
     def test_session_runs_delegated_roles(self):
         from evoab.agents.contracts import AgentResult
-        from evoab.agents.registry import register_agent
         from evoab.session import Session
         seen = {}
 
-        @register_agent("fixture_agent")
-        class FixtureAgent:
-            model_protocol, owns_provider = "native", True
-
-            @classmethod
-            def add_cli_arguments(cls, parser): ...
-
-            @classmethod
-            def validate_config(cls, args, explicit): ...
-
-            @classmethod
-            def resolve_defaults(cls, args): ...
-
-            @classmethod
-            def config_options(cls, args):
-                return {"direct": args.direct_config}
-
-            def __init__(self, *, model, timeout_s=None, direct=None):
-                self.model, self.direct = model, direct
-
-            def run(self, *, prompt, task, toolkit, executor, **kwargs):
-                seen["tools"] = sorted(spec["name"] for spec in executor.get_tool_schemas())
-                seen["prompt"] = prompt.flatten()
-                return AgentResult(success=True, message="helped")
-
-            def finalize_without_provider(self, result, session_dir): ...
-
-            def cancel(self, reason): ...
-
-            def close(self): ...
+        def run(agent, *, prompt, task, toolkit, executor, **kwargs):
+            seen["tools"] = sorted(spec["name"] for spec in executor.get_tool_schemas())
+            seen["prompt"] = prompt.flatten()
+            return AgentResult(success=True, message="helped")
 
         data = delegation_recipe().model_dump(mode="json")
-        for role in data["roles"].values():
-            role["brain"]["agent"] = "fixture_agent"
-        data["roles"]["helper"] = {"brain": {"agent": "fixture_agent"}, "channel": "tools",
+        data["roles"]["helper"] = {"channel": "tools",
                                    "capabilities": [{"id": "gripper", "tools": ["hold"]}]}
         data["roles"]["planner"]["capabilities"][-1]["options"]["roles"].append("helper")
         path = self.directory.parent / "fixture.yaml"
@@ -390,13 +298,14 @@ class MultiRoleAssembly(unittest.TestCase):
             return AgentResult(success=True, message="chunks executed", steps_used=4, turns_used=2)
 
         with assembled(config(recipe=str(path)), self.directory) as (assembly, *_), \
-                mock.patch.object(NativeAgent, "run_direct", run_direct):
+                mock.patch.object(NativeAgent, "run_direct", run_direct), mock.patch.object(NativeAgent, "run", run), \
+                mock.patch.object(NativeAgent, "validate_config", classmethod(lambda cls, args, explicit: None)):
             args = assembly.integration_session.args
-            args.agent_backend, args.model, args.model_preset_name = "fixture_agent", "fixture-model", "preset-a"
+            args.agent_backend, args.model = "native", "preset-a"
             session = Session._from_resolved(args)
             session._assembly = assembly
             report = session._run_role("controller", "reach the cup")
-            # The action role runs on the direct runner with the run's model preset, whatever the agent.
+            # The action role runs on the direct runner with the run's model preset.
             self.assertEqual(seen["direct"], ("reach the cup", 6, "001_controller", "preset-a"))
             self.assertTrue(report["success"])
             self.assertEqual(report["steps"], 4)

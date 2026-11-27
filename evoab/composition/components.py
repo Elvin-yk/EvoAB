@@ -65,10 +65,6 @@ for _component in (
               requires=("joint control",), channels=("action",)),
     Component("identity", "context", "Full history",
               "Keep the complete transcript, text and images.", channels=("tools", "code")),
-    Component("sliding_window", "context", "Sliding window",
-              "Trim old blocks to a target input-token budget.", channels=("tools", "code")),
-    Component("observation_window", "context", "Observation window",
-              "Keep only the most recent tool observation groups.", channels=("tools", "code")),
     Component("stateless_window", "context", "Stateless frames",
               "No transcript; each request carries a sampled window of recent frames.", channels=("action",)),
     Component("delegate", "capability", "Delegate to role",
@@ -111,39 +107,8 @@ def module_component(module) -> Component:
 
 
 def _brains() -> list[Component]:
-    from evoab.agents.registry import _BUILTIN_AGENTS, _AGENT_REGISTRY
-    names = sorted(set(_BUILTIN_AGENTS) | set(_AGENT_REGISTRY))
-    labels = {
-        "native": ("EvoAB native agent", "Built-in runtime with model presets."),
-        "codex": ("Codex", "OpenAI Codex SDK through the EvoAB MCP adapter; runs programs in its own terminal."),
-        "claude_code": ("Claude Code", "Claude Agent SDK with in-process tools; runs programs in its own terminal."),
-        "opencode": ("OpenCode", "OpenCode adapter."),
-        "gemini_cli": ("Gemini CLI", "Gemini CLI adapter."),
-        "antigravity": ("Antigravity", "Antigravity SDK adapter."),
-        "q0_preview": ("Q0-Preview", "External evaluator running the upstream Q0-Preview policy (q0_preview_upstream)."),
-    }
-    return [Component(name, "brain", *labels.get(name, (name, "Registered agent adapter.")),
-                      channels=agent_channels(name), owner="agent")
-            for name in names]
-
-
-ALL_CHANNELS = ("tools", "code", "action")
-
-
-def agent_channels(agent: str) -> tuple[str, ...]:
-    """Channels an agent can run: all of them, except external evaluators (tools only).
-
-    ``tools`` is the agent's own loop; ``code`` runs programs in the agent's terminal
-    (``runs_programs``) or through the harness ``run_program`` tool; ``action`` is one
-    stateless request to the model per chunk and needs no agent loop.
-    """
-    return ("tools",) if is_evaluator(agent) else ALL_CHANNELS
-
-
-def is_evaluator(agent: str) -> bool:
-    """An external evaluator owns its whole episode loop and runs only the methods that pin it."""
-    from evoab.agents.registry import get_agent_backend
-    return hasattr(get_agent_backend(agent), "evaluator_plan")
+    return [Component("native", "brain", "EvoAB built-in agent", "Model presets from evoab models.",
+                      channels=("tools", "code", "action"), owner="agent")]
 
 
 def catalog(integration: str | None = None) -> dict[str, list[dict]]:

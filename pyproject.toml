@@ -29,8 +29,6 @@ dependencies = [
     "httpx>=0.28,<1",
     "fastapi>=0.115,<1",
     "uvicorn>=0.29,<1",
-    "openai-codex==0.147.0",
-    "claude-agent-sdk==0.2.165",
 ]
 
 [project.urls]
@@ -38,14 +36,10 @@ Documentation = "https://github.com/Elvin-yk/EvoAB/tree/main/docs"
 Homepage = "https://github.com/Elvin-yk/EvoAB"
 
 [project.optional-dependencies]
-antigravity = ["google-antigravity==0.1.23"]
-# Built-in agent runtime: model providers, presets and usage accounting (--agent native).
+# The built-in agent: model providers, presets and usage accounting.
 agent = ["nanobot-ai==0.4.1", "scipy>=1.10"]
 benchmarks = ["scipy>=1.10", "PyYAML>=6,<7"]
 xpolicylab = ["websockets>=14,<18", "msgpack>=1,<2", "msgpack-numpy==0.4.8"]
-# Compatibility extras: the base package already includes these features.
-codex = []
-claude = []
 dev = ["build>=1", "twine>=6", "tomli-w>=1"]
 # OpenCV 5 removed calibrateHandEye, which the ARX ONE hand-eye solvers use.
 arx_one = ["scipy>=1.10", "opencv-python-headless>=4.8,<5", "pyyaml>=6"]
@@ -74,8 +68,6 @@ include = ["evoab*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-"evoab.agents.opencode" = ["bridge.js"]
-"evoab.agents.gemini_cli" = ["robotBridge.ts"]
 "evoab.ui.web" = ["static/*.html", "static/*.js", "static/*.css"]
 "evoab.ui.studio" = ["static/*.html", "static/*.js", "static/*.css", "static/model-assets/*", "static/*.txt"]
 "evoab" = ["py.typed"]
@@ -112,4 +104,4 @@ namespaces = false
 
 # Native services run in separate environments without planner/UI dependencies.
 [tool.evoab.runtime]
-exclude-dependencies = ["openai-codex", "claude-agent-sdk", "textual"]
+exclude-dependencies = []

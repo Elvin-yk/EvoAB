@@ -53,7 +53,6 @@ def _agent_choice(name: str, launch: AgentLaunch) -> dict:
 
 def methods(integration: str | None = None) -> tuple[dict, ...]:
     """Library methods with what a launcher needs: parameters, compatible agents and the graph."""
-    from evoab.composition.components import is_evaluator
     from evoab.composition.graph import recipe_graph
     from evoab.composition.methods import list_methods
 
@@ -75,24 +74,15 @@ def methods(integration: str | None = None) -> tuple[dict, ...]:
             except ValueError as error:
                 unavailable = str(error)
         entry = recipe.entry
-        def usable(name, launch):
-            if integration is not None and launch.integrations is not None and integration not in launch.integrations:
-                return False
-            # External evaluators (Q0-Preview) run only their own method. Everything else Studio
-            # launches runs on the built-in agent; other runtimes stay available from the CLI (--agent).
-            if is_evaluator(name) or entry.brain.agent and is_evaluator(entry.brain.agent):
-                return name == entry.brain.agent
-            return name == "native"
-
-        agents = [_agent_choice(name, launch) for name, launch in launches.items() if usable(name, launch)]
-        default_agent = entry.brain.agent or "native"
-        agents.sort(key=lambda agent: agent["id"] != default_agent)
+        # Every method runs on the built-in agent.
+        agents = [_agent_choice(name, launch) for name, launch in launches.items()]
+        default_agent = "native"
         result.append({
             "id": recipe.id, "label": recipe.label, "summary": recipe.summary, "paradigms": recipe.paradigms,
             "status": recipe.status, "source": method.source, "integrations": recipe.integrations,
             "file": _recipe_file(method),
-            "external_evaluator": is_evaluator(default_agent),
-            "fixed_effort": entry.brain.reasoning_effort if is_evaluator(default_agent) else None,
+            "external_evaluator": False,
+            "fixed_effort": None,
             "channel": entry.channel, "agent": default_agent, "roles": list(recipe.roles),
             "references": [reference.model_dump(mode="json") for reference in recipe.references],
             "episodes": recipe.loop.episodes.model_dump(mode="json"),
@@ -173,15 +163,12 @@ def tool_groups(integration: str, method_id: str, agent_id: str) -> dict[str, li
     _, method, agent = resolve_selection(request)
     if method["channel"] == "action" or len(method["roles"]) > 1:
         raise ValueError("Tool selection applies to one-role tools or code methods")
-    if method.get("external_evaluator"):
-        raise ValueError(f"Agent {agent.label!r} owns its own tools and does not support tool selection")
-    else:
-        entry = get_method(method_id)
-        compiled = compile_recipe(entry.recipe, load_integration(integration).get_integration_spec(),
-                                  base_dir=entry.root).entry
-        groups = {item.name: list(item.policies) for item in compiled.modules}
-        if entry.recipe.execution.return_mode == "background":
-            groups["jobs"] = list(TOOL_GROUPS["@jobs"])
+    entry = get_method(method_id)
+    compiled = compile_recipe(entry.recipe, load_integration(integration).get_integration_spec(),
+                              base_dir=entry.root).entry
+    groups = {item.name: list(item.policies) for item in compiled.modules}
+    if entry.recipe.execution.return_mode == "background":
+        groups["jobs"] = list(TOOL_GROUPS["@jobs"])
     # Studio starts runs with skill writing disabled.
     return {group: [name for name in names if name != "write_skill"] for group, names in groups.items()}
 
@@ -219,7 +206,6 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         *(["--runtime-profile", profile] if profile is not None else []),
         "--task", task,
         "--recipe", str(recipe_path) if recipe_path else method["id"],
-        *(["--agent", request.agent] if request.agent else []),
         "--model", request.model,
         "--reasoning-effort", request.reasoning_effort,
         *agent.cli_flags,
@@ -304,8 +290,6 @@ def resolve_run_recipe(request: LaunchRequest, method: dict) -> Recipe:
     entry = get_method(method["id"])
     recipe = with_overrides(entry.recipe, dict(request.params or {}))
     if request.team is not None:
-        if method.get("external_evaluator"):
-            raise ValueError("An external evaluator owns its planner and tools.")
         from evoab.workbench.team import team_roles
         if request.params or request.visible_tools is not None:
             raise ValueError("Agent cards already define the tools and role parameters")
@@ -318,8 +302,6 @@ def resolve_run_recipe(request: LaunchRequest, method: dict) -> Recipe:
     if request.visible_tools is not None:
         recipe = _narrow_entry_tools(recipe, compile_recipe(recipe, spec, base_dir=entry.root),
                                      set(request.visible_tools))
-    if request.agent:
-        recipe = with_overrides(recipe, {f"roles.{recipe.loop.entry}.brain.agent": request.agent})
     compile_recipe(recipe, spec, base_dir=entry.root)
     return recipe
 

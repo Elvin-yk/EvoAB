@@ -145,28 +145,6 @@ def _models(bench, args) -> None:
             for row in result.get("models") or []:
                 print(row.get("id") if isinstance(row, dict) else row)
         return
-    if action in ("login", "logout"):
-        if args.provider != "antigravity":
-            sys.exit(f"CLI {action} currently supports 'antigravity' only (use Studio for other OAuth providers)")
-        from evoab.provider import antigravity_acp, catalog
-        catalog._activate()
-        config_path = catalog.config_path()
-        if action == "logout":
-            antigravity_acp.logout(config_path)
-            _print_json({"provider": "antigravity", "configured": False}) if args.json else print("logged out")
-            return
-        flow = antigravity_acp.AntigravityOAuthLoginFlow(config_path=config_path, open_browser=False)
-        flow.start()
-        try:
-            print(f"Open this link in a browser to log in with Google:\n\n  {flow.authorization_url}\n")
-            response = input("Paste the authorization code or full redirect URL and press Enter: ")
-            flow.complete(response)
-        except BaseException:
-            flow.cancel()
-            raise
-        status = antigravity_acp.oauth_status()
-        _print_json(status) if args.json else print("logged in")
-        return
     if action in ("add-provider", "set-provider"):
         fields = {"name": args.name, "api_base": args.base_url, "thinking_style": args.reasoning_format}
         if args.apis:
@@ -432,12 +410,6 @@ def build_parser() -> argparse.ArgumentParser:
     p = mo.add_parser("catalog", parents=[common], help="Models a provider offers")
     p.add_argument("provider")
     p.add_argument("--refresh", action="store_true")
-    p.set_defaults(handler=_models)
-    p = mo.add_parser("login", parents=[common], help="Sign in to an OAuth provider (e.g. antigravity)")
-    p.add_argument("provider")
-    p.set_defaults(handler=_models)
-    p = mo.add_parser("logout", parents=[common], help="Sign out of an OAuth provider (e.g. antigravity)")
-    p.add_argument("provider")
     p.set_defaults(handler=_models)
     for name, help_text in (("add-provider", "Add an OpenAI-compatible or Anthropic-compatible provider"),
                             ("set-provider", "Change a provider (also sets keys of built-in providers)")):

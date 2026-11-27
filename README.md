@@ -36,9 +36,6 @@ evoab run --integration metaworld --task reach-v3 \
 evoab replay ./runs                      # step through what the agent saw, did and spent
 ```
 
-Drive the robot from your own agent instead: `evoab serve` starts an episode and
-serves its tools over MCP, so Claude Code, Cursor or `evoab tools call` can use it.
-
 Prefer a coding agent? Paste this into Claude Code, Codex or similar on the target machine:
 
 ```text
@@ -62,7 +59,6 @@ evaluators bring their own agent.
 | `agent_policy` | orchestrate + policy | Tool calls plus a policy actor, including Direct |
 | `tool_team` | orchestrate | Studio agent cards: roles, tools and delegation |
 | `code_iterate` | code | Programs carried across episodes |
-| `q0_preview_upstream` | orchestrate | Qoo Tech's Q0-Preview as an external evaluator |
 
 ```bash
 evoab methods list --integration robodojo     # ids and where each method.yaml lives

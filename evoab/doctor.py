@@ -37,14 +37,6 @@ REQUIRED_MODULES = (
     ("PIL", "pillow"),
 )
 
-# Base dependencies in pyproject.toml; each pins one planner backend.
-AGENT_SDKS = (
-    ("openai-codex", "Codex"),
-    ("claude-agent-sdk", "Claude Code"),
-)
-
-# Optional managed-backend executables; never executed unless requested.
-BACKEND_BINARIES = ("opencode", "gemini")
 
 KNOWN_INTEGRATIONS = (
     "robodojo",
@@ -289,86 +281,6 @@ def check_required_dependencies() -> list[Check]:
     ]
 
 
-def check_agent_sdks() -> list[Check]:
-    checks = []
-    for distribution, backend in AGENT_SDKS:
-        try:
-            version = _distribution_version(distribution)
-        except importlib.metadata.PackageNotFoundError:
-            checks.append(
-                Check(
-                    f"sdk:{distribution}",
-                    "warn",
-                    "not installed",
-                    f"Install the pinned SDK with the standard installation; the {backend} backend cannot run without it.",
-                )
-            )
-        except Exception as error:
-            checks.append(
-                Check(
-                    f"sdk:{distribution}",
-                    "warn",
-                    f"version unavailable: {type(error).__name__}: {error}",
-                    f"Reinstall the pinned SDK if the {backend} backend is required.",
-                )
-            )
-        else:
-            checks.append(Check(f"sdk:{distribution}", "ok", f"{distribution} {version}"))
-    return checks
-
-
-def check_backend_binaries(*, check_version: bool = False) -> list[Check]:
-    checks = []
-    for name in BACKEND_BINARIES:
-        path = _which(name)
-        if path is None:
-            checks.append(
-                Check(
-                    f"binary:{name}",
-                    "skip",
-                    "not found",
-                    f"Install {name} and put it on PATH to enable that managed backend; other backends work without it.",
-                )
-            )
-            continue
-        if not check_version:
-            checks.append(Check(f"binary:{name}", "ok", f"found at {path}"))
-            continue
-        version, error = _binary_version(path)
-        if error is not None:
-            checks.append(
-                Check(
-                    f"binary:{name}",
-                    "warn",
-                    f"found at {path}; --version failed: {error}",
-                    f"Check that {name} runs in this environment; doctor does not use it otherwise.",
-                )
-            )
-        else:
-            suffix = f" ({version})" if version else ""
-            checks.append(Check(f"binary:{name}", "ok", f"found at {path}{suffix}"))
-    return checks
-
-
-def check_provider_profiles() -> Check:
-    try:
-        from evoab.provider.registry import list_provider_profiles
-
-        names = list_provider_profiles()
-    except Exception as error:
-        return Check(
-            "provider-profiles",
-            "fail",
-            f"cannot load provider registry: {type(error).__name__}: {error}",
-            "Reinstall the standard package; provider profiles are required to resolve --provider-profile.",
-        )
-    return Check(
-        "provider-profiles",
-        "ok",
-        f"{len(names)} profiles: {', '.join(names)}",
-    )
-
-
 def check_integrations(*, requested: str | None = None) -> list[Check]:
     from evoab.integrations import load_integration
 
@@ -498,7 +410,6 @@ def run_checks(
     *,
     integration: str | None = None,
     output_dir: str | os.PathLike[str] | None = None,
-    check_binaries: bool = False,
     environ: Mapping[str, str] | None = None,
 ) -> DoctorReport:
     """Run every offline check and return an ordered, structured report."""
@@ -509,9 +420,6 @@ def run_checks(
         check_package_split(),
     ]
     checks.extend(check_required_dependencies())
-    checks.extend(check_agent_sdks())
-    checks.extend(check_backend_binaries(check_version=check_binaries))
-    checks.append(check_provider_profiles())
     checks.extend(check_integrations(requested=integration))
     checks.append(check_skills_root(environ=environment))
     checks.append(check_output_dir(output_dir, environ=environment))

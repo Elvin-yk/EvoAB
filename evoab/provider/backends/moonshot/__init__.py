@@ -1,1 +1,0 @@
-"""Moonshot model-provider adapters."""

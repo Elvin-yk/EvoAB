@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal
@@ -37,14 +36,9 @@ def resolve_config(args, parser, integration_spec, argv=()):
     """CLI adapter: translate shared validation errors into argparse diagnostics."""
     explicit = {word.split("=", 1)[0] for word in argv if word.startswith("--")}
     try:
-        # evoab serve runs no agent: an MCP client outside EvoAB drives the tools.
-        resolved = resolve_settings(args, integration_spec, explicit=explicit,
-                                    agent_enabled=getattr(args, "command", "run") != "serve")
+        resolved = resolve_settings(args, integration_spec, explicit=explicit)
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
-    for owner, options in getattr(parser, "agent_options", {}).items():
-        if owner != resolved.agent_backend and (used := explicit & options):
-            parser.error(f"{sorted(used)[0]} requires --agent {owner}")
     return resolved
 
 
@@ -70,15 +64,11 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
         "env_url",
         "action_model_url",
         "sam3_url",
-        "provider_url",
         "output_dir",
         "obs_pipeline",
     ):
         if getattr(args, name, None) is None:
             setattr(args, name, runtime_env(name.upper()))
-    args._api_key = getattr(args, "_api_key", None) or runtime_env("API_KEY")
-    if hasattr(args, "_vla_review_api_key") and args._vla_review_api_key is None:
-        args._vla_review_api_key = runtime_env("VLA_REVIEW_API_KEY", args._api_key)
     args.output_dir = args.output_dir or "outputs"
     # The recipe decides whether locate segments (scene option segmentation); the URL only locates SAM3.
     if not args.segmentation:
@@ -87,7 +77,7 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
         raise ValueError("the recipe enables scene segmentation: start SAM3 (evoab deploy sam3) and pass --sam3-url")
     from urllib.parse import urlsplit
 
-    for name in ("env_url", "action_model_url", "sam3_url", "provider_url"):
+    for name in ("env_url", "action_model_url", "sam3_url"):
         value = getattr(args, name)
         if value:
             try:
@@ -132,33 +122,8 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
 
         load_observation_profile(args.observation_profile)
     if agent_enabled:
-        agent_backend = get_agent_backend(args.agent_backend)
-        # Roles on another agent reuse the run's model through this preset (composition/roles.py).
-        owns = getattr(agent_backend, "owns_provider", False)
-        args.model_preset_name = args.model if owns or getattr(args, "model_preset", False) else None
-        if getattr(args, "model_preset", False) and not owns:
-            if "--provider-url" in explicit or "--provider-profile" in explicit:
-                raise ValueError("--model-preset supplies its own provider URL and profile")
-            from evoab.provider.http_presets import preset_for_protocol
-            connection = preset_for_protocol(args.model, agent_backend.model_protocol)
-            args.model, args.provider_url = connection.model, connection.base_url
-            args.provider_profile, args._api_key = connection.profile, connection.api_key
-        if getattr(agent_backend, "owns_provider", False):
-            agent_backend.validate_config(args, explicit)
-        else:
-            from evoab.provider.registry import validate_provider_profile
-            args.provider_profile = args.provider_profile or f"passthrough.{agent_backend.model_protocol}"
-            validate_provider_profile(args.provider_profile, client_protocol=agent_backend.model_protocol)
-            agent_backend.validate_config(args, explicit)
-        if args.context_policy != "identity" and not args.provider_url:
-            raise ValueError(
-                f"context policy {args.context_policy} requires --provider-url or EVOAB_PROVIDER_URL"
-            )
-        context = resolve_context_config(args)
-        if args.context_policy != "identity":
-            from evoab.context.history import create_context_policy
-
-            create_context_policy(args.context_policy, **context["context_options"])
+        # The built-in agent: --model names a model preset (evoab models).
+        get_agent_backend(args.agent_backend).validate_config(args, explicit)
         from evoab.composition.roles import validate_roles
         validate_roles(args)
     get_prompt_builder(args.integration)
@@ -227,61 +192,12 @@ def public_config(args) -> dict:
     return result
 
 
-def resolve_context_config(args) -> dict:
-    """The entry role's compiled context policy (see composition.compiler)."""
-    return {"context_policy": getattr(args, "context_policy", "identity"),
-            "context_options": dict(getattr(args, "context_options", None) or {})}
-
-
-@dataclass(frozen=True)
-class AgentModelConfig:
-    """Resolved main-agent transport settings, separate from SDK options."""
-
-    base_url: str | None
-    api_key: str | None
-    adapter: str
-    request_timeout_s: float
-    max_retries: int
-    retry_backoff_initial_s: float
-    parallel_tool_calls: bool
-
-
-def resolve_agent_model_config(args) -> AgentModelConfig:
-    return AgentModelConfig(
-        base_url=args.provider_url,
-        api_key=args._api_key,
-        adapter=args.provider_profile,
-        request_timeout_s=args.provider_timeout_s,
-        max_retries=args.provider_retries,
-        retry_backoff_initial_s=args.provider_retry_backoff_s,
-        parallel_tool_calls=args.model_parallel_tool_calls,
-    )
-
-
-
-
 class AgentConfig(BaseModel):
-    """Built-in planner settings; credentials are excluded from serialized configuration."""
+    """The built-in agent: a model preset and its reasoning effort."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     model: str | None = Field(default=None, min_length=1)
-    # None uses the recipe's entry-role brain.
-    agent_backend: str | None = None
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
-    provider_url: str | None = None
-    provider_profile: str | None = None
-    api_key: str | None = Field(default=None, exclude=True, repr=False)
-    provider_timeout_s: int = Field(default=600, gt=0)
-    provider_retries: int = Field(default=2, ge=0)
-    provider_retry_backoff_s: int = Field(default=5, ge=0)
-    agent_python: str | None = None
-    opencode_binary: str = "opencode"
-    opencode_version: str | None = None
-    gemini_binary: str = "gemini"
-    gemini_version: str | None = None
-    gemini_bridge_manifest: str | None = None
-    mcp_timeout_s: int | None = Field(default=None, gt=0)
-    claude_max_budget_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 class SessionConfig(BaseModel):
@@ -303,7 +219,6 @@ class SessionConfig(BaseModel):
     # Dotted recipe paths or declared parameter names, e.g. {"horizon": "3:10"}.
     recipe_overrides: dict[str, Any] = Field(default_factory=dict)
     experience_dir: Path | None = None
-    save_exchanges: bool = True
     telemetry: Literal["off", "standard"] = "standard"
     debug: bool = False
 
@@ -322,27 +237,10 @@ class SessionConfig(BaseModel):
             name: field.get_default() for name, field in AgentConfig.model_fields.items()
             if name not in {"model", "api_key"}
         })
-        values.update(command="run", deploy=None, _api_key=agent.api_key if agent else None)
-        if "vla_review_api_key" in values:
-            values["_vla_review_api_key"] = values.pop("vla_review_api_key")
+        values.update(command="run", deploy=None)
         explicit = {"--" + name.replace("_", "-") for name in self.model_fields_set}
         if agent:
             explicit.update("--" + name.replace("_", "-") for name in agent.model_fields_set)
-            if "agent_backend" in agent.model_fields_set and agent.agent_backend is not None:
-                explicit.add("--agent")
         resolved = resolve_settings(SimpleNamespace(**values), spec, explicit=explicit,
                                     agent_enabled=agent is not None)
-        if agent:
-            from evoab.agents.registry import get_agent_backend
-
-            backend = resolved.agent_backend
-            if hasattr(get_agent_backend(backend), "evaluator_plan"):
-                raise ValueError(f"{backend} requires the evoab run CLI")
-            for prefix, owner in (("gemini_", "gemini_cli"), ("opencode_", "opencode"),
-                                  ("claude_", "claude_code")):
-                if backend != owner and any(name.startswith(prefix) for name in agent.model_fields_set):
-                    raise ValueError(f"{prefix.rstrip('_').title()} settings require agent_backend={owner!r}")
-            if backend != "codex" and any(name == "agent_python" or name.startswith("mcp_")
-                                          for name in agent.model_fields_set):
-                raise ValueError("Codex settings require agent_backend='codex'")
         return resolved

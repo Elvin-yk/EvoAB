@@ -13,16 +13,6 @@ from evoab.execution import ToolExecutor
 from evoab.tools.toolkit import Toolkit
 
 @dataclass(frozen=True)
-class CodePolicyContext:
-    """Native process setup and trusted completion for program-driven runs."""
-
-    cwd: str
-    env: dict[str, str]
-    finish_request: Callable[[], dict | None]
-    revoke: Callable[[], None]
-
-
-@dataclass(frozen=True)
 class AgentCapabilities:
     """Agent capabilities used to select the canonical tool-event source."""
 
@@ -52,14 +42,6 @@ class AgentLaunch:
     validate_preset: Callable[[str], object] | None = None
     model_help: str = ""
     probe_preset: Callable[[str, str], dict[str, Any]] | None = None
-
-
-@dataclass(frozen=True)
-class EvaluatorPlan:
-    """Host process for an agent that owns its own prepared-episode client."""
-
-    command: tuple[str, ...]
-    input_data: bytes
 
 
 @dataclass
@@ -100,7 +82,6 @@ class AgentInterrupted(KeyboardInterrupt):
 class Agent(Protocol):
     """Protocol implemented by all agent backends; max_turns=0 disables the turn cap."""
 
-    model_protocol: str
     capabilities: AgentCapabilities
 
     @classmethod
@@ -114,10 +95,6 @@ class Agent(Protocol):
 
     @classmethod
     def resolve_defaults(cls, args) -> None: ...
-
-    def model_runtime(self, profile: str, event_bus: EventBus | None): ...
-
-    def finalize_without_provider(self, result: AgentResult, session_dir: Path | None) -> None: ...
 
     def cancel(self, reason: str) -> None: ...
 
@@ -133,6 +110,4 @@ class Agent(Protocol):
         max_turns: int = 50,
         event_bus: EventBus | None = None,
         session_dir: Path | None = None,
-        model_endpoint: str | None = None,
-        code_policy: CodePolicyContext | None = None,
     ) -> AgentResult: ...

@@ -29,7 +29,7 @@ def recipe_graph(recipe: Recipe) -> dict[str, Any]:
         role_id = node(f"role:{name}", "role", name, entry=name == recipe.loop.entry,
                        detail=role.description)
         brain = role.brain
-        label = "model" if role.channel == "action" else brain.agent or "selected agent"
+        label = "model" if role.channel == "action" else "agent"
         edges.append({"from": node(f"{name}:brain", "brain", label,
                                    detail=" · ".join(filter(None, [brain.model_preset or brain.model, brain.reasoning_effort]))),
                       "to": role_id, "kind": "drives"})
@@ -39,7 +39,7 @@ def recipe_graph(recipe: Recipe) -> dict[str, Any]:
                               f"history {role.action.history[0]}:{role.action.history[1]}")
         channel = node(f"{name}:channel", "channel", role.channel, detail=channel_detail)
         edges.append({"from": role_id, "to": channel, "kind": "acts through"})
-        context = "stateless_window" if role.channel == "action" else role.context.policy
+        context = "stateless_window" if role.channel == "action" else "identity"
         edges.append({"from": node(f"{name}:context", "context", context), "to": role_id, "kind": "context"})
         if role.channel == "action":
             edges.append({"from": channel, "to": body, "kind": "action chunks"})

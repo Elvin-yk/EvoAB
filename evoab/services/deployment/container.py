@@ -323,7 +323,7 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
 
 
 #: Planner-only dependencies the service runtime never needs (pyproject [tool.evoab.runtime]).
-RUNTIME_EXCLUDED = ("openai-codex", "claude-agent-sdk", "textual")
+RUNTIME_EXCLUDED: tuple[str, ...] = ()
 
 
 def _installed_package() -> tuple[Path, list[str], str]:

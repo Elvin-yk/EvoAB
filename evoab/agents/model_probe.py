@@ -73,16 +73,13 @@ def probe_native_preset(name: str, effort: str) -> dict:
     preset = (config.model_presets or {}).get(name)
     if preset is None:
         raise PresetCompatibilityError("The model preset does not exist.")
-    if preset.provider == "antigravity":
-        route_info = {"model": preset.model, "api": "acp", "adapter": "antigravity"}
-    else:
-        try:
-            route = resolve_provider_route(config, preset=preset)
-            api = route.model_api.preferred_api if route.model_api else resolve_automatic_model_api(config, preset=preset)[1]
-            model = route.spec.request_model_name(route.model) if route.spec else route.model
-        except ValueError:
-            raise PresetCompatibilityError("The preset's model route could not be resolved.") from None
-        route_info = {"model": model, "api": api, "adapter": route.backend}
+    try:
+        route = resolve_provider_route(config, preset=preset)
+        api = route.model_api.preferred_api if route.model_api else resolve_automatic_model_api(config, preset=preset)[1]
+        model = route.spec.request_model_name(route.model) if route.spec else route.model
+    except ValueError:
+        raise PresetCompatibilityError("The preset's model route could not be resolved.") from None
+    route_info = {"model": model, "api": api, "adapter": route.backend}
     return run_model_probe([sys.executable, "-m", "evoab.agents.model_probe"],
                            {"preset": name, "effort": effort}, route_info)
 

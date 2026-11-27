@@ -124,18 +124,16 @@ def deploy(args, adapter):
 def evaluator_entry():
     """Private process entry: resolved secrets travel through stdin, never argv or disk."""
     from argparse import Namespace
-    from evoab.session import run, serve
+    from evoab.session import run
     from evoab.telemetry.logging import configure_logging
     from evoab.composition.compiler import restore_compiled
     args = Namespace(**json.load(sys.stdin))
     restore_compiled(args)
     configure_logging(args.log_level)
-    (serve if args.command == "serve" else run)(args)
+    run(args)
 
 
 def run_evaluation(args):
-    from evoab.agents.registry import get_agent_backend
-
     if args.deploy == 'local':
         adapter = adapter_for(args)
     else:
@@ -146,9 +144,6 @@ def run_evaluation(args):
     monitor = None
     obs_proxy = None
     service = Deployment(args, adapter, output, run_id) if adapter is not None else None
-    # evoab serve runs no agent; only external evaluators bring their own process plan.
-    evaluator_plan = (getattr(get_agent_backend(args.agent_backend), 'evaluator_plan', None)
-                      if args.agent_backend else None)
     status = dict(state='deploying', episode_exit_code=None)
     code = 1
     with cancellation_signals():
@@ -180,18 +175,12 @@ def run_evaluation(args):
                 status['obs_proxy_url'] = obs_proxy.url
             if monitor is not None:
                 monitor.attach(args.env_url)
-            if evaluator_plan is None:
-                command = [sys.executable, '-c',
-                    'from evoab.services.deployment.manager import evaluator_entry; evaluator_entry()']
-                from evoab.composition.compiler import portable_args
-                input_data = json.dumps(portable_args(args), default=str).encode()
-                log_path = None
-            else:
-                plan = evaluator_plan(args)
-                command, input_data = plan.command, plan.input_data
-                log_path = output / 'evaluator.log'
-                print(f'Evaluator log: {log_path}', flush=True)
-            child = OwnedProcess(command, log_path=log_path, shutdown_timeout=args.shutdown_timeout_s)
+            # The episode runs in an EvoAB child process; resolved settings travel through stdin.
+            command = [sys.executable, '-c',
+                'from evoab.services.deployment.manager import evaluator_entry; evaluator_entry()']
+            from evoab.composition.compiler import portable_args
+            input_data = json.dumps(portable_args(args), default=str).encode()
+            child = OwnedProcess(command, log_path=None, shutdown_timeout=args.shutdown_timeout_s)
             # Parent survives episode timeout to release its own environment process group.
             child.start(input_data=input_data)
             status['state'] = 'evaluating'
@@ -208,11 +197,6 @@ def run_evaluation(args):
                 try:
                     code = child.process.wait(timeout=.1)
                     status['state'] = 'finished'
-                    if evaluator_plan is not None and not (output / 'result.json').is_file():
-                        message = 'Evaluator did not publish result.json; see evaluator.log'
-                        status.update(state='evaluator_failed', error=message)
-                        print(message, file=sys.stderr)
-                        code = code or 1
                     break
                 except subprocess.TimeoutExpired:
                     continue
@@ -220,10 +204,8 @@ def run_evaluation(args):
             code = 130
             status['state'] = 'cancelled'
         except (ValueError, OSError, RuntimeError, TimeoutError) as error:
-            deployment_error = evaluator_plan is None or (service is not None and service.info is None)
-            status.update(state='deployment_failed' if deployment_error else 'evaluator_failed', error=str(error))
-            label = 'Local deployment' if deployment_error else 'Evaluator'
-            print(f'{label} failed: {error}; see {output}', file=sys.stderr)
+            status.update(state='deployment_failed', error=str(error))
+            print(f'Local deployment failed: {error}; see {output}', file=sys.stderr)
         finally:
             try:
                 if child is not None:

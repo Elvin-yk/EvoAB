@@ -13,7 +13,7 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 | `libero_pro` | LIBERO-PRO suites | Container or native | Motion | `_env`, `_object`, `_swap`, `_task`, `_lan` variants |
 | `robotwin` | RoboTwin 2.0 aloha-agilex | Container or native | Motion | `demo_clean`, `demo_randomized` |
 | `rmbench` | Memory-dependent dual-arm | Native | Motion | |
-| `calvin` | CALVIN Panda | Container or native | Motion | One task per episode |
+| `calvin` | CALVIN Panda | Container or native | Motion, policy (StarVLA) | One task per episode |
 | `robolab` | RoboLab DROID, Isaac Sim | Native service | Motion, policy | No automatic setup |
 | `dexjoco` | Panda/Allegro, MuJoCo | Native + actor | Policy only | `pick_bucket` |
 | `behavior` | R1Pro mobile manipulation | Adopt native | Policy only | Experimental |
@@ -140,6 +140,41 @@ scene D with the native scene reset and 360 steps, one task per episode. Nativel
 `python -m evoab.integrations.calvin.server --native-root … --benchmark-root …
 --scene D --scene-reset --task open_drawer`.
 
+For controlled comparisons, start the same prepared CALVIN environment with
+`--initial-state CASE.npz` in place of `--scene-reset`. The service records the
+reset hash and continues to score the outcome with the native task oracle.
+
+The CALVIN StarVLA bridge was validated with RoboScope's StarVLA runtime and
+the `Simplicissimus-S/StarVLA-QwenGR00T_Qwen2.5-VL-3B-Instruct-Action_calvin_D_D`
+checkpoint. Start a fresh StarVLA policy socket, then run
+`python -m evoab.services.actor.server --config ACTOR.toml` in a runtime that
+has the RoboScope SDK on its Python path. The bridge checks the checkpoint
+hash and loads the CALVIN D-to-D policy on that socket.
+
+```toml
+backend = "starvla_calvin"
+socket_path = "/path/to/starvla.sock"
+checkpoint = "/path/to/the/prepared/checkpoint.pt"
+checkpoint_sha256 = "<checkpoint SHA-256>"
+```
+
+For an Agent trial with only `actor_act` available for motion:
+
+```bash
+evoab run --integration calvin --env-url http://127.0.0.1:18786 \
+  --recipe agent_policy --model MY_PRESET \
+  --set 'roles.main.capabilities=[scene, hybrid, episode]' \
+  --action-model-url http://127.0.0.1:8601 \
+  --action-model-checkpoint-sha256 CHECKPOINT_SHA256
+```
+
+When delegating a CALVIN subtask, use `active_groups=["arm"]`. The binding
+sends the original static and wrist RGB and native robot state. It executes
+the policy's relative actions through CALVIN's controller, using one full
+model chunk by default. Use the default `agent_policy` capabilities to enable
+both `actor_act` and the motion tools. The CALVIN binding runs without a chunk
+reviewer.
+
 ## RoboLab
 
 Single-DROID RoboLab 0.3.1 on Isaac Sim 5.1 / Isaac Lab 2.3.2 (motion tools and a
@@ -163,15 +198,6 @@ tools, and default to `agent_policy`.
 
 Each integration's `SOURCE.md` pins the sources, assets and weights it was
 validated with.
-
-## External evaluators
-
-Some methods run another project's complete agent against an EvoAB episode; the
-recipe cannot change their roles or tools.
-
-- **`q0_preview_upstream`**: Qoo Tech's Q0-Preview on RoboDojo. Setup, credentials
-  and validation evidence are in its
-  [card](../evoab/methods/q0_preview_upstream/CARD.md).
 
 ## Real robots
 

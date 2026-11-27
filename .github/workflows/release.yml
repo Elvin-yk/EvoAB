@@ -108,9 +108,7 @@ jobs:
           uv tool install --python "$(command -v python)" dist/evoab-[0-9]*.whl
           cd "$RUNNER_TEMP"
           "$UV_TOOL_BIN_DIR/evoab" --version
-          "$UV_TOOL_BIN_DIR/evoab" run --integration robodojo --agent codex \
-            --agent-python "$(command -v python)" --model validation-model \
-            --env-url http://127.0.0.1:18760 --validate-config
+          "$UV_TOOL_BIN_DIR/evoab" methods validate agentic --integration robodojo
 
   publish:
     # No push, pull request, tag creation, or default manual run uploads a package.
