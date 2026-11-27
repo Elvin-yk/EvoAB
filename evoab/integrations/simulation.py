@@ -1,4 +1,4 @@
-"""Assembly helpers for externally prepared, Direct gripper simulations."""
+"""Assembly helpers for externally prepared gripper simulations."""
 import argparse
 import json
 import subprocess
@@ -6,13 +6,15 @@ import sys
 from pathlib import Path
 
 
-def build_simulation_spec(name):
+def build_simulation_spec(name, *, binding_factory=None):
     from evoab.context.prompt import environment_for_model, state_json_for_model, Prompt, register_prompt_builder
-    from evoab.integrations.gripper import build_gripper_spec, create_session, validate_gripper_cli
+    from evoab.integrations.gripper import (
+        DIRECT_TOOL_MODULES, HYBRID_TOOL_MODULES, build_gripper_spec, create_session, validate_gripper_cli,
+    )
 
     def validate(args):
         validate_gripper_cli(args)
-        if args.action_model_url:
+        if binding_factory is None and args.action_model_url:
             raise ValueError(f"{name} supports Direct control only")
 
     @register_prompt_builder(name)
@@ -29,7 +31,11 @@ def build_simulation_spec(name):
                                    user=None if context.initial_observation else "Initial measured state:\n" + state_json_for_model(episode.state))
         return result
 
-    return build_gripper_spec(name=name, create_session=create_session,
+    def session(context):
+        return create_session(context, binding_factory=binding_factory)
+
+    modules = DIRECT_TOOL_MODULES if binding_factory is None else HYBRID_TOOL_MODULES
+    return build_gripper_spec(name=name, create_session=session, tool_modules=modules,
                               validate_cli=validate)
 
 
@@ -76,7 +82,7 @@ def server_parser(description, port):
     return parser
 
 
-def serve_episode(factory, args, integration):
+def serve_episode(factory, args, integration, *, capabilities=("pose", "published_observations")):
     from evoab.artifacts.store import ArtifactStore
     from evoab.services.environment.contracts import EpisodeInfo
     from evoab.services.environment.owner import OwnedAdapter
@@ -95,7 +101,7 @@ def serve_episode(factory, args, integration):
         artifacts = ArtifactStore(output / "artifacts")
         info = EpisodeInfo(episode_id=args.run_id, task=instruction, integration=integration,
                            environment=adapter.description, metadata=metadata,
-                           capabilities=["pose", "published_observations"])
+                           capabilities=list(capabilities))
         service = EnvironmentService(adapter, info, artifacts)
         service.initialize()
         serve(create_app(build_router(service)), host=args.host, port=args.port)

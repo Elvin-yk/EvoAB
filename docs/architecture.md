@@ -161,6 +161,7 @@ Tools report what an action did in `ToolOutput.action` (`executed` none/some/unk
 ```bash
 python scripts/validation/recipe_composition.py     # recipes, roles, experience, run_program
 python scripts/validation/tool_composition.py       # tool schemas, visibility, prompts per configuration
+python scripts/validation/calvin_actor.py           # CALVIN Hybrid execution against fixture services
 python scripts/validation/observation_toolpackage.py
 evoab methods validate METHOD --integration X
 ```
