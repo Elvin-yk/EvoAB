@@ -134,23 +134,19 @@ A method is a directory in `evoab/methods/` with `method.yaml` (the recipe) and
 **roles** and the **loop** connecting them.
 
 ```yaml
-id: planner_direct
-label: Planner + Direct controller
+id: observe_and_act
+label: Observe and act
 inputs: {depth: false}                 # optional; null keeps the environment's default
 roles:
-  planner:
+  main:
     channel: tools
     capabilities:
       - skills
       - {id: scene, tools: [view_env_state, capture_scene], options: {segmentation: false}}
+      - gripper
       - episode
-      - {id: delegate, options: {roles: [controller]}}
-    prompt: {append: "Split the task into short, verifiable sub-goals …"}
     max_turns: 0
-  controller:
-    channel: action
-    action: {representation: abs_eef, horizon: [3, 15], history: [15, 7], max_calls: 6}
-loop: {entry: planner}
+loop: {entry: main}
 execution: {return_mode: immediate}
 ```
 
@@ -233,7 +229,7 @@ from evoab import AgentConfig, SessionConfig, run
 
 result = run(SessionConfig(
     integration="robodojo", env_url="http://127.0.0.1:18760",
-    recipe="planner_direct", recipe_overrides={"roles.controller.action.max_calls": 4, "inputs.depth": False},
+    recipe="direct_action", recipe_overrides={"roles.main.action.max_calls": 4, "inputs.depth": False},
     agent=AgentConfig(model="my-model"),
 ))
 print(result.task_success)
@@ -242,3 +238,23 @@ print(result.task_success)
 `Session(SessionConfig(...))` gives direct access to the episode's tools;
 `setup()` and `deploy()` prepare and start runtimes. Examples are in
 [`examples/sdk/`](../examples/sdk/).
+
+## Use Direct through `actor_act`
+
+In Studio, choose RoboDojo and check **Direct** on an Actor card. When that
+Actor calls `actor_act`, Direct uses its model preset, including the run preset
+if the Actor inherits it. Direct reads one current frame per camera and the
+measured arm poses, then predicts absolute grasp-site targets for the sub-goal.
+By default the tool executes one chunk and records it under `actor_sessions/`.
+
+For the CLI, replace the former `planner_direct` recipe with:
+
+```bash
+evoab run --integration robodojo --task stack_bowls --deploy local \
+  --recipe agent_policy --model my-preset --model-preset \
+  --set roles.main.capabilities.hybrid.options.binding=robodojo_direct_eef
+```
+
+This starts the policy in the run process. Explicit CLI actor URL and checkpoint
+options still select an external policy. Standalone `direct_action` uses its
+own action channel and observation history.

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Direct can serve absolute EEF chunks through the actor service. On RoboDojo,
+  use `agent_policy` with the `robodojo_direct_eef` binding in place of the
+  `planner_direct` recipe. In Studio, selecting Direct uses the calling Actor's
+  model preset and requires no separate policy service. Standalone `direct_action` still uses the action channel.
+
 ### Ideas from dimos: your own tools, MCP serving, replay
 
 - `@tool` (`from evoab import tool`): a decorated Python function is an agent

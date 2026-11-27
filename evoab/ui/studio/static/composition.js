@@ -96,7 +96,7 @@ async function loadMethods(integration) {
 }
 
 const TEAM_METHOD = "tool_team";
-const DIRECT_TOOL = "delegate_direct_controller";
+const DIRECT_TOOL = "actor_act";
 const TEAM_ROLE = { planner: "Planner（规划）", actor: "Actor（执行）" };
 const teamCatalogs = new Map();
 
@@ -168,13 +168,13 @@ function roleCard(card, index, groups, team, updateGraph) {
   const toolGroup = (key, names) => h("fieldset", {disabled: card.role === "planner" && ["gripper", "action_policy"].includes(key)}, h("legend", {}, TOOL_GROUP_LABELS[key] || key),
     key === "gripper" && card.role === "planner" ? h("small", { class: "muted" }, "机械臂由 Actor 执行") : null,
     key === "action_policy" ? h("small", { class: "muted" }, card.role === "planner" ? "委托给 Actor 执行。" :
-      names.length ? "Direct 使用此 Actor 的模型，根据画面和子目标生成动作。" : "当前评测集暂无可用的动作策略。") : null,
+      names.length ? "Actor 通过 actor_act 调用 Direct。策略使用当前 Actor 的模型，根据画面和子目标生成动作。" : "当前评测集暂无可用的动作策略。") : null,
     key === "jobs" ? h("small", { class: "muted" }, "勾选查询结果或等待工具后，动作可在后台执行。") : null,
     names.map((name) => h("label", { class: "check" }, h("input", { type: "checkbox", checked: card.tools.includes(name),
       onchange: (e) => {
         card.tools = e.target.checked ? [...card.tools, name] : card.tools.filter((n) => n !== name);
         updateGraph();
-      } }), h("span", {}, TOOL_LABELS[name] || name, name !== DIRECT_TOOL ? h("code", {}, name) : null))),
+      } }), h("span", {}, TOOL_LABELS[name] || name, h("code", {}, name)))),
     key === "action_policy" ? h("small", { class: "muted" }, "VLA · 暂未接入") : null);
   return h("section", { class: "card card-pad team-card", "aria-label": `Agent ${index + 1}` },
     h("div", { class: "toolbar" }, h("h2", { class: "section-title" }, `Agent ${index + 1}`), select,
@@ -199,8 +199,14 @@ function roleCard(card, index, groups, team, updateGraph) {
     h("div", { class: "tool-picker-grid" }, Object.entries(groups).map(([key, names]) => toolGroup(key, names))));
 }
 
-// Studio teams expose each generated action role as an execution policy of its caller.
+// Preserve the policy view for older runs that generated a separate action role.
 function showActionPolicies(graph) {
+  for (const node of graph.nodes) {
+    if (node.kind === "capability" && node.label === "hybrid" && node.binding) {
+      node.kindLabel = "动作策略";
+      node.label = node.binding === "robodojo_direct_eef" ? "Direct · actor_act" : "actor_act";
+    }
+  }
   const actions = graph.nodes.filter((n) => n.kind === "channel" && n.label === "action");
   for (const channel of actions) {
     const role = channel.id.slice(0, -":channel".length);

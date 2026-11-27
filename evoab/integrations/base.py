@@ -49,6 +49,7 @@ class IntegrationSpec:
     config_model: type[IntegrationOptions] = IntegrationOptions
     # The environment publishes extra task clarifications a recipe may append (inputs.task_supplements).
     task_supplements: bool = False
+    direct_policy_binding: str | None = None
 
 
 @dataclass(frozen=True)

@@ -64,16 +64,55 @@ def validate_hybrid_cli(args: Any) -> None:
         address = urlsplit(args.vla_review_base_url)
         if address.scheme not in {"http", "https"} or not address.hostname:
             raise ValueError("Reviewer endpoint must be an absolute HTTP(S) URL")
-    if "hybrid" in args.tool_modules and not args.action_model_url:
-        raise ValueError("Hybrid requires --action-model-url")
+    binding = getattr(args, "action_model_binding", None)
     checkpoint = getattr(args, "action_model_checkpoint_sha256", None)
-    if "hybrid" in args.tool_modules and (not checkpoint or re.fullmatch(r"[0-9a-f]{64}", checkpoint) is None):
-        raise ValueError("Hybrid requires --action-model-checkpoint-sha256 with 64 lowercase hex characters")
+    if binding and not args.action_model_url and _is_direct_binding(args.integration, binding):
+        if checkpoint:
+            raise ValueError("An external actor checkpoint requires --action-model-url")
+        return
+    if "hybrid" in args.tool_modules or binding:
+        if not args.action_model_url:
+            raise ValueError("Hybrid requires --action-model-url")
+        if not checkpoint or re.fullmatch(r"[0-9a-f]{64}", checkpoint) is None:
+            raise ValueError("Hybrid requires --action-model-checkpoint-sha256 with 64 lowercase hex characters")
     if args.action_model_url:
         address = urlsplit(args.action_model_url)
         if (address.scheme not in {"http", "https"} or not address.hostname
                 or address.query or address.fragment):
             raise ValueError("Actor endpoint must be an absolute HTTP(S) base URL")
+
+
+def _is_direct_binding(integration, binding):
+    from evoab.integrations import load_integration
+    return binding is not None and binding == load_integration(integration).get_integration_spec().direct_policy_binding
+
+
+def _direct_actors(session):
+    from evoab.agents.registry import get_agent_backend
+    from evoab.services.actor.backends.direct.config import DirectActorConfig
+    from evoab.services.actor.backends.direct.local import LocalDirectActor
+
+    args = session.args
+    environment = session.episode.description.environment
+    actors = {}
+    for name, role in args.compiled_recipe.roles.items():
+        if "hybrid" not in role.tool_modules:
+            continue
+        brain = role.role.brain
+        preset = getattr(args, "model_preset_name", None)
+        if name != args.recipe.loop.entry:
+            if brain.model:
+                backend = get_agent_backend(role.agent_for(args.agent_backend))
+                preset = brain.model if getattr(backend, "owns_provider", False) else None
+            else:
+                preset = brain.model_preset or preset
+        if not preset:
+            raise ValueError(f"Direct needs the calling role {name!r} to use a model preset")
+        config = DirectActorConfig(model_preset=preset,
+            arms=[arm.name for arm in environment.arms], cameras=[camera.name for camera in environment.cameras],
+            control_frequency_hz=environment.control_frequency_hz)
+        actors[name] = session.own(LocalDirectActor(config))
+    return actors
 
 
 def _validate_reviewer_endpoint(args):
@@ -92,13 +131,18 @@ def configure_hybrid(session, selection=None):
     binding_factory = session.binding_factory
     if binding_factory is None:
         raise ValueError("This integration has no hybrid binding factory")
-    checkpoint = args.action_model_checkpoint_sha256
-    if not checkpoint:
-        raise ValueError("Hybrid requires --action-model-checkpoint-sha256")
-    actor = session.own(ActorClient(args.action_model_url,
-        checkpoint_sha256=checkpoint, tracer=session.context.tracer))
     options = selection.options if selection is not None else PolicyToolOptions()
     name = options.binding or getattr(episode.description.environment, "action_binding", None)
+    role_actors = {}
+    if not args.action_model_url and _is_direct_binding(args.integration, name):
+        role_actors = _direct_actors(session)
+        actor = next(iter(role_actors.values()))
+    else:
+        checkpoint = args.action_model_checkpoint_sha256
+        if not checkpoint:
+            raise ValueError("Hybrid requires --action-model-checkpoint-sha256")
+        actor = session.own(ActorClient(args.action_model_url,
+            checkpoint_sha256=checkpoint, tracer=session.context.tracer))
     binding = binding_factory(name, args, episode.description, actor.info)
     enabled = binding.reviewer_supported if options.review is None else options.review
     if enabled and not binding.reviewer_supported:
@@ -110,8 +154,9 @@ def configure_hybrid(session, selection=None):
         api_key=args._vla_review_api_key, adapter=args.vla_review_adapter,
         prompt_path=binding.reviewer_prompt, validator=binding.validate_decision,
         tracer=session.context.tracer))
-    session.action_model_name = actor.info.model
-    return HybridTools(episode, actor=actor, binding=binding, reviewer=reviewer)
+    session.action_model_name = ", ".join(dict.fromkeys(a.info.model for a in role_actors.values())) or actor.info.model
+    return HybridTools(episode, actor=actor, binding=binding, reviewer=reviewer,
+                       role_actors=role_actors, entry_role=args.recipe.loop.entry if role_actors else None)
 
 
 HYBRID_MODULE = ToolModule("hybrid", configure_hybrid, tool_policies(), tools=HYBRID_NAMES, options=PolicyToolOptions,

@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from evoab.artifacts.actor import ActorArchive
 from evoab.execution import current_execution_id
-from evoab.execution.correlation import current_call
+from evoab.execution.correlation import current_call, current_role
 from evoab.services.environment.contracts import (
     CaptureRequest,
     RequestRejected,
@@ -50,6 +50,8 @@ class ActorRunner:
                    "executed_actions": 0, "acknowledged_commands": 0, "execution_started": False,
                    "duration_s": 0., "stop_reason": "max_chunks", "execution_uncertain": False,
                    "error": None, "artifact_error": None}
+        if role := current_role.get():
+            summary["role"] = role
         archive = ActorArchive(episode.output, session_id, episode.storage_errors)
         stage = "actor"
         try:
@@ -57,7 +59,7 @@ class ActorRunner:
                 stage = "actor"
                 episode.require_active()
                 manifest = episode.env.capture(CaptureRequest(high_resolution=False))
-                inputs = ObservationInputs.capture(episode, manifest)
+                inputs = ObservationInputs.capture(episode, manifest, active_groups=active_groups)
                 paths = inputs.images
                 observation = binding.encode_observation(inputs, instruction)
                 prediction = self.actor.predict(observation)
