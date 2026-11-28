@@ -1,5 +1,5 @@
 # Tools plus a VLA / world-action policy, which is just another tool (actor_act).
-# evoab run --integration calvin --task open_drawer --recipe examples/recipes/policy.yaml --model my-model \
+# evoab run --benchmark calvin --task open_drawer --recipe examples/recipes/policy.yaml --model my-model \
 #   --action-model-url http://HOST:PORT --action-model-checkpoint-sha256 SHA256
 id: policy
 label: Tools + policy

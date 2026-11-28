@@ -1,7 +1,7 @@
 """Run a registered custom benchmark in the user's own Docker image.
 
-The runtime profile is the benchmark name; ``evoab setup --integration custom
---runtime-profile NAME`` adds EvoAB's service layer to the manifest's image,
+Users name the benchmark itself (``--benchmark NAME``, registered as
+``~/.config/evoab/benchmarks/NAME.toml``); ``evoab images pull NAME`` adds EvoAB's dependency layer to the manifest's image,
 records its tasks and checks that the image imports both the benchmark and the
 EvoAB runtime.
 """
@@ -16,7 +16,7 @@ from . import manifest as manifests
 
 def _manifest(args):
     if not args.runtime_profile:
-        raise ValueError("Select the custom benchmark with --runtime-profile NAME")
+        raise ValueError("Name the custom benchmark with --benchmark NAME")
     return manifests.load(args.runtime_profile)
 
 

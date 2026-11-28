@@ -1,7 +1,7 @@
 """Benchmark registry, preparation status and setup jobs.
 
 Every integration in ``evoab/envs`` appears here with how it is
-prepared: ``container`` integrations run ``evoab setup`` to pull or build their
+prepared: ``container`` integrations run ``evoab images pull`` to pull or build their
 Docker image (per runtime profile where they have several), ``custom`` ones
 wrap a user's own image. Status comes
 from the runtime records that setup writes under the cache directory.
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import json
+import shlex
 import os
 import sys
 import time
@@ -132,7 +133,7 @@ _parsed: dict[Path, tuple[tuple[int, int, int, int], PreparedRuntime | None]] = 
 
 
 def prepared_runtimes(root: Path | None = None) -> list[PreparedRuntime]:
-    """Runtimes prepared by ``evoab setup``; parsed once per runtime.json change."""
+    """Runtimes prepared by ``evoab images pull``; parsed once per runtime.json change."""
     root = root or cache_root()
     runtimes = []
     for record in sorted(root.glob("*/*/runtime.json")):
@@ -470,11 +471,11 @@ def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | No
                 environment: dict[str, str] | None = None,
                 accept_license: str | None = None, image_archive: str | None = None,
                 image_directory: str | Path | None = None) -> int:
-    """Run ``evoab setup`` for one profile in the background: pull or build its Docker image.
+    """Run ``evoab images pull`` (then ``evoab images check``) for one benchmark in the background.
 
-    ``wheel`` is the evoab-runtime wheel installed into the image; without it setup
-    installs the running ``evoab`` package. ``image_directory`` fixes the directory
-    the archive name resolves in; the setup child receives it as
+    ``wheel`` is the evoab-runtime wheel baked into the image; without it the image
+    holds only EvoAB's dependencies and runs mount the code. ``image_directory`` fixes the directory
+    the archive name resolves in; the pull child receives it as
     ``EVOAB_IMAGE_IMPORT_DIR``, so both the pre-check and the child's import read
     the same path chosen when the job started.
     """
@@ -490,28 +491,30 @@ def start_setup(runs_root: Path, integration: str, profile: str, wheel: str | No
     existing = jobs.read_record(record_path)
     if existing and jobs.is_running(existing):
         raise ValueError(f"{integration}/{profile} is already being prepared")
+    evoab = [sys.executable, "-m", "evoab", "images"]
+    check = None
     if integration == "custom":
         from evoab.envs.custom import manifest as manifests
         manifests.load(profile)
-        command = [sys.executable, "-m", "evoab", "setup", "--integration", "custom", "--runtime-profile", profile]
+        pull = [*evoab, "pull", profile]
     else:
         if container_info(integration) is None:
             raise ValueError(f"{integration} has no container recipe")
         if info is not None and info.profiles and profile not in info.profiles:
             raise ValueError(f"unknown profile {profile!r} for {integration}")
-        command = [sys.executable, "-m", "evoab", "setup", "--integration", integration,
-                   "--skip-demo-download", "--check-launch"]
+        pull = [*evoab, "pull", integration]
         if image_archive:
-            command += ["--image-archive", image_archive]
+            pull += ["--archive", image_archive]  # an imported image is launch-checked while importing
+        else:
+            check = [*evoab, "check", integration]
         if accept_license:
-            command += ["--accept-license", accept_license]
-        if info is not None and info.profiles:
-            command += ["--runtime-profile", profile]
+            pull += ["--accept-license", accept_license]
     if wheel:
         wheel_path = Path(wheel).expanduser()
         if not wheel_path.is_file():
             raise ValueError(f"runtime wheel not found: {wheel_path}")
-        command += ["--wheel", str(wheel_path)]
+        pull += ["--wheel", str(wheel_path)]
+    command = pull if check is None else ["sh", "-c", f"{shlex.join(pull)} && {shlex.join(check)}"]
     # Unbuffered so pull/build progress reaches the setup log Studio shows while it runs.
     return jobs.start(command, record_path, env={**os.environ, **(environment or {}), "PYTHONUNBUFFERED": "1"},
                       integration=integration, profile=profile, container=True, requested_at=time.time())

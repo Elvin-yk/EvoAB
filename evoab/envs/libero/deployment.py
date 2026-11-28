@@ -11,7 +11,7 @@ empty_catalog_hint = (
     "LIBERO lists only tasks with the official BDDL under "
     "the image's libero/libero/bddl_files/<suite>/ and the matching initial state under "
     "the image's libero/libero/init_files/<suite>/. Install those files, then rerun the same "
-    "setup command."
+    "evoab images pull command."
 )
 
 

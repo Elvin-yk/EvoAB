@@ -95,7 +95,7 @@ def config(integration="libero", profile="direct", *, recipe=None, overrides=Non
             recipe_overrides[path] = settings.pop(name)
     if skill_writing:
         recipe_overrides["roles.main.capabilities.skills.options"] = {"write": True}
-    return SessionConfig(integration=integration, env_url="http://environment.invalid", integration_options=options,
+    return SessionConfig(benchmark=integration, env_url="http://environment.invalid", benchmark_options=options,
                          recipe=recipe or PROFILE_METHODS.get(profile, profile),
                          recipe_overrides=recipe_overrides, **settings)
 
@@ -237,7 +237,7 @@ class CompositionChecks(unittest.TestCase):
         for missing in ("action_model_url", "action_model_checkpoint_sha256"):
             cfg = config(profile="hybrid")
             changes = {missing: None} if missing == "action_model_url" else {
-                "integration_options": {**cfg.integration_options, missing: None}}
+                "benchmark_options": {**cfg.benchmark_options, missing: None}}
             with self.assertRaisesRegex(ValueError, "Hybrid requires"):
                 cfg.model_copy(update=changes).resolve()
         read_only = config(overrides={"roles.main.capabilities.skills.tools": ["read_skill"]})
@@ -306,7 +306,7 @@ class CompositionChecks(unittest.TestCase):
         for integration in INTEGRATIONS:
             spec = load_integration(integration).get_integration_spec()
             parser = build_parser(spec)
-            argv = ["run", "--integration", integration, "--model", "fixture",
+            argv = ["run", "--benchmark", integration, "--model", "fixture",
                     "--task", "validation-task", "--env-url", "http://fixture.invalid",
                     "--recipe", str(EXAMPLES / "clean.yaml"), "--set", "roles.main.max_turns=7"]
             args = resolve_settings(parser.parse_args(argv), spec, agent_enabled=False)
@@ -356,6 +356,37 @@ class CompositionChecks(unittest.TestCase):
         spec = load_integration("libero").get_integration_spec()
         with self.assertRaisesRegex(ValueError, "Duplicate tool module"):
             validate_modules((spec.tool_modules[0], spec.tool_modules[0]))
+
+    def test_benchmark_selection(self):
+        """--benchmark names the benchmark; a task ID carries its suite; custom benchmarks by name."""
+        from evoab.envs import apply_benchmark, resolve_benchmark
+        args = SimpleNamespace(benchmark="libero", task="libero_spatial/pick_up_the_bowl")
+        apply_benchmark(args)
+        self.assertEqual((args.integration, args.runtime_profile, args.task),
+                         ("libero", "libero_spatial", "pick_up_the_bowl"))
+        args = SimpleNamespace(benchmark="calvin", task="open_drawer")
+        apply_benchmark(args)
+        self.assertEqual((args.integration, args.runtime_profile, args.task), ("calvin", None, "open_drawer"))
+        args = SimpleNamespace(benchmark="libero", task=None)  # images pull: one image for every suite
+        apply_benchmark(args)
+        self.assertIsNone(args.runtime_profile)
+        for name, message in (("custom", "Name the custom benchmark itself"), ("gripper", "Unknown benchmark"),
+                              ("no_such_bench", "Unknown benchmark")):
+            with self.assertRaisesRegex(ValueError, message):
+                resolve_benchmark(name)
+        with tempfile.TemporaryDirectory() as config, patch.dict("os.environ", {"EVOAB_CONFIG_DIR": config}):
+            (Path(config) / "benchmarks").mkdir()
+            (Path(config) / "benchmarks" / "my_bench.toml").write_text("", encoding="utf-8")
+            self.assertEqual(resolve_benchmark("my_bench"), ("custom", "my_bench"))
+            args = SimpleNamespace(benchmark="my_bench", task="reach")
+            apply_benchmark(args)
+            self.assertEqual((args.integration, args.runtime_profile, args.task), ("custom", "my_bench", "reach"))
+        from evoab.cli import build_parser
+        parser = build_parser()
+        with self.assertRaises(SystemExit), patch("sys.stderr"):
+            parser.parse_args(["setup", "--integration", "libero"])
+        from evoab.apps.workbench.images import build_parser as images_parser
+        self.assertEqual(images_parser().parse_args(["pull", "libero"]).benchmark, "libero")
 
     def test_act_combinations(self):
         """tools, code and action combine in one session: one chunk tool, both prompts, never partial chunks."""

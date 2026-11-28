@@ -106,7 +106,7 @@ jobs:
           uv tool install --python "$(command -v python)" dist/evoab-[0-9]*.whl
           cd "$RUNNER_TEMP"
           "$UV_TOOL_BIN_DIR/evoab" --version
-          "$UV_TOOL_BIN_DIR/evoab" methods validate tools --integration libero
+          "$UV_TOOL_BIN_DIR/evoab" methods validate tools --benchmark libero
 
   publish:
     # No push, pull request, tag creation, or default manual run uploads a package.

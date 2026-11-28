@@ -608,10 +608,11 @@ function commandPreview() {
   const w = S.wizard;
   const method = selectedMethod();
   const agent = selectedAgent();
-  const {runtime_profile: profile, native_task: task} = w.task;
+  // A custom benchmark is named by its manifest (the task's runtime profile); task IDs carry their suite.
+  const benchmark = w.bench.integration === "custom" ? w.task.runtime_profile : w.bench.integration;
   const parts = [
-    "evoab run", `--integration ${w.bench.integration}`, "--deploy local", ...(profile ? [`--runtime-profile ${profile}`] : []),
-    `--task ${shellQuote(task)}`, method.external_evaluator ? `--recipe ${shellQuote(method.id)}` : "--recipe team.recipe.json",
+    "evoab run", `--benchmark ${benchmark}`, "--deploy local",
+    `--task ${shellQuote(w.task.task)}`, method.external_evaluator ? `--recipe ${shellQuote(method.id)}` : "--recipe team.recipe.json",
     ...(agent.id !== method.agent ? [`--agent ${agent.id}`] : []),
     `--model ${shellQuote(w.model)}`, `--reasoning-effort ${method.fixed_effort || w.effort}`,
     ...agent.cli_flags,

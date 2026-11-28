@@ -1,9 +1,8 @@
-"""Explicit image preparation only: never invoked from deploy or run."""
+"""Image preparation (``evoab images pull``) and its launch check: never invoked from deploy or run."""
 from __future__ import annotations
 
 from collections.abc import Callable
 from email.parser import BytesParser
-from http.client import HTTPException
 import hashlib
 import json
 from pathlib import Path
@@ -14,7 +13,7 @@ import zipfile
 
 from evoab import __version__
 from evoab.records.artifacts.run import write_json_atomic
-from .config import Runtime, SetupConfig
+from .config import ImageConfig, Runtime
 from .process import OwnedProcess
 
 
@@ -97,21 +96,6 @@ def validate_runtime_wheel(path):
                          f"received {metadata['Name']}=={metadata['Version']}")
 
 
-def _prepare_previews(args, adapter, runtime, report):
-    download = getattr(adapter, 'prepare_previews', None)
-    if download is None or getattr(args, 'skip_demo_download', False):
-        return
-    try:
-        download(runtime)
-    except (OSError, HTTPException) as error:
-        message = f'Expert preview download incomplete ({error}). Rerun setup to resume.'
-        if report is None:
-            import logging
-            logging.getLogger(__name__).warning(message)
-        else:
-            report(message)
-
-
 def _report_empty_catalog(adapter, runtime, report):
     """Report a registered runtime with no selectable tasks instead of ready."""
     if 'tasks' not in runtime.data or runtime.data['tasks']:
@@ -124,18 +108,17 @@ def _report_empty_catalog(adapter, runtime, report):
 
 
 def prepare(args, adapter, *, report=print):
-    """Pull or build the service's Docker image and publish its runtime record."""
-    if args.wheel:
+    """Pull or build the benchmark's Docker image and record what it contains (its task list)."""
+    if getattr(args, 'wheel', None):
         validate_runtime_wheel(args.wheel)
     from .container import prepare as prepare_container
     runtime = prepare_container(args, adapter, report=report)
     _report_empty_catalog(adapter, runtime, report)
-    _prepare_previews(args, adapter, runtime, report)
     return runtime
 
 
-def setup(config: SetupConfig, *, report: Callable[[str], None] | None = None) -> Runtime:
-    """Prepare a container runtime without changing host signal handlers or logging settings."""
+def pull_image(config: ImageConfig, *, report: Callable[[str], None] | None = None) -> Runtime:
+    """Prepare one benchmark image without changing host signal handlers or logging settings."""
     from .config import adapter_for
     args = config.resolve()
     return prepare(args, adapter_for(args), report=report)
@@ -144,7 +127,7 @@ def setup(config: SetupConfig, *, report: Callable[[str], None] | None = None) -
 def check_launch(args, adapter, runtime, *, report=print):
     """Start one task's environment service the way runs do, wait until ready, then stop it.
 
-    Setup only proves the image builds and lists tasks; this proves the simulator
+    Pulling only proves the image exists and lists tasks; this proves the simulator
     starts on this machine (GPU, rendering, assets). The task is the adapter's
     ``CHECK_TASK`` when it names one (a seed the upstream checks admit), else the first.
     """
@@ -153,16 +136,11 @@ def check_launch(args, adapter, runtime, *, report=print):
     if not tasks:
         raise RuntimeError('The runtime lists no tasks to start')
     task = getattr(adapter, 'CHECK_TASK', None) or tasks[0]
-    profile, _, name = task.rpartition('/')
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
         port = probe.getsockname()[1]
-    command = [sys.executable, '-m', 'evoab', 'deploy', 'env', '--integration', args.integration, '--task', name,
+    command = [sys.executable, '-m', 'evoab', 'deploy', 'env', '--benchmark', args.benchmark, '--task', task,
                '--port', str(port), '--check', '--output-dir', str(runtime.root / 'checks')]
-    if profile:
-        command += ['--runtime-profile', profile]
-    elif getattr(args, 'runtime_profile', None):
-        command += ['--runtime-profile', args.runtime_profile]
     if args.cache_dir:
         command += ['--cache-dir', str(args.cache_dir)]
     if report is not None:

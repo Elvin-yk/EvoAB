@@ -173,8 +173,19 @@ def _models(bench, args) -> None:
         print("saved")
 
 
+def _target(benchmark: str | None) -> tuple[str | None, str]:
+    """(integration, Studio profile) for a benchmark name; a custom benchmark is its own profile."""
+    if not benchmark:
+        return None, "default"
+    from evoab.envs import resolve_benchmark
+    integration, manifest = resolve_benchmark(benchmark)
+    return integration, manifest or "default"
+
+
 def _runs_launch(bench, args) -> None:
     from evoab.apps.workbench.launcher import preferred_choice
+
+    args.integration, profile = _target(args.benchmark)
 
     settings = bench.settings()
     method, agent = args.method, args.agent
@@ -190,7 +201,7 @@ def _runs_launch(bench, args) -> None:
         params[name] = value
     payload = {
         "integration": args.integration,
-        "profile": args.profile,
+        "profile": profile,
         "task": args.task,
         "model": args.model or settings.get("default_model"),
         "reasoning_effort": args.effort or settings.get("default_effort") or "low",
@@ -212,6 +223,7 @@ def _runs_launch(bench, args) -> None:
 
 def _methods(bench, args) -> None:
     action = getattr(args, "action", None) or "list"
+    args.integration = _target(getattr(args, "benchmark", None))[0]
     if action == "list":
         items = bench.methods(args.integration)
         if args.json:
@@ -239,7 +251,7 @@ def _methods(bench, args) -> None:
         for name, role in compiled.roles.items():
             print(f"{name:12} {'+'.join(role.act):18} tools={', '.join(role.selected_tools) or '—'}"
                   + (f" delegates={', '.join(role.delegates)}" if role.delegates else ""))
-        print(f"{method.id}: valid for {args.integration}")
+        print(f"{method.id}: valid for {args.benchmark}")
 
 
 def _runs_stop(bench, args) -> None:
@@ -290,12 +302,17 @@ def _benchmarks(bench, args) -> None:
             _print_json(items)
             return
         # Ready when any profile is prepared.
-        _table([[b["integration"], b["title"],
-                 "ready" if any(p["status"] == "ready" for p in b["profiles"]) else "not prepared"]
-                for b in items],
-               ["INTEGRATION", "TITLE", "STATUS"])
+        rows = []
+        for b in items:
+            if b["integration"] == "custom":  # one row per registered custom benchmark
+                rows += [[p["profile"], b["title"], "image ready" if p["status"] == "ready" else "no image"]
+                         for p in b["profiles"]]
+            else:
+                rows.append([b["integration"], b["title"],
+                             "image ready" if any(p["status"] == "ready" for p in b["profiles"]) else "no image"])
+        _table(rows, ["BENCHMARK", "TITLE", "STATUS"])
     elif args.action == "tasks":
-        tasks = bench.tasks(args.integration, args.profile)
+        tasks = bench.tasks(*_target(args.benchmark))
         if args.suite:
             tasks = [t for t in tasks if t["suite"] == args.suite]
         if args.json:
@@ -310,8 +327,8 @@ def _benchmarks(bench, args) -> None:
                  t.get("max_steps") or "—", _clip(t.get("instruction") or "—", 70)] for t in tasks],
                ["TASK", *(["DIMENSION"] if dimensions else []), *(["ROBOT"] if embodiments else []),
                 "MAX_STEPS", "INSTRUCTION"])
-    elif args.action == "prepare":
-        _print_json(bench.prepare(args.integration, args.profile, accept_license=args.accept_license))
+    elif args.action == "previews":
+        _previews(args.benchmark)
     elif args.action == "check":
         result = bench.system_check()
         if args.json:
@@ -319,6 +336,22 @@ def _benchmarks(bench, args) -> None:
             return
         for check in result["checks"]:
             print(f"{'ok ' if check['ok'] else 'NO '} {check['key']:<15} {check['detail']}" + (f"\n      fix: {check['fix']}" if check["fix"] else ""))
+
+
+def _previews(benchmark: str) -> None:
+    """Download a benchmark's optional expert preview videos (Studio shows them beside tasks)."""
+    from types import SimpleNamespace
+    from evoab.envs import apply_benchmark
+    from evoab.envs.docker.config import adapter_for
+    from evoab.envs.docker.runtime import read_runtime
+    args = SimpleNamespace(benchmark=benchmark, task=None, command="images", cache_dir=None)
+    apply_benchmark(args)
+    adapter = adapter_for(args)
+    download = getattr(adapter, "prepare_previews", None)
+    if download is None:
+        raise ValueError(f"{benchmark} has no expert previews")
+    download(read_runtime(args, adapter.recipe(args)))
+    print(f"{benchmark}: expert previews downloaded")
 
 
 def _usage(bench, args) -> None:
@@ -373,8 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--round", type=int, help="Full input and output of round N (1-based), as JSON")
     p.set_defaults(handler=_runs_trace)
     p = runs.add_parser("launch", parents=[common], help="Start a run in the background (same as Studio)")
-    p.add_argument("--integration", default="libero_pro")
-    p.add_argument("--profile", default="default", help="Prepared runtime profile")
+    p.add_argument("--benchmark", required=True, help="libero, libero_pro, calvin or a registered custom benchmark")
     p.add_argument("--task", required=True, help="Task ID as listed by `evoab benchmarks tasks`, e.g. libero_object/pick_up_...")
     p.add_argument("--model", help="Model preset (default: the last one launched)")
     p.add_argument("--effort", help="Reasoning effort (default: settings.default_effort or low)")
@@ -386,14 +418,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     me = sub.add_parser("methods", help="The method library and its components").add_subparsers(dest="action")
     p = me.add_parser("list", parents=[common], help="Methods and how they act")
-    p.add_argument("--integration", help="Only methods usable on this integration")
+    p.add_argument("--benchmark", help="Only methods usable on this benchmark")
     p.set_defaults(handler=_methods)
     p = me.add_parser("components", parents=[common], help="Building blocks a recipe can name")
-    p.add_argument("--integration", help="Include this integration's tool modules")
+    p.add_argument("--benchmark", help="Include this benchmark's tool modules")
     p.set_defaults(handler=_methods)
-    p = me.add_parser("validate", parents=[common], help="Compile a method id or recipe file against an integration")
+    p = me.add_parser("validate", parents=[common], help="Compile a method id or recipe file against a benchmark")
     p.add_argument("recipe")
-    p.add_argument("--integration", required=True)
+    p.add_argument("--benchmark", required=True)
     p.set_defaults(handler=_methods)
 
     models = sub.add_parser("models", parents=[common], help="Model providers and presets (default: list)")
@@ -436,18 +468,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name")
     p.set_defaults(handler=_models)
 
-    bm = sub.add_parser("benchmarks", help="Benchmarks, their tasks and preparation").add_subparsers(dest="action", required=True)
-    p = bm.add_parser("list", parents=[common])
+    bm = sub.add_parser("benchmarks", help="Benchmarks and their tasks (images: evoab images)").add_subparsers(
+        dest="action", required=True)
+    p = bm.add_parser("list", parents=[common], help="Benchmarks and whether their image is pulled")
     p.set_defaults(handler=_benchmarks)
-    for name in ("tasks", "prepare"):
-        p = bm.add_parser(name, parents=[common])
-        p.add_argument("integration")
-        p.add_argument("--profile", default="default")
-        if name == "tasks":
-            p.add_argument("--suite")
-        else:
-            p.add_argument("--accept-license", metavar="NAME", help="Accept the licence the container recipe names")
-        p.set_defaults(handler=_benchmarks)
+    p = bm.add_parser("tasks", parents=[common], help="Task IDs of a pulled benchmark image")
+    p.add_argument("benchmark")
+    p.add_argument("--suite", help="Only this suite, e.g. libero_spatial")
+    p.set_defaults(handler=_benchmarks)
+    p = bm.add_parser("previews", parents=[common], help="Download optional expert preview videos (LIBERO-PRO)")
+    p.add_argument("benchmark")
+    p.set_defaults(handler=_benchmarks)
 
     p = bm.add_parser("check", parents=[common], help="Check Docker, GPU containers, disk and model presets for deployment")
     p.set_defaults(handler=_benchmarks)
@@ -475,7 +506,7 @@ def main(argv: list[str]) -> int:
     if args.command == "settings" and not getattr(args, "action", None):
         args.action, args.json, args.runs_root, args.handler = "show", False, None, _settings
     if args.command == "methods" and not getattr(args, "action", None):
-        args.action, args.json, args.runs_root, args.handler, args.integration = "list", False, None, _methods, None
+        args.action, args.json, args.runs_root, args.handler, args.benchmark = "list", False, None, _methods, None
     bench = Workbench(args.runs_root)
     try:
         args.handler(bench, args)

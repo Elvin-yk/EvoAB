@@ -66,7 +66,7 @@ evoab/
 ├── envs/        System 0: one adapter per benchmark, plus
 │   ├── protocol/    the environment HTTP protocol (snapshots, receipts)
 │   ├── observation/ observation pipeline and ToolPackage proxy
-│   └── docker/      setup and start of benchmark containers
+│   └── docker/      benchmark images (pull) and containers (start)
 ├── servers/     user-run services: actor (VLA/WAM), perception (SAM3), session verifier
 ├── records/     artifacts, telemetry and events of a run
 ├── apps/        console, Studio, replay and the runs/benchmarks commands (workbench/)
@@ -96,7 +96,7 @@ editing them changes method behavior.
 
 ## Components
 
-`evoab methods components --integration X` prints the catalog that recipes are
+`evoab methods components --benchmark X` prints the catalog that recipes are
 checked against:
 
 - **Ways of acting** (`act`): `tools`, `code`, `action`, in any combination ([guide](guide.md#methods-and-recipes)).
@@ -203,7 +203,7 @@ python scripts/validation/tool_composition.py       # tool schemas, visibility, 
 python scripts/validation/calvin_actor.py           # CALVIN Hybrid execution against fixture services
 python scripts/validation/libero_actor.py           # LIBERO policy observation and native action binding
 python scripts/validation/observation_toolpackage.py
-evoab methods validate METHOD --integration X
+evoab methods validate METHOD --benchmark X
 ```
 
 For a behavior-preserving change to shared tools or prompts, compare
@@ -214,9 +214,9 @@ validation separately.
 ## Packaging
 
 Two distributions share one version: `evoab` (CLI, SDK, Studio) and
-`evoab-runtime` (baked into a service image only with `evoab setup --wheel`;
+`evoab-runtime` (baked into a service image only with `evoab images pull --wheel`;
 otherwise images carry EvoAB's dependencies and every container mounts the host's
 `evoab` package read-only, see `envs/docker/container.py`). Build both with
 `python scripts/release/prepare.py --output-dir DIR` and check them with
 `scripts/validation/release_contents.py` and `scripts/validation/sdk_release.py`;
-`evoab setup --wheel` accepts only the matching runtime wheel.
+`evoab images pull --wheel` accepts only the matching runtime wheel.

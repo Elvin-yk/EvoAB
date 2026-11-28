@@ -6,6 +6,24 @@
   sampled camera paths, and the worker writes a placeholder verdict to
   `result.json` before acknowledging completion.
 
+### Benchmarks by name, images as their own commands
+
+`--integration` becomes `--benchmark` everywhere (`run`, `deploy env`, `doctor`,
+`methods`, `runs launch`), and the SDK's `SessionConfig`, `ImageConfig` and
+`DeploymentConfig` take `benchmark=` (`integration_options` is now
+`benchmark_options`). `--runtime-profile` is removed: a task ID carries its
+suite (`--task libero_spatial/pick_up_...`, as `evoab benchmarks tasks` lists
+it), and a custom benchmark is named directly (`--benchmark NAME`). `evoab setup`
+is replaced by `evoab images pull | check | list | rm`; `pull` no longer
+downloads LIBERO-PRO's preview videos (`evoab benchmarks previews libero_pro`)
+and `check` is the former `--check-launch`. The SDK's `setup(SetupConfig(...))`
+is `pull_image(ImageConfig(...))`. Pulled images and records stay valid.
+
+**Migration:** `evoab setup --integration X [--runtime-profile S]` →
+`evoab images pull X`; `evoab run --integration X --runtime-profile S --task T` →
+`evoab run --benchmark X --task S/T`; custom: `--integration custom
+--runtime-profile NAME` → `--benchmark NAME`.
+
 ### Only benchmarks with published images
 
 EvoAB now supports only benchmarks whose simulator image is published and

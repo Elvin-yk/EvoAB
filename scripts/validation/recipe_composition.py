@@ -100,7 +100,7 @@ class RecipeValidation(unittest.TestCase):
     def test_agent_settings_live_in_the_recipe(self):
         from evoab.recipe.compiler import check_inputs
         from evoab.config import SessionConfig
-        base = dict(integration="libero", env_url="http://127.0.0.1:18760")
+        base = dict(benchmark="libero", env_url="http://127.0.0.1:18760")
         rgb = SessionConfig(**base, recipe_overrides={"inputs.depth": False}).resolve()
         self.assertEqual((rgb.depth, rgb.sam3_url), (False, None))
         with self.assertRaisesRegex(ValueError, "Extra inputs"):
@@ -113,9 +113,9 @@ class RecipeValidation(unittest.TestCase):
                          "http://127.0.0.1:18762")
         # Without segmentation the SAM3 address is ignored: the recipe, not the command line, decides.
         self.assertIsNone(SessionConfig(**base, sam3_url="http://127.0.0.1:18762").resolve().sam3_url)
-        policy = SessionConfig(integration="calvin", env_url=base["env_url"], recipe=str(EXAMPLES / "policy.yaml"),
+        policy = SessionConfig(benchmark="calvin", env_url=base["env_url"], recipe=str(EXAMPLES / "policy.yaml"),
                                action_model_url="http://127.0.0.1:18761",
-                               integration_options={"task": "t", "action_model_checkpoint_sha256": "a" * 64},
+                               benchmark_options={"task": "t", "action_model_checkpoint_sha256": "a" * 64},
                                recipe_overrides={"roles.main.capabilities.hybrid.options": {"review": False}}).resolve()
         self.assertEqual((policy.action_model_binding, policy.vla_review), (None, False))
 

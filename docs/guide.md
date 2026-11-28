@@ -75,25 +75,25 @@ One `evoab run` is one episode. The split is strict:
 - **The recipe says how the agent works**: what it is given (`inputs`), how it
   acts (`act`: tools, code, action), which tools and options it has, its context, budget
   and loop. Change it in the YAML or for one run with `--set PATH=VALUE`.
-- **The command line says which run**: integration, task and scene, where the
+- **The command line says which run**: benchmark, task and scene, where the
   environment and services run, which model, and where output goes.
 
 EvoAB starts the benchmark's container for the episode and stops it afterwards;
 you never start environments or pass their addresses yourself.
 
 ```bash
-evoab run --integration calvin --task open_drawer \
+evoab run --benchmark calvin --task open_drawer \
   --recipe tools --model my-model --output-dir ./runs --monitor
 
 # the same method, RGB only, acting through tools and action chunks
-evoab run --integration calvin --task open_drawer --recipe tools --model my-model \
+evoab run --benchmark calvin --task open_drawer --recipe tools --model my-model \
   --set inputs.depth=false --set 'roles.main.act=[tools,action]'
 ```
 
 | Flag | Selects |
 |---|---|
-| `--integration`, `--recipe`, `--set` | The environment adapter, the method (id, directory or file), recipe overrides |
-| `--task`, `--runtime-profile`, `--seed`, `--instruction` | The episode (LIBERO: the suite is the runtime profile) |
+| `--benchmark`, `--recipe`, `--set` | The benchmark (`libero`, `libero_pro`, `calvin` or a custom one), the method (id, directory or file), recipe overrides |
+| `--task`, `--seed`, `--instruction` | The episode; task IDs are what `evoab benchmarks tasks` lists (LIBERO: `SUITE/TASK`) |
 | `--env-gpu` | Which GPU the environment's container uses |
 | `--sam3-url`, `--action-model-url`, `--action-model-checkpoint-sha256` | Where perception and policy services run, and which checkpoint |
 | `--model`, `--reasoning-effort` | Which model preset, and its effort |
@@ -101,7 +101,7 @@ evoab run --integration calvin --task open_drawer --recipe tools --model my-mode
 | `--debug` | Verbose logs and raw model requests in the run record; never changes what the agent sees or does |
 | `--validate-config`, `--print-config` | Check or print the resolved configuration offline |
 
-`evoab run --integration X --help` lists everything.
+`evoab run --benchmark X --help` lists everything.
 
 **Outcomes.** Tool success, agent completion and task success are separate. The
 agent ends with `finish`, which returns an acknowledgement; the environment
@@ -195,14 +195,14 @@ report. Validation is offline and strict: unknown fields, unreachable roles and
 missing capabilities fail before anything starts.
 
 ```bash
-evoab methods list --integration calvin         # ids and where each method.yaml lives
-evoab methods components --integration calvin
-evoab methods validate ./my_method.yaml --integration calvin
+evoab methods list --benchmark calvin         # ids and where each method.yaml lives
+evoab methods components --benchmark calvin
+evoab methods validate ./my_method.yaml --benchmark calvin
 ```
 
 **Add a method**: copy the closest `method.yaml` or example recipe, choose `act`
 and capabilities, put instructions in `prompt.append`, record the paper in
-`references`, validate against every target integration, run one episode and
+`references`, validate against every target benchmark, run one episode and
 check `recipe.json` and `effective_prompt.md`. Run it with `--recipe ./my_method.yaml`
 or add a root with `EVOAB_METHODS_DIR`. If it needs something missing, add a component
 ([architecture](architecture.md#extend-evoab)), never special-case the method.
@@ -244,7 +244,7 @@ request times out.
 from evoab import AgentConfig, SessionConfig, run
 
 result = run(SessionConfig(
-    integration="calvin", env_url="http://127.0.0.1:18760",
+    benchmark="calvin", env_url="http://127.0.0.1:18760",
     recipe="code", recipe_overrides={"roles.main.act": ["tools", "code"]},
     agent=AgentConfig(model="my-model"),
 ))
@@ -252,5 +252,5 @@ print(result.task_success)
 ```
 
 `Session(SessionConfig(...))` gives direct access to the episode's tools;
-`setup()` and `deploy()` prepare and start benchmark containers. Examples are in
+`pull_image(ImageConfig(benchmark=...))` and `deploy(DeploymentConfig(...))` pull a benchmark image and start its container. Examples are in
 [`examples/sdk/`](../examples/sdk/).

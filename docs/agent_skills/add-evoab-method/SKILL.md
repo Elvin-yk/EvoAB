@@ -17,7 +17,7 @@ of `docs/architecture.md` before starting.
    - act: any combination of `tools` (calls robot tools), `code` (writes
      programs) and `action` (emits action chunks; alone it is stateless);
    - capabilities: `skills`, `scene`, `gripper`, `hybrid`, `episode`,
-     `delegate`, `observation` (`evoab methods components --integration X`);
+     `delegate`, `observation` (`evoab methods components --benchmark X`);
    - brain: an optional model preset and effort per role (every role runs on
      EvoAB's built-in agent).
    Multiple agents become roles connected with `delegate`. Cross-episode learning
@@ -25,7 +25,7 @@ of `docs/architecture.md` before starting.
 2. Copy the closest built-in `method.yaml` or example recipe into a new file.
 3. Write method instructions in `prompt.append` or `prompts/*.md`. Do not edit
    integration prompts for a method.
-4. Validate: `evoab methods validate <file> --integration <each target>`.
+4. Validate: `evoab methods validate <file> --benchmark <each target>`.
 5. Check the composition offline:
    `PYTHONPATH=. python scripts/validation/recipe_composition.py` and
    `PYTHONPATH=. python scripts/validation/tool_composition.py`.

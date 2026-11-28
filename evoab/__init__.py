@@ -32,10 +32,10 @@ _EXPORTS = {
     "tool": ("tools.user", "tool"),
     "RunResult": ("records.artifacts.records", "RunResult"),
     "RunRecord": ("records.artifacts.records", "RunRecord"),
-    "SetupConfig": ("envs.docker.config", "SetupConfig"),
+    "ImageConfig": ("envs.docker.config", "ImageConfig"),
     "DeploymentConfig": ("envs.docker.config", "DeploymentConfig"),
     "Deployment": ("envs.docker.manager", "Deployment"),
-    "setup": ("envs.docker.setup", "setup"),
+    "pull_image": ("envs.docker.setup", "pull_image"),
     "deploy": ("envs.docker.manager", "start_deployment"),
 }
 __all__ = ["__version__", *_EXPORTS]

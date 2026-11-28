@@ -296,7 +296,7 @@ def check_integrations(*, requested: str | None = None) -> list[Check]:
             )
             checks.append(
                 Check(
-                    f"integration:{name}",
+                    f"benchmark:{name}",
                     status,
                     f"not importable: {type(error).__name__}: {error}",
                     hint,
@@ -305,7 +305,7 @@ def check_integrations(*, requested: str | None = None) -> list[Check]:
         else:
             checks.append(
                 Check(
-                    f"integration:{name}",
+                    f"benchmark:{name}",
                     "ok",
                     "importable; get_integration_spec present",
                 )

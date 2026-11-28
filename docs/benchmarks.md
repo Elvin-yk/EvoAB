@@ -6,12 +6,12 @@ simulator. Running methods on a prepared environment is in
 the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 [architecture](architecture.md#extend-evoab).
 
-| Integration | Kind | Image | Tools | Notes |
+| `--benchmark` | Kind | Image | Tools | Notes |
 |---|---|---|---|---|
 | `libero` | Original LIBERO | Public | Motion, policy (StarVLA) | Spatial, Object, Goal, Long, 90 |
 | `libero_pro` | LIBERO-PRO suites | Public | Motion | `_env`, `_object`, `_swap`, `_task`, `_lan` variants |
 | `calvin` | CALVIN Panda | Public | Motion, policy (StarVLA) | One task per episode |
-| `custom` | Your Gym-style benchmark | Your image | Motion | See [custom benchmarks](#custom-benchmarks) |
+| `NAME` (custom) | Your Gym-style benchmark | Your image | Motion | See [custom benchmarks](#custom-benchmarks) |
 
 ## Simulation image recording
 
@@ -20,7 +20,7 @@ Direct and Hybrid archive one camera group at step zero and then about every
 number of native steps and uses that stride throughout the episode.
 
 CALVIN uses a stride of 12 steps and the LIBERO family uses 8. Custom
-integrations set their stride through `control_hz`.
+benchmarks set their stride through `control_hz`.
 
 The environment artifact store saves one PNG per available camera in `images/`.
 Snapshot manifests in `artifacts/` identify the archived groups by
@@ -28,11 +28,23 @@ Snapshot manifests in `artifacts/` identify the archived groups by
 and tools use temporary storage. Rebuild and restart existing environment
 services to use this policy.
 
-## Preparing a runtime
+## Benchmark images
 
-Benchmark simulators run in Docker. To prepare a benchmark, `evoab setup` pulls the
-published upstream image (pinned by digest), adds a small local layer with EvoAB's Python dependencies, and records the result under
-`~/.cache/evoab` (or `--cache-dir`). Each launch then starts one container with
+Benchmark simulators run in Docker, one image per benchmark (every LIBERO suite
+shares one image). `evoab images pull BENCHMARK` pulls the published upstream
+image (pinned by digest), adds a small local layer with EvoAB's Python
+dependencies and records the image and the tasks it ships under `~/.cache/evoab`
+(or `--cache-dir`). Each command does one thing:
+
+| Command | What it does |
+|---|---|
+| `evoab images pull BENCHMARK` | Pull (or `--archive` import, or build) the image, add EvoAB's dependency layer, record its tasks |
+| `evoab images check BENCHMARK` | Start one task's environment from the pulled image once, then stop it (GPU, rendering, assets) |
+| `evoab images list` | Benchmark images on this machine and their task counts |
+| `evoab images rm BENCHMARK` | Remove one benchmark's image and record; runs stay |
+| `evoab benchmarks tasks BENCHMARK` | Task IDs, e.g. `libero_spatial/pick_up_the_black_bowl_…` (the suite is the prefix) |
+
+Each launch then starts one container with
 host networking, the run directory mounted at the same path and EvoAB's own code
 mounted read-only from the host, and removes it afterwards. Nothing is hosted by
 EvoAB.
@@ -40,7 +52,7 @@ EvoAB.
 **Images and code are separate.** An image holds the simulator, the benchmark at
 a pinned revision and EvoAB's dependencies, never EvoAB's code, and its tag is
 derived from exactly those inputs (`evoab/<name>:env-<hash>`). Updating or
-editing EvoAB needs no rebuild; setup rebuilds only when a benchmark's recipe or
+editing EvoAB needs no new pull; `images pull` rebuilds only when a benchmark's recipe or
 EvoAB's dependencies change, and otherwise reuses the image. LIBERO, LIBERO-PRO
 and CALVIN use AllenAI's published images
 ([vla-evaluation-harness](https://github.com/allenai/vla-evaluation-harness)).
@@ -50,19 +62,22 @@ Benchmark containers need the NVIDIA Container Toolkit. Studio: 设置 → 评�
 
 ```bash
 evoab benchmarks check                       # Docker, GPU containers, disk, model presets
-evoab setup --integration libero --runtime-profile libero_spatial
-evoab run --integration libero --runtime-profile libero_spatial --task TASK …   # starts the container, runs, stops it
+evoab images pull libero
+evoab benchmarks tasks libero --suite libero_spatial
+evoab run --benchmark libero --task libero_spatial/TASK …   # starts the container, runs, stops it
 ```
 
 Builds pick package and model mirrors automatically when Hugging Face is
 unreachable; set `PIP_INDEX_URL`, `HF_ENDPOINT` and similar variables to
 override, or `EVOAB_CONTAINER_BUILD_PROXY=1` to forward the host proxy. An
-image archive made with `docker save` can be imported instead of building
-(`--image-archive`, or Studio). 卸载 removes a Docker deployment. `--wheel`
+image archive made with `docker save` can be imported instead of pulling
+(`evoab images pull BENCHMARK --archive FILE`, or Studio). `evoab images rm` (Studio: 卸载) removes a Docker deployment.
+LIBERO-PRO's optional expert preview videos are downloaded separately with
+`evoab benchmarks previews libero_pro`. `--wheel`
 bakes a matching `evoab-runtime` release into the image instead of mounting the
 running package, for pinned, reproducible evaluation images.
 
-`evoab deploy env --integration calvin --task open_drawer --gpu 0` runs one
+`evoab deploy env --benchmark calvin --task open_drawer --gpu 0` runs one
 environment container in the foreground for runs that connect with
 `--env-url`. `deploy env` takes `--no-depth` itself; `evoab run` takes it from
 the recipe's `inputs`. Each environment
@@ -86,7 +101,9 @@ trusted machines.
 
 ## LIBERO, LIBERO-PRO
 
-Two separate images; stock LIBERO and its fork never share an interpreter.
+Two separate images; stock LIBERO and its fork never share an interpreter. Each
+image serves all of its suites: a task ID is `SUITE/TASK`, as
+`evoab benchmarks tasks libero` lists it.
 
 - **LIBERO**: public image; suites Spatial, Object, Goal, Long (`libero_10`) and
   `libero_90`, with official starting states selected by `--init-state-index`.
@@ -96,8 +113,8 @@ Two separate images; stock LIBERO and its fork never share an interpreter.
   initial states must exist for the exact task.
 
 ```bash
-evoab run --integration libero_pro --runtime-profile libero_object \
-  --task pick_up_the_cream_cheese_and_place_it_in_the_basket --recipe action --model my-model
+evoab run --benchmark libero_pro \
+  --task libero_object/pick_up_the_cream_cheese_and_place_it_in_the_basket --recipe action --model my-model
 ```
 
 Stock LIBERO can use `actor_act` with RoboScope's `starvla_libero_policy.py`
@@ -108,7 +125,7 @@ SDK available. Use the same actor configuration fields as [CALVIN](#calvin)
 with `backend = "starvla_libero"`.
 
 ```bash
-evoab run --integration libero --env-url http://127.0.0.1:18801 \
+evoab run --benchmark libero --env-url http://127.0.0.1:18801 \
   --recipe examples/recipes/policy.yaml --model MODEL_PRESET \
   --set 'roles.main.capabilities=[scene, hybrid, episode]' \
   --action-model-url http://127.0.0.1:8601 \
@@ -146,7 +163,7 @@ checkpoint_sha256 = "<checkpoint SHA-256>"
 For an Agent trial with only `actor_act` available for motion:
 
 ```bash
-evoab run --integration calvin --task open_drawer \
+evoab run --benchmark calvin --task open_drawer \
   --recipe examples/recipes/policy.yaml --model MY_PRESET \
   --set 'roles.main.capabilities=[scene, hybrid, episode]' \
   --action-model-url http://127.0.0.1:8601 \
@@ -160,7 +177,7 @@ model chunk by default. Use the policy recipe's default capabilities to enable
 both `actor_act` and the motion tools. The CALVIN binding runs without a chunk
 reviewer.
 
-Each integration's `SOURCE.md` pins the sources, assets and weights it was
+Each benchmark package's `SOURCE.md` pins the sources, assets and weights it was
 validated with.
 
 ## Custom benchmarks
@@ -175,6 +192,6 @@ observations, write actions and detect success
 host directories mounted at the same paths; `gpu = true` requests the GPU.
 
 ```bash
-evoab setup --integration custom --runtime-profile NAME
-evoab run --integration custom --runtime-profile NAME --task TASK …
+evoab images pull NAME
+evoab run --benchmark NAME --task TASK …
 ```
