@@ -1,7 +1,7 @@
 """Model-only result views for clean manipulation; execution records stay intact."""
 from copy import deepcopy
 
-from evoab.context.prompt import PromptContribution
+from evoab.agent.context.prompt import PromptContribution
 from evoab.tools.gripper.pose import quaternion_to_rpy
 from evoab.tools.presentation import round_physical
 

@@ -10,9 +10,9 @@ import jsonschema
 import numpy as np
 from PIL import Image
 
-from evoab.services.actor.contracts import ActorObservation, NumericChunk, validate_vector
-from evoab.services.actor.images import encode_image
-from evoab.services.environment.contracts import ArmCommand, JointCommand, JointTarget, Pose, PoseCommand, PreviewRequest, StepRequest
+from evoab.servers.actor.contracts import ActorObservation, NumericChunk, validate_vector
+from evoab.servers.actor.images import encode_image
+from evoab.envs.protocol.contracts import ArmCommand, JointCommand, JointTarget, Pose, PoseCommand, PreviewRequest, StepRequest
 from evoab.tools.gripper.opening import native_opening
 from evoab.tools.hybrid.contracts import HybridCapabilities, Proposal, StepOutcome
 from evoab.tools.hybrid.corrections.cartesian import (

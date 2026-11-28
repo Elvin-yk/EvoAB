@@ -5,13 +5,13 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
-from evoab.execution.scheduler import JobRecord, JobRegistry, ResourceScheduler
+from evoab.runtime.scheduler import JobRecord, JobRegistry, ResourceScheduler
 from evoab.tools.toolkit import (
     ToolDef, ToolOutput, ToolProvider, ToolSpec, bind_tools, schema,
 )
 
 if TYPE_CHECKING:
-    from evoab.execution import ExecutionResult
+    from evoab.runtime import ExecutionResult
 
 
 def tool_specs() -> list[ToolSpec]:
@@ -249,7 +249,7 @@ class JobTools(ToolProvider):
     @staticmethod
     def _execution_result(**kwargs) -> ExecutionResult:
         # Import lazily so ``evoab.tools.jobs`` remains safe to import first.
-        from evoab.execution import ExecutionResult
+        from evoab.runtime import ExecutionResult
 
         return ExecutionResult(**kwargs)
 

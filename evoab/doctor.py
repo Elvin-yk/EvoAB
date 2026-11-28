@@ -281,7 +281,7 @@ def check_required_dependencies() -> list[Check]:
 
 
 def check_integrations(*, requested: str | None = None) -> list[Check]:
-    from evoab.integrations import load_integration
+    from evoab.envs import load_integration
 
     names: Iterable[str] = (requested,) if requested else KNOWN_INTEGRATIONS
     checks = []

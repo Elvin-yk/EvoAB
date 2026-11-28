@@ -7,11 +7,11 @@ export PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}"
 exec "${PYTHON:-python}" - "$@" <<'PYTHON'
 import argparse
 import time
-from evoab.services.actor.contracts import ActorInfo
-from evoab.services.perception.contracts import PerceptionInfo
+from evoab.servers.actor.contracts import ActorInfo
+from evoab.servers.perception.contracts import PerceptionInfo
 from evoab.cli import build_parser, main
 from evoab.config import resolve_config
-from evoab.integrations.robodojo import get_integration_spec
+from evoab.envs.robodojo import get_integration_spec
 
 probe = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
 probe.add_argument("--startup-timeout-s", type=int, default=360)
@@ -28,8 +28,8 @@ if args.print_config or args.validate_config:
 if args.deploy == "local":
     main([*argv, "--startup-timeout-s", str(startup.startup_timeout_s)])
     raise SystemExit(0)
-from evoab.services.deployment.process import wait_for_service
-from evoab.services.environment.contracts import EpisodeInfo
+from evoab.envs.docker.process import wait_for_service
+from evoab.envs.protocol.contracts import EpisodeInfo
 expected = {"integration": "robodojo"}
 if args.run_id:
     expected["episode_id"] = args.run_id

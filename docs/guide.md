@@ -208,7 +208,7 @@ To exercise the verifier transport, start the stub in a separate terminal with
 a shared directory containing the session files and environment image archive.
 
 ```bash
-python -m evoab.services.verifier.server --runs-root ./outputs --port 18780
+python -m evoab.servers.verifier.server --runs-root ./outputs --port 18780
 ```
 
 Add `--verifier-url http://127.0.0.1:18780` to `evoab run`, or set

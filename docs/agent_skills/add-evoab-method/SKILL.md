@@ -36,8 +36,8 @@ of `docs/architecture.md` before starting.
 
 - New robot operation → a tool family in `evoab/tools/<family>/` and a
   `ToolModule` published by the integrations that support it.
-- New action format → a `Representation` in `evoab/direct/actions.py`.
-- New loop structure → extend `evoab/composition/` (recipe, compiler, session
+- New action format → a `Representation` in `evoab/agent/act/action/actions.py`.
+- New loop structure → extend `evoab/recipe/` (recipe, compiler, session
   role runner) with tests; do not special-case a method id anywhere.
 
 Never put credentials or machine paths in recipes or cards.

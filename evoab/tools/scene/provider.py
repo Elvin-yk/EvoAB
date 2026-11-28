@@ -1,9 +1,9 @@
 """Read and localize immutable scenes without owning motion or lifecycle."""
 from dataclasses import replace
 
-from evoab.context.prompt import PromptContribution
-from evoab.execution.scheduler import ToolExecutionPolicy
-from evoab.services.environment.contracts import CaptureRequest
+from evoab.agent.context.prompt import PromptContribution
+from evoab.runtime.scheduler import ToolExecutionPolicy
+from evoab.envs.protocol.contracts import CaptureRequest
 from evoab.tools.presentation import state_for_model
 from evoab.tools.scene.perception import locate, snapshot_images, snapshot_metadata
 from evoab.tools.toolkit import ToolOutput, ToolProvider, ToolSpec, bind_tools, schema

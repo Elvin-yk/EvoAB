@@ -4,11 +4,11 @@ recursive-include .github/workflows *.yml
 recursive-include assets *.md *.png *.html *.pdf *.sh *.txt
 recursive-include scripts *.sh *.py *.json *.md *.txt *.toml *.ts
 recursive-exclude * __pycache__ *.py[cod]
-prune evoab/integrations/robodojo/resources
+prune evoab/envs/robodojo/resources
 recursive-include examples *.sh *.py *.json *.toml *.md *.yaml *.yml
 prune archive
 prune tests
 
 
-recursive-include evoab/integrations *.toml
-recursive-include evoab/services *.toml
+recursive-include evoab/envs *.toml
+recursive-include evoab/servers *.toml

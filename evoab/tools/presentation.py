@@ -15,7 +15,7 @@ def round_physical(value):
 
 def state_for_model(state):
     """Keep provenance and timing intact while formatting measured robot state."""
-    from evoab.context.prompt import without_evaluation_facts
+    from evoab.agent.context.prompt import without_evaluation_facts
     result = without_evaluation_facts(state)
     for arm in result["arms"].values():
         for key in ("control_pose", "joints", "gripper", "gripper_command"):

@@ -18,8 +18,8 @@ import unittest
 from unittest.mock import patch
 
 from evoab import SessionConfig
-from evoab.integrations import load_integration
-from evoab.services.environment.contracts import (
+from evoab.envs import load_integration
+from evoab.envs.protocol.contracts import (
     ArmDescription, CameraDescription, EnvironmentDescription, EpisodeInfo,
 )
 from evoab.session import assemble_session
@@ -123,18 +123,18 @@ def assembled(configuration, directory, *, command="run", binding_error=False, c
         validate_decision=lambda *a: None)
     assembly = None
     with ExitStack() as stack:
-        stack.enter_context(patch("evoab.integrations.prepared_episode.EnvironmentClient",
+        stack.enter_context(patch("evoab.envs.prepared_episode.EnvironmentClient",
                                   return_value=environment))
         stack.enter_context(patch("evoab.tools.gripper.provider.GripperTools.hold",
                                   return_value=ToolOutput(extra={"held": True})))
-        actor_mock = stack.enter_context(patch("evoab.integrations.hybrid.ActorClient",
+        actor_mock = stack.enter_context(patch("evoab.envs.hybrid.ActorClient",
                                               side_effect=actor))
-        stack.enter_context(patch("evoab.integrations.hybrid.ChunkReviewer", side_effect=reviewer))
-        stack.enter_context(patch("evoab.services.perception.client.PerceptionClient",
+        stack.enter_context(patch("evoab.envs.hybrid.ChunkReviewer", side_effect=reviewer))
+        stack.enter_context(patch("evoab.servers.perception.client.PerceptionClient",
                                  side_effect=AssertionError("Unexpected perception connection")))
         if args.integration in HYBRID:
             stack.enter_context(patch(
-                f"evoab.integrations.{args.integration}.action_binding.create_binding",
+                f"evoab.envs.{args.integration}.action_binding.create_binding",
                 side_effect=ValueError("Fixture rejects binding") if binding_error else None,
                 return_value=binding))
         try:
@@ -213,7 +213,7 @@ class CompositionChecks(unittest.TestCase):
                                 self.assertEqual(len(owned), 2 if profile == "hybrid" else 0)
                                 modules = assembly.integration_session.tool_providers
                                 self.assertEqual("hybrid" in {p.provider_id for p in modules}, profile == "hybrid")
-                                from evoab.execution.code_as_policy.bridge import CodePolicyBridge
+                                from evoab.agent.act.code.bridge import CodePolicyBridge
                                 bridge = CodePolicyBridge(assembly.executor)
                                 self.assertEqual(bridge.get_tool_schemas(), assembly.executor.get_tool_schemas())
                                 bridge.close()
@@ -317,7 +317,7 @@ class CompositionChecks(unittest.TestCase):
 
     def test_observation_and_skill_writing_remain_optional(self):
         from evoab.tools.observation import ObservationTools
-        from evoab.context.prompt import PromptContribution
+        from evoab.agent.context.prompt import PromptContribution
         hub = SimpleNamespace(capture_observation=lambda: {"observation_id": "fixture"})
         profile = SimpleNamespace(tools=ObservationTools(hub).get_tools(), policies={},
             listeners=(), prompt_contributions=(PromptContribution(system="Fixture observer guidance"),),
@@ -352,7 +352,7 @@ class CompositionChecks(unittest.TestCase):
         with assembled(config(overrides=observe), self.directory) as (assembly, *_):
             self.assertFalse({"move", "grasp", "release", "hold"} & surface(assembly))
             self.assertNotIn("Gripper operation labels", assembly.build_prompt("Observe").flatten())
-        from evoab.integrations.composition import validate_modules
+        from evoab.envs.composition import validate_modules
         spec = load_integration("robodojo").get_integration_spec()
         with self.assertRaisesRegex(ValueError, "Duplicate tool module"):
             validate_modules((spec.tool_modules[0], spec.tool_modules[0]))
@@ -381,7 +381,7 @@ class CompositionChecks(unittest.TestCase):
             config(overrides={"roles.main.action": {"horizon": [1, 4]}}).resolve()
 
     def test_clean_method_is_the_compact_four_tool_contract(self):
-        observation = patch("evoab.integrations.prepared_episode.Episode.observation", return_value={})
+        observation = patch("evoab.envs.prepared_episode.Episode.observation", return_value={})
         images = patch("evoab.tools.scene.perception.snapshot_images", return_value=[])
         metadata = patch("evoab.tools.scene.perception.snapshot_metadata", return_value={"snapshot_id": "fixture"})
         with observation, images, metadata, \

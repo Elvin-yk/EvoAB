@@ -7,9 +7,9 @@ from io import BytesIO
 import numpy as np
 from PIL import Image, ImageDraw
 
-from evoab.services.environment.contracts import RequestRejected
-from evoab.services.environment.snapshots import CameraFrame
-from evoab.services.perception.contracts import PointQuery, TextQuery
+from evoab.envs.protocol.contracts import RequestRejected
+from evoab.envs.protocol.snapshots import CameraFrame
+from evoab.servers.perception.contracts import PointQuery, TextQuery
 from evoab.tools.presentation import round_physical
 from evoab.tools.scene.geometry import (
     mask_geometry_quality,

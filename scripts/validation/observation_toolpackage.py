@@ -28,11 +28,11 @@ from fastapi import APIRouter
 from PIL import Image
 
 from evoab import SessionConfig
-from evoab.artifacts.mirror import RemoteArtifactMirror
-from evoab.artifacts.store import ArtifactStore
-from evoab.integrations.robodojo.actor_profiles import X5_CAMERAS
-from evoab.integrations.robodojo.x5_observation import x5_observation
-from evoab.observation.toolpackage import (
+from evoab.records.artifacts.mirror import RemoteArtifactMirror
+from evoab.records.artifacts.store import ArtifactStore
+from evoab.envs.robodojo.actor_profiles import X5_CAMERAS
+from evoab.envs.robodojo.x5_observation import x5_observation
+from evoab.envs.observation.toolpackage import (
     AutoPromptConfig,
     DetectionAnnotation,
     FrameInput,
@@ -45,14 +45,14 @@ from evoab.observation.toolpackage import (
     TargetSpec,
     load_pipeline_config,
 )
-from evoab.observation.toolpackage.pipeline import ObservationPipeline, annotation_iou, deduplicate_annotations
-from evoab.observation.toolpackage.plugins import create_processor
-from evoab.observation.toolpackage.plugins.foundationpose import FoundationPoseProcessor
-from evoab.observation.toolpackage.plugins.sam3 import Sam3Processor
-from evoab.observation.toolpackage.prompts import extract_prompts_by_rule, resolve_targets
-from evoab.observation.toolpackage.renderer import render_annotations
-from evoab.services.environment.client import EnvironmentClient
-from evoab.services.environment.contracts import (
+from evoab.envs.observation.toolpackage.pipeline import ObservationPipeline, annotation_iou, deduplicate_annotations
+from evoab.envs.observation.toolpackage.plugins import create_processor
+from evoab.envs.observation.toolpackage.plugins.foundationpose import FoundationPoseProcessor
+from evoab.envs.observation.toolpackage.plugins.sam3 import Sam3Processor
+from evoab.envs.observation.toolpackage.prompts import extract_prompts_by_rule, resolve_targets
+from evoab.envs.observation.toolpackage.renderer import render_annotations
+from evoab.envs.protocol.client import EnvironmentClient
+from evoab.envs.protocol.contracts import (
     ArmDescription,
     ArmState,
     CameraDescription,
@@ -67,11 +67,11 @@ from evoab.services.environment.contracts import (
     StepReceipt,
     StepRequest,
 )
-from evoab.services.environment.routes import build_router
-from evoab.services.environment.service import EnvironmentService
-from evoab.services.environment.snapshots import CameraFrame, CapturedObservation
-from evoab.services.hosting import HttpServer, create_app
-from evoab.services.perception.backend import SegmentationResult
+from evoab.envs.protocol.routes import build_router
+from evoab.envs.protocol.service import EnvironmentService
+from evoab.envs.protocol.snapshots import CameraFrame, CapturedObservation
+from evoab.servers.hosting import HttpServer, create_app
+from evoab.servers.perception.backend import SegmentationResult
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -328,7 +328,7 @@ class ObservationToolPackageTests(unittest.TestCase):
             vlm_api_key_env="TEST_OB_VLM_KEY",
         )
         with patch.dict(os.environ, {"TEST_OB_VLM_KEY": "secret-token"}):
-            with patch("evoab.observation.toolpackage.prompts.httpx.post", return_value=fake_response):
+            with patch("evoab.envs.observation.toolpackage.prompts.httpx.post", return_value=fake_response):
                 vlm_targets = resolve_targets(
                     task="custom",
                     instruction="Stack the bowl on the cup",
@@ -339,7 +339,7 @@ class ObservationToolPackageTests(unittest.TestCase):
             self.assertEqual(vlm_targets[0].source, "auto_vlm")
 
             # Fallback to rule extractor when VLM fails in hybrid mode
-            with patch("evoab.observation.toolpackage.prompts.httpx.post", side_effect=RuntimeError("boom")):
+            with patch("evoab.envs.observation.toolpackage.prompts.httpx.post", side_effect=RuntimeError("boom")):
                 fallback_targets = resolve_targets(
                     task="custom",
                     instruction="Place the green apple into the yellow basket",
@@ -631,12 +631,12 @@ class ObservationToolPackageTests(unittest.TestCase):
         from unittest import mock
         from evoab.cli import build_parser
         from evoab.config import resolve_settings
-        from evoab.integrations import load_integration
+        from evoab.envs import load_integration
         spec = load_integration("robodojo").get_integration_spec()
         argv = ["run", "--integration", "robodojo", "--recipe", "tools", "--model", "fixture",
                 "--task", "stack_bowls", "--env-url", "http://127.0.0.1:18760",
                 "--obs-pipeline", str(pipeline_path)]
-        with mock.patch("evoab.provider.catalog.presets", return_value=[{"name": "fixture"}]):
+        with mock.patch("evoab.agent.models.catalog.presets", return_value=[{"name": "fixture"}]):
             checked = resolve_settings(build_parser(spec).parse_args(argv), spec)
         self.assertEqual(checked.obs_pipeline, str(pipeline_path.resolve()))
 

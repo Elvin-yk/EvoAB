@@ -12,38 +12,38 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from evoab.artifacts.run import build_run_result, read_result_json, write_result_json
-from evoab.artifacts.records import RunResult
+from evoab.records.artifacts.run import build_run_result, read_result_json, write_result_json
+from evoab.records.artifacts.records import RunResult
 from evoab.tools.client import ToolClient
 from evoab.config import SessionConfig
-from evoab.events import SessionOpened, SessionClosed
-from evoab.artifacts.store import ArtifactStore
-from evoab.events.subscribers import (
+from evoab.records.events import SessionOpened, SessionClosed
+from evoab.records.artifacts.store import ArtifactStore
+from evoab.records.events.subscribers import (
     ConsoleSubscriber,
     EventJsonlSubscriber,
     EventSubscriptions,
 )
 from evoab.config import runtime_env
-from evoab.context.prompt import PromptContext, assemble_prompt, get_prompt_builder
-from evoab.events import ErrorEvent, EventBus, AgentRunFinished, Event
-from evoab.observation import load_observation_profile
-from evoab.agents import create_agent, get_agent_backend
-from evoab.agents.contracts import AgentInterrupted
-from evoab.integrations import load_integration
-from evoab.integrations.base import (
+from evoab.agent.context.prompt import PromptContext, assemble_prompt, get_prompt_builder
+from evoab.records.events import ErrorEvent, EventBus, AgentRunFinished, Event
+from evoab.envs.observation import load_observation_profile
+from evoab.agent.loop import NativeAgent
+from evoab.agent.contracts import AgentInterrupted
+from evoab.envs import load_integration
+from evoab.envs.base import (
     IntegrationSession,
     IntegrationContext,
     EpisodeOutcome,
 )
-from evoab.execution import (
+from evoab.runtime import (
     create_executor,
     ToolExecutor,
     connect_execution_events,
 )
-from evoab.telemetry import TelemetrySession, create_telemetry
-from evoab.telemetry.logging import get_logger
+from evoab.records.telemetry import TelemetrySession, create_telemetry
+from evoab.records.telemetry.logging import get_logger
 from evoab.tools.toolkit import Toolkit
-from evoab.execution.views import ToolView, waits_for_output
+from evoab.runtime.views import ToolView, waits_for_output
 
 
 @dataclass
@@ -85,7 +85,7 @@ class RoleDispatch:
 
 def _union_modules(compiled) -> tuple:
     """Instantiate each module once for all roles: the union of their tool subsets."""
-    from evoab.integrations.composition import ModuleSelection, SelectedModule
+    from evoab.envs.composition import ModuleSelection, SelectedModule
     merged: dict[str, SelectedModule] = {}
     order = [compiled.entry, *(role for name, role in compiled.roles.items() if name != compiled.recipe.loop.entry)]
     for role in order:
@@ -105,7 +105,7 @@ def _union_modules(compiled) -> tuple:
 
 def assemble_session(args) -> SessionAssembly:
     """Assemble tools and executor through IntegrationSession without depending on transport details."""
-    from evoab.composition import experience
+    from evoab.agent.memory import experience
     session = None
     executor = None
     observation_profile = None
@@ -134,7 +134,7 @@ def assemble_session(args) -> SessionAssembly:
         integration_mod = load_integration(args.integration)
         integration_spec = integration_mod.get_integration_spec()
         if getattr(args, "obs_pipeline", None) and not getattr(args, "_obs_proxied", False):
-            from evoab.observation.toolpackage import ObservationProxyServer, load_pipeline_config
+            from evoab.envs.observation.toolpackage import ObservationProxyServer, load_pipeline_config
 
             obs_proxy = ObservationProxyServer(
                 upstream_url=args.env_url,
@@ -156,7 +156,7 @@ def assemble_session(args) -> SessionAssembly:
             )
         )
         session.start()
-        from evoab.composition.compiler import check_inputs
+        from evoab.recipe.compiler import check_inputs
         check_inputs(args.recipe.inputs, getattr(session.episode, "description", None))
 
         telemetry.annotate(
@@ -181,10 +181,10 @@ def assemble_session(args) -> SessionAssembly:
         for role in compiled.roles.values():
             for name in role.delegates:
                 target = compiled.roles[name]
-                from evoab.tools.delegation.provider import DelegateTarget
+                from evoab.agent.team.delegation.provider import DelegateTarget
                 targets[name] = DelegateTarget(name, target.role.description, target.act, "native")
         if targets:
-            from evoab.tools.delegation.provider import DelegationTools, tool_policies as delegation_policies
+            from evoab.agent.team.delegation.provider import DelegationTools, tool_policies as delegation_policies
             dispatch = RoleDispatch()
             tools.extend(DelegationTools(targets, dispatch).get_tools())
             policies.update(delegation_policies(targets))
@@ -194,7 +194,7 @@ def assemble_session(args) -> SessionAssembly:
         if chunk_roles:
             if len({repr(role.direct) for role in chunk_roles}) > 1:
                 raise ValueError("roles that emit action chunks in an agent session must share one action setting")
-            from evoab.tools.action.provider import ActionTools
+            from evoab.agent.act.action.tool import ActionTools
             action_tools = ActionTools(session.episode, chunk_roles[0].direct, integration=args.integration,
                                        output_dir=session_dir)
             tools.extend(action_tools.get_tools())
@@ -214,7 +214,7 @@ def assemble_session(args) -> SessionAssembly:
             tools.extend(observation_profile.tools)
 
         def visible(role) -> frozenset[str]:
-            from evoab.tools.delegation.provider import tool_name
+            from evoab.agent.team.delegation.provider import tool_name
             names = set()
             for item in role.modules:
                 provided = module_tools.get(item.name, set())
@@ -484,8 +484,7 @@ class Session:
             self._deadline = time.monotonic() + timeout_s
         try:
             if args.agent_backend is not None:
-                self._agent = create_agent(args.agent_backend, model=args.model, timeout_s=timeout_s,
-                    **get_agent_backend(args.agent_backend).config_options(args))
+                self._agent = NativeAgent(model=args.model, timeout_s=timeout_s, **NativeAgent.config_options(args))
             self._assembly = assemble_session(args)
             assembly = self._assembly
             if self._console:
@@ -558,7 +557,7 @@ class Session:
 
     def _run_role(self, role: str, instruction: str) -> dict:
         """Run another recipe role against this episode; called by its delegate tool."""
-        from evoab.composition.roles import role_namespace
+        from evoab.agent.team.roles import role_namespace
 
         args, assembly = self._args, self._assembly
         compiled = args.compiled_recipe.roles[role]
@@ -570,8 +569,7 @@ class Session:
         timeout_s = None if self._deadline is None else max(0.001, self._deadline - time.monotonic())
         started = time.time()
         agent_name = role_args.agent_backend
-        agent = create_agent(agent_name, model=role_args.model, timeout_s=timeout_s,
-                             **get_agent_backend(agent_name).config_options(role_args))
+        agent = NativeAgent(model=role_args.model, timeout_s=timeout_s, **NativeAgent.config_options(role_args))
         with self._role_lock:
             self._role_agents.add(agent)
         try:
@@ -664,7 +662,7 @@ def run(args) -> None:
     state, error = "finished", None
     try:
         if getattr(args, "monitor", False) and not getattr(args, "_monitor_parent", False):
-            from evoab.ui.web.runtime import LiveMonitor
+            from evoab.apps.web.runtime import LiveMonitor
             if not getattr(args, "_session_dir", None):
                 args._session_dir = str(Path(args.output_dir or "outputs") / f"{args.integration}_{int(time.time())}_{uuid4().hex[:8]}")
             monitor = LiveMonitor(args, args._session_dir).start()
@@ -704,24 +702,6 @@ def _run_cli(args) -> None:
 
 
 def _log_agent_result(result):
-    if result.train_path and result.train_partial:
-        logger.warning(
-            "Partial training trajectory saved: %s (%s)",
-            result.train_path,
-            result.train_stop_reason,
-        )
-    elif result.train_path:
-        logger.info("Training trajectory saved: %s", result.train_path)
-    if result.train_error:
-        if result.train_debug_path:
-            logger.warning(
-                "Training trajectory validation failed: %s; diagnostic trajectory saved: %s",
-                result.train_error,
-                result.train_debug_path,
-            )
-        else:
-            logger.warning("Training trajectory not saved: %s", result.train_error)
-
     if result.success:
         logger.info(
             "Completed (turns=%d): %s", result.turns_used, result.message[:200]
@@ -794,7 +774,7 @@ def _finalize_run(assembly, subscriptions, args, result, error_msg, started, *, 
         outcome = replace(outcome, retryable=False)
     task_success = outcome.success
     try:
-        from evoab.composition import experience
+        from evoab.agent.memory import experience
         experience.persist(args, assembly.session_dir, outcome.success)
     except Exception as error:  # noqa: BLE001 - experience is secondary to the official record.
         storage_errors = {**(storage_errors or {}), "experience": str(error)}
@@ -822,7 +802,7 @@ def _finalize_run(assembly, subscriptions, args, result, error_msg, started, *, 
     verifier_url = getattr(args, "verifier_url", None)
     job = None
     if verifier_url:
-        from evoab.services.verifier.contracts import VerificationJob
+        from evoab.servers.verifier.contracts import VerificationJob
         candidate = VerificationJob.for_session(assembly.session_dir, uuid4())
         errors = record.get("storage_errors", {})
         unavailable = [path.name for path in (candidate.native_outcome_path, candidate.trajectory_path)
@@ -852,7 +832,7 @@ def _finalize_run(assembly, subscriptions, args, result, error_msg, started, *, 
         error_msg=error_msg,
     )
     if job is not None and not finally_error:
-        from evoab.services.verifier.client import submit_verification
+        from evoab.servers.verifier.client import submit_verification
         try:
             submit_verification(verifier_url, job, args.verifier_timeout_s)
         except Exception as error:
@@ -931,9 +911,9 @@ def _run_agent(
 
     try:
         if "code" in act:
-            from evoab.context.code_as_policy import prepare_code_policy
-            from evoab.execution.code_as_policy.bridge import CodePolicyBridge
-            from evoab.execution.code_as_policy.runner import ProgramTools
+            from evoab.agent.context.code_as_policy import prepare_code_policy
+            from evoab.agent.act.code.bridge import CodePolicyBridge
+            from evoab.agent.act.code.runner import ProgramTools
 
             code_bridge = CodePolicyBridge(request["executor"], event_bus=event_bus)
             code_url = code_bridge.start()

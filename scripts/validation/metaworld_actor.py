@@ -9,12 +9,12 @@ from unittest.mock import Mock
 import numpy as np
 from PIL import Image
 
-from evoab.integrations.metaworld.action_binding import MetaWorldBinding
-from evoab.integrations.metaworld.adapter import CAMERAS, MetaWorldAdapter, native_action
-from evoab.services.actor.contracts import NumericChunk, validate_observation
-from evoab.services.actor.images import decode_image
-from evoab.services.actor.metaworld_profile import ACTION_BINDING, POLICY_CAMERA, PROPRIOCEPTION, actor_profile
-from evoab.services.environment.contracts import ArmCommand, Pose, PoseCommand, RequestRejected
+from evoab.envs.metaworld.action_binding import MetaWorldBinding
+from evoab.envs.metaworld.adapter import CAMERAS, MetaWorldAdapter, native_action
+from evoab.servers.actor.contracts import NumericChunk, validate_observation
+from evoab.servers.actor.images import decode_image
+from evoab.servers.actor.metaworld_profile import ACTION_BINDING, POLICY_CAMERA, PROPRIOCEPTION, actor_profile
+from evoab.envs.protocol.contracts import ArmCommand, Pose, PoseCommand, RequestRejected
 
 
 class MetaWorldActorChecks(unittest.TestCase):

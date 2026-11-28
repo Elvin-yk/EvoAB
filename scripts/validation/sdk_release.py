@@ -61,19 +61,19 @@ print('Installed SDK:', evoab.__file__)
 from importlib.util import find_spec
 import evoab
 from evoab import Session, SessionConfig, SetupConfig, DeploymentConfig
-from evoab.context.prompt import get_prompt_builder
-from evoab.integrations.robodojo.action_binding import create_binding as x5_binding
+from evoab.agent.context.prompt import get_prompt_builder
+from evoab.envs.robodojo.action_binding import create_binding as x5_binding
 from evoab.tools.hybrid.provider import HybridTools
-from evoab.services.actor.backends.openpi.config import resolve_config, recipe_settings
+from evoab.servers.actor.backends.openpi.config import resolve_config, recipe_settings
 import sys
 assert callable(x5_binding)
 assert not any(name in sys.modules for name in ('isaacsim', 'mujoco', 'torch', 'scipy'))
 root = Path(evoab.__file__).parent
 assert callable(get_prompt_builder('robodojo'))
-for resource in ('ui/web/static/index.html', 'ui/web/static/app.js',
-                 'integrations/robodojo/deployment.toml',
-                 'integrations/metaworld/container.toml', 'integrations/metaworld/Dockerfile',
-                 'services/actor/recipes/robodojo_pi05.toml'):
+for resource in ('apps/web/static/index.html', 'apps/web/static/app.js',
+                 'envs/robodojo/deployment.toml',
+                 'envs/metaworld/container.toml', 'envs/metaworld/Dockerfile',
+                 'servers/actor/recipes/robodojo_pi05.toml'):
     assert (root / resource).is_file(), resource
 session = Session(SessionConfig(integration='libero_pro',
     env_url='http://127.0.0.1:18760'))
@@ -117,7 +117,7 @@ except ValueError as error:
 else:
     raise AssertionError('A method needing an unavailable capability was accepted')
 assert {'tools', 'code', 'action'} == {
-    m.id for m in __import__('evoab.composition.methods', fromlist=['x']).list_methods()}
+    m.id for m in __import__('evoab.recipe.methods', fromlist=['x']).list_methods()}
 for resource in ('methods/tools/method.yaml', 'methods/action/CARD.md', 'resources/prompts/runtime/tools_and_code.md'):
     assert (root / resource).is_file(), resource
 SetupConfig(integration='robodojo')
@@ -132,12 +132,12 @@ except ValueError as error:
     assert 'requires --no-depth' in str(error)
 else:
     raise AssertionError('Uncalibrated depth configuration accepted')
-from evoab.integrations.robodojo.prompt import load_task_requirements
+from evoab.envs.robodojo.prompt import load_task_requirements
 assert load_task_requirements('make_kong') == ''
 assert '2 cm' not in load_task_requirements('arrange_largest_number_random')
 assert 'object itself more than 10 cm' in load_task_requirements('general_pickup')
 for name in ('robodojo_internal', 'efe', 'franka_robotiq', 'franka_sharpa', '_franka', 'dexterous_hand'):
-    assert find_spec(f'evoab.integrations.{name}') is None, name
+    assert find_spec(f'evoab.envs.{name}') is None, name
     assert not (root / 'integrations' / name).exists(), name
 for name in ('gripper', 'robodojo_internal', 'efe', 'franka_robotiq', 'franka_sharpa'):
     try:

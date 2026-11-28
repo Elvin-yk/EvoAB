@@ -18,7 +18,7 @@ def main():
     wheel, directory = args.wheel.resolve(), args.directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
     with zipfile.ZipFile(wheel) as archive:
-        recipe = tomllib.loads(archive.read('evoab/integrations/robodojo/deployment.toml').decode())
+        recipe = tomllib.loads(archive.read('evoab/envs/robodojo/deployment.toml').decode())
     constraints = directory / 'constraints.txt'
     constraints.write_text('\n'.join(recipe['constraints']) + '\n')
     venv.create(directory / 'venv', with_pip=True)
@@ -38,8 +38,8 @@ import sys
 import httpx
 from fastapi import APIRouter
 import evoab
-from evoab.services.hosting import HttpServer, create_app
-from evoab.integrations.robodojo.environment import server
+from evoab.servers.hosting import HttpServer, create_app
+from evoab.envs.robodojo.environment import server
 assert pathlib.Path(evoab.__file__).is_relative_to(sys.prefix)
 assert evoab.__version__ == metadata.version('evoab-runtime')
 for name in ('openai_codex', 'claude_agent_sdk', 'mcp', 'textual'):
@@ -72,7 +72,7 @@ print('Native dependencies, imports, HTTP request, shutdown and signal ownership
 ''')
     run(python, '-I', '-c', '''
 from pathlib import Path
-from evoab.integrations.robodojo.assets import asset_overlay, verify_robot_configs
+from evoab.envs.robodojo.assets import asset_overlay, verify_robot_configs
 source, target = Path('shared-assets').resolve(), Path('private/Assets').resolve()
 for robot in ('x5', 'franka'):
     directory = source / 'Robots' / robot
@@ -100,7 +100,7 @@ from pathlib import Path
 import sys
 import zipfile
 from evoab import SetupConfig, setup
-from evoab.services.deployment.setup import validate_runtime_wheel
+from evoab.envs.docker.setup import validate_runtime_wheel
 validate_runtime_wheel(Path(sys.argv[1]))
 bad = Path('wrong-version.whl')
 with zipfile.ZipFile(bad, 'w') as archive:

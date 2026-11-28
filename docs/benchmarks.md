@@ -75,25 +75,25 @@ protocols and can be started in any Python environment that has the model's
 dependencies:
 
 ```bash
-python -m evoab.services.actor.server --config ACTOR.toml        # backends: openpi, xpolicylab, starvla_calvin
-python -m evoab.services.perception.server --checkpoint sam3.pt --port 18762
+python -m evoab.servers.actor.server --config ACTOR.toml        # backends: openpi, xpolicylab, starvla_calvin
+python -m evoab.servers.perception.server --checkpoint sam3.pt --port 18762
 ```
 
-The `robodojo_pi05` recipe (`evoab/services/actor/recipes/`) names the pinned
+The `robodojo_pi05` recipe (`evoab/servers/actor/recipes/`) names the pinned
 OpenPI source and checkpoint for RoboDojo's Pi0.5. Services bind localhost and
 have no internet-facing authentication: run them on trusted machines.
 
 ## RoboDojo
 
 Dual-arm ARX X5 in Isaac Sim 5.1 from the pinned official checkout
-([provenance](../evoab/integrations/robodojo/SOURCE.md)). The container build
+([provenance](../evoab/envs/robodojo/SOURCE.md)). The container build
 needs the NVIDIA Isaac Sim EULA accepted (`--accept-license 'NVIDIA Isaac Sim EULA'`)
 and about 38.5 GiB of assets.
 
 - **Tasks.** 42 tasks in five dimensions: generalization 12, memory 6,
   precision 8, long-horizon 8, open 8. Each generalization task also has a
   `<task>_random` config with a changed initial arrangement, so 54 configs run
-  (`evoab/integrations/robodojo/tasks.py`).
+  (`evoab/envs/robodojo/tasks.py`).
 - **Seeds and layouts.** An episode is one frozen layout
   `Assets/Eval_Layout/RoboDojo/arx_x5/<seed>/<task>_<layout>.json`. `--seed`
   (0, 1, 2) picks the official evaluation set and `--layout-id` the scene in it;
@@ -120,7 +120,7 @@ processor files. Prepare the configuration and tokenizer files for
 `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` separately. The policy checkpoint
 supplies the model weights.
 
-Start `python -m evoab.services.actor.server --config ACTOR.toml` in a LeRobot
+Start `python -m evoab.servers.actor.server --config ACTOR.toml` in a LeRobot
 runtime with SmolVLA dependencies and `num2words`. The reference checkpoint
 was tested with LeRobot 0.4.4:
 
@@ -163,7 +163,7 @@ evoab run --integration libero_pro --runtime-profile libero_object \
 Stock LIBERO can use `actor_act` with RoboScope's `starvla_libero_policy.py`
 and `StarVLA/Qwen2.5-VL-OFT-LIBERO-4in1`. Prepare the checkpoint with the
 RoboScope LIBERO configuration and start its policy socket. Run
-`python -m evoab.services.actor.server --config ACTOR.toml` with the RoboScope
+`python -m evoab.servers.actor.server --config ACTOR.toml` with the RoboScope
 SDK available. Use the same actor configuration fields as [CALVIN](#calvin)
 with `backend = "starvla_libero"`.
 
@@ -199,7 +199,7 @@ reset hash and continues to score the outcome with the native task oracle.
 The CALVIN StarVLA bridge was validated with RoboScope's StarVLA runtime and
 the `Simplicissimus-S/StarVLA-QwenGR00T_Qwen2.5-VL-3B-Instruct-Action_calvin_D_D`
 checkpoint. Start a fresh StarVLA policy socket, then run
-`python -m evoab.services.actor.server --config ACTOR.toml` in a runtime that
+`python -m evoab.servers.actor.server --config ACTOR.toml` in a runtime that
 has the RoboScope SDK on its Python path. The bridge checks the checkpoint
 hash and loads the CALVIN D-to-D policy on that socket.
 
@@ -238,7 +238,7 @@ package on top and starts one container per episode. Register a TOML manifest in
 a Python ≥ 3.10 that has pip), the interpreter inside it, a `make(task_id, seed)`
 function returning a Gym-style environment, its tasks, and how to read
 observations, write actions and detect success
-([schema](../evoab/integrations/custom/manifest.py)). `path` and `mounts` name
+([schema](../evoab/envs/custom/manifest.py)). `path` and `mounts` name
 host directories mounted at the same paths; `gpu = true` requests the GPU.
 
 ```bash

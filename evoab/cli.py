@@ -14,7 +14,7 @@ from evoab.config import (
     public_config,
     resolve_config,
 )
-from evoab.integrations import load_integration
+from evoab.envs import load_integration
 
 
 WORKBENCH_COMMANDS = {
@@ -140,7 +140,7 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     )
     if integration_spec is not None:
         integration_spec.add_cli_args(common)
-    from evoab.services.deployment.config import add_runtime_arguments, add_launch_arguments
+    from evoab.envs.docker.config import add_runtime_arguments, add_launch_arguments
     run = subparsers.add_parser(
         "run", parents=[common], allow_abbrev=False, help="Run an agent on one robot task"
     )
@@ -171,7 +171,7 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     _add_doctor_arguments(doctor)
-    from evoab.observation.toolpackage.cli import add_ob_proxy_arguments
+    from evoab.envs.observation.toolpackage.cli import add_ob_proxy_arguments
     ob_proxy = subparsers.add_parser(
         "ob-proxy",
         help="Run a standalone observation-enhancement proxy in front of an environment service",
@@ -219,11 +219,11 @@ def main(argv=None, *, _supervised=False) -> None:
     if argv and argv[0] == "doctor":
         raise SystemExit(_run_doctor(argv[1:]))
     if argv and argv[0] == "ob-proxy":
-        from evoab.observation.toolpackage.cli import main as ob_proxy_main
+        from evoab.envs.observation.toolpackage.cli import main as ob_proxy_main
         raise SystemExit(ob_proxy_main(argv[1:]))
     # Same operations as Studio; they need no integration or run configuration.
     if argv and argv[0] in WORKBENCH_COMMANDS:
-        from evoab.workbench.cli import main as workbench_main
+        from evoab.apps.workbench.cli import main as workbench_main
         raise SystemExit(workbench_main(argv))
     integration_name = _probe_integration_name(argv)
     try:
@@ -240,7 +240,7 @@ def main(argv=None, *, _supervised=False) -> None:
         parser.print_help()
         raise SystemExit(1)
     if args.command == "replay":
-        from evoab.ui.web.runtime import serve_directories
+        from evoab.apps.web.runtime import serve_directories
         try:
             if not 0 <= args.port <= 65535:
                 raise ValueError("--port must be between 0 and 65535")
@@ -253,21 +253,21 @@ def main(argv=None, *, _supervised=False) -> None:
     if args.command == "run" and args.deploy is None and not (args.env_url or os.environ.get("EVOAB_ENV_URL")):
         args.deploy = "local"  # the default: start the prepared environment, run, and stop it
     if args.command in ("setup", "deploy"):
-        from evoab.services.deployment.config import validate_deployment
+        from evoab.envs.docker.config import validate_deployment
         try:
-            from evoab.services.deployment.process import enable_child_reaping
+            from evoab.envs.docker.process import enable_child_reaping
             enable_child_reaping()
             adapter = validate_deployment(args)
             if args.command == "setup":
-                from evoab.services.deployment.setup import prepare
-                from evoab.services.deployment.process import cancellation_signals
+                from evoab.envs.docker.setup import prepare
+                from evoab.envs.docker.process import cancellation_signals
                 with cancellation_signals():
                     runtime = prepare(args, adapter)
                     if getattr(args, "check_launch", False) and not getattr(args, "image_archive", None):
-                        from evoab.services.deployment.setup import check_launch
+                        from evoab.envs.docker.setup import check_launch
                         check_launch(args, adapter, runtime)
             else:
-                from evoab.services.deployment.manager import deploy
+                from evoab.envs.docker.manager import deploy
                 raise SystemExit(deploy(args, adapter))
         except KeyboardInterrupt:
             raise SystemExit(130)
@@ -285,11 +285,11 @@ def main(argv=None, *, _supervised=False) -> None:
         )
         return
     if args.command == "run" and args.recipe.loop.episodes.repeat > 1:
-        from evoab.composition.episodes import run_sequence
+        from evoab.recipe.episodes import run_sequence
         raise SystemExit(run_sequence(argv, args))
     if args.command == "run" and args.deploy == "local":
-        from evoab.services.deployment.manager import run_evaluation
-        from evoab.services.deployment.process import enable_child_reaping
+        from evoab.envs.docker.manager import run_evaluation
+        from evoab.envs.docker.process import enable_child_reaping
         enable_child_reaping()
         raise SystemExit(run_evaluation(args))
     if args.command == "run" and args.episode_timeout_s and not _supervised:
@@ -322,7 +322,7 @@ def main(argv=None, *, _supervised=False) -> None:
                 child.wait()
             raise SystemExit(124)
         raise SystemExit(raise_code)
-    from evoab.telemetry.logging import configure_logging
+    from evoab.records.telemetry.logging import configure_logging
 
     configure_logging(args.log_level)
     from evoab.session import run

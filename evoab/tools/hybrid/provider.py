@@ -1,6 +1,6 @@
 """Independent model-facing actor collaboration tools."""
-from evoab.execution.correlation import current_role
-from evoab.execution.scheduler import ToolExecutionPolicy
+from evoab.runtime.correlation import current_role
+from evoab.runtime.scheduler import ToolExecutionPolicy
 from evoab.tools.presentation import state_for_model
 from evoab.tools.scene.perception import snapshot_images, snapshot_metadata
 from evoab.tools.toolkit import (
