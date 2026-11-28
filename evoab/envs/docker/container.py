@@ -163,21 +163,20 @@ def mounts_code(python: str) -> bool:
 def code_mounts() -> list[tuple[str, str]]:
     """(host, container) pairs that make the running ``evoab`` importable at ``CODE_ROOT``.
 
-    The package directory and its distribution metadata are mounted, so the
-    container imports exactly the host's code and reports the host's version.
+    The package directory is mounted with a minimal distribution record naming the
+    host's version, so the container imports exactly the host's code and reports
+    the same ``evoab.__version__`` (installs differ in where they keep metadata).
     """
-    from importlib import metadata
     import evoab
-    pairs = [(str(Path(evoab.__file__).resolve().parent), f"{CODE_ROOT}/evoab")]
-    for name in ("evoab", "evoab-runtime"):
-        try:
-            info = Path(str(getattr(metadata.distribution(name), "_path", "")))
-        except metadata.PackageNotFoundError:
-            continue
-        if info.name.endswith(".dist-info") and info.is_dir():
-            pairs.append((str(info.resolve()), f"{CODE_ROOT}/{info.name}"))
-        break
-    return pairs
+    from evoab import __version__
+    from .runtime import cache_root
+    record = cache_root() / "code-metadata" / f"evoab-{__version__}.dist-info"
+    if not (record / "METADATA").is_file():
+        record.mkdir(parents=True, exist_ok=True)
+        (record / "METADATA").write_text(f"Metadata-Version: 2.1\nName: evoab\nVersion: {__version__}\n",
+                                         encoding="utf-8")
+    return [(str(Path(evoab.__file__).resolve().parent), f"{CODE_ROOT}/evoab"),
+            (str(record), f"{CODE_ROOT}/{record.name}")]
 
 
 def docker() -> str:
@@ -348,9 +347,12 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
     else:
         recipe = Path(str(resources.files(spec.package or f"evoab.envs.{spec.integration}")
                           .joinpath(spec.dockerfile)))
-        base = f"evoab/{spec.integration.replace('_', '-')}-base:{spec.digest[:12]}"
-        build_context = _fetch_sources(spec, report) if spec.sources else recipe.parent
-        _stream([docker(), "build", "-t", base, "-f", recipe, *_build_args(), build_context], report)
+        # The tag hashes the recipe and its Dockerfile, so an existing one is reused as is.
+        base = (f"evoab/{spec.integration.replace('_', '-')}-base:"
+                f"{hashlib.sha256((spec.digest + recipe.read_text(encoding='utf-8')).encode()).hexdigest()[:12]}")
+        if subprocess.run([docker(), "image", "inspect", base], capture_output=True).returncode:
+            build_context = _fetch_sources(spec, report) if spec.sources else recipe.parent
+            _stream([docker(), "build", "-t", base, "-f", recipe, *_build_args(), build_context], report)
     requirements = None if wheel else runtime_requirements()
     # The tag names exactly what the layer contains: the recipe, its base, the runtime
     # dependencies and pins. EvoAB's code is mounted, so code changes reuse the image.
