@@ -1,26 +1,31 @@
-"""Run the Direct policy in the calling Agent's process using the actor contract."""
-from uuid import uuid4
+"""Run and validate a Direct prediction in the calling Agent's process."""
+from dataclasses import dataclass
 
-from evoab.services.actor.contracts import ActorObservation, CreateSession, PredictReply, PredictRequest
-from evoab.services.actor.service import ActorService
+from evoab.services.actor.contracts import ActorObservation, NumericChunk, validate_observation, validate_prediction
 
 from .backend import DirectBackend
 
 
+@dataclass(frozen=True)
+class DirectReply:
+    prediction: NumericChunk
+    sequence: int
+    checkpoint_sha256: str
+
+
 class LocalDirectActor:
     def __init__(self, model_preset, environment):
-        self.service = ActorService(DirectBackend(model_preset, environment), max_batch_size=1)
-        self.info = self.service.info
+        self.backend = DirectBackend(model_preset, environment)
+        self.info = self.backend.info
         self.sequence = 0
-        self.session = self.service.create_session(CreateSession(
-            model_id=self.info.model_id, profile=self.info.profile.name))
 
-    def predict(self, observation: ActorObservation) -> PredictReply:
-        reply = self.service.predict(PredictRequest(
-            session_id=self.session.session_id, request_id=uuid4().hex,
-            sequence=self.sequence, observation=observation))
+    def predict(self, observation: ActorObservation) -> DirectReply:
+        validate_observation(observation, self.info.profile)
+        prediction = self.backend.predict(observation)
+        validate_prediction(prediction, self.info.profile)
+        reply = DirectReply(prediction, self.sequence, self.info.checkpoint_sha256)
         self.sequence += 1
         return reply
 
     def close(self):
-        self.service.close()
+        self.backend.close()
