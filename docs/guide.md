@@ -238,6 +238,32 @@ be confirmed, the run reports a nonzero exit code. Inspect `result.json` for
 the latest persisted verification status. A queued job can finish after the
 request times out.
 
+For visual verification, configure a preset for a hosted model API that accepts
+text and image inputs. The worker uses the provider URL, model ID and credentials
+from EvoAB's model configuration. Install the agent extra in the worker's
+environment. For a preset named `verifier-api`, start the worker as follows.
+See [Models](#models) for provider and preset setup.
+
+```bash
+python -m evoab.servers.verifier.server --runs-root ./outputs --model-preset verifier-api
+```
+
+The worker sends the API the task, native outcome summary, up to 32 execution
+events, and every PNG from every recorded camera group in native-step order.
+The approximately 400 ms cadence comes from the simulation environment. For
+long episodes the worker carries cited observations from one request into the
+next. The final request produces the verdict. By default each request carries
+up to four groups and twelve images. Adjust the per-request limits with
+`--max-camera-groups` and `--images-per-request`. The worker splits large
+groups across requests so every view is included.
+It writes the verdict and cited trajectory references to `result.json`.
+The model can return an empty list of event citations. The worker still records
+the diagnosis with a reference to the native verdict and acknowledges completion.
+A boolean native verdict determines the score. When `task_success` is null or
+absent, the worker skips model analysis and records `backend: skipped` and
+`result: insufficient_evidence` in the completed verification.
+Set the Session's `--verifier-timeout-s` to cover queueing and the API response time.
+
 ## Python SDK
 
 ```python
