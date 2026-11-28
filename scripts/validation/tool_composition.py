@@ -28,7 +28,7 @@ from evoab.tools.selection import TOOL_GROUPS
 from evoab.tools.toolkit import ToolOutput
 
 INTEGRATIONS = ("libero", "libero_pro", "calvin")
-HYBRID = ("calvin", "libero")
+HYBRID = ("calvin", "libero", "libero_pro")
 BASE_TOOLS = {"list_skills", "read_skill", "view_env_state", "capture_scene",
               "locate", "move", "grasp", "release", "hold", "finish"}
 JOBS = set(TOOL_GROUPS["@jobs"])
