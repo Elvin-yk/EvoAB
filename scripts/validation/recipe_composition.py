@@ -146,6 +146,31 @@ class RecipeValidation(unittest.TestCase):
         self.assertEqual(roles["main"]["capabilities"], [
             {"id": "hybrid", "tools": ["actor_act"], "options": {"binding": "robodojo_direct_eef"}}])
 
+    def test_local_direct_validates_and_recovers_on_next_prediction(self):
+        from evoab.direct.actor import absolute_actor_profile
+        from evoab.services.actor.backends.direct.local import LocalDirectActor
+        from evoab.services.actor.contracts import ActorObservation, Image, NumericChunk
+
+        row = [0, 0, 0, 1, 0, 0, 0, 1]
+        first = ActorObservation(instruction="Move", state=row, images={"head": Image(data="first")})
+        second = first.model_copy(update={"images": {"head": Image(data="second")}})
+        profile = absolute_actor_profile(["arm"], ["head"], 25, 3)
+        with patch("evoab.services.actor.backends.direct.local.DirectBackend") as factory:
+            backend = factory.return_value
+            backend.info = SimpleNamespace(profile=profile, checkpoint_sha256="a" * 64)
+            backend.predict.side_effect = [NumericChunk(actions=[row]), NumericChunk(actions=[row] * 3)]
+            actor = LocalDirectActor("fixture", None)
+            self.addCleanup(actor.close)
+            with self.assertRaisesRegex(ValueError, "Actor cameras"):
+                actor.predict(first.model_copy(update={"images": {}}))
+            backend.predict.assert_not_called()
+            with self.assertRaisesRegex(ValueError, "horizon"):
+                actor.predict(first)
+            reply = actor.predict(second)
+            self.assertEqual([call.args[0] for call in backend.predict.call_args_list], [first, second])
+            self.assertEqual(reply.prediction.actions, [row] * 3)
+            self.assertEqual((reply.sequence, reply.checkpoint_sha256), (0, backend.info.checkpoint_sha256))
+
     def test_run_program_tool(self):
         from evoab.execution.code_as_policy.runner import ProgramTools
         from evoab.execution.serial import SerialToolExecutor

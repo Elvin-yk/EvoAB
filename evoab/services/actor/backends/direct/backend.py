@@ -7,7 +7,7 @@ from evoab.direct.actions import AbsoluteEEF, Limits, Target, decode_completion
 from evoab.direct.actor import absolute_actor_profile
 from evoab.direct.prompts import timing_text
 from evoab.provider.catalog import ModelClient
-from evoab.services.actor.contracts import ActorInfo, NumericChunk
+from evoab.services.actor.contracts import ActorInfo, ActorObservation, NumericChunk
 
 
 class DirectBackend:
@@ -43,9 +43,9 @@ class DirectBackend:
 
     def predict_batch(self, requests):
         work, = requests
-        return [self._predict(work.observation)]
+        return [self.predict(work.observation)]
 
-    def _predict(self, observation):
+    def predict(self, observation: ActorObservation) -> NumericChunk:
         width = self.representation.width
         measured = {}
         for index, name in enumerate(self.arms):

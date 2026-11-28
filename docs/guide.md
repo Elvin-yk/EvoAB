@@ -228,8 +228,8 @@ On RoboDojo, select **Direct** on the Planner card in Studio. The Planner calls
 frames and arm poses and proposes an action chunk. The tool executes the
 requested steps and returns the result to the Planner. This uses one Agent and
 an in-process policy. If Direct inference fails, `actor_act` reports the error
-and executes no actions from that chunk. The next call starts a new inference
-session using the current observation.
+and executes no actions from that chunk. A subsequent call takes a fresh observation
+and invokes the Direct backend again.
 
 On the CLI, select the existing `agent_policy` recipe and its Direct binding:
 
