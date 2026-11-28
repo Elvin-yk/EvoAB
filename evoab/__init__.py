@@ -30,13 +30,13 @@ _EXPORTS = {
     "ToolJob": ("tools.client", "ToolJob"),
     "ToolOutput": ("tools.toolkit", "ToolOutput"),
     "tool": ("tools.user", "tool"),
-    "RunResult": ("artifacts.records", "RunResult"),
-    "RunRecord": ("artifacts.records", "RunRecord"),
-    "SetupConfig": ("services.deployment.config", "SetupConfig"),
-    "DeploymentConfig": ("services.deployment.config", "DeploymentConfig"),
-    "Deployment": ("services.deployment.manager", "Deployment"),
-    "setup": ("services.deployment.setup", "setup"),
-    "deploy": ("services.deployment.manager", "start_deployment"),
+    "RunResult": ("records.artifacts.records", "RunResult"),
+    "RunRecord": ("records.artifacts.records", "RunRecord"),
+    "SetupConfig": ("envs.docker.config", "SetupConfig"),
+    "DeploymentConfig": ("envs.docker.config", "DeploymentConfig"),
+    "Deployment": ("envs.docker.manager", "Deployment"),
+    "setup": ("envs.docker.setup", "setup"),
+    "deploy": ("envs.docker.manager", "start_deployment"),
 }
 __all__ = ["__version__", *_EXPORTS]
 

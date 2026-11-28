@@ -6,6 +6,70 @@
   sampled camera paths, and the worker writes a placeholder verdict to
   `result.json` before acknowledging completion.
 
+### Only benchmarks with published images
+
+EvoAB now supports only benchmarks whose simulator image is published and
+pulled as is: LIBERO, LIBERO-PRO and CALVIN (AllenAI's images), plus `custom`
+with your own image. Removed, with all their code, assets, prompts, skills and
+scripts: RoboDojo, RoboTwin, LIBERO-Plus and MetaWorld (the shared LIBERO adapter
+moved into `envs/libero/`). Removed with them: the OpenPI, XPolicyLab and
+SmolVLA-MetaWorld actor backends, actor recipes and the `pi05` alias, the
+in-process Direct actor behind `actor_act` (use `act: [tools, action]`), the
+`robodojo` and `xpolicylab` extras, `inputs.calibration`,
+`inputs.task_supplements`, and the `--layout`, `--layout-id`, `--assets-dir` and
+`--camera-calibration` options. Observation profiles fall back to the shared
+snapshot profile for every environment.
+
+### Tools, code and action in any combination
+
+A role's `act` replaces `channel`: any non-empty set of `tools`, `code` and
+`action`. Acting only through `action` keeps the stateless one-request-per-chunk
+loop. Next to `tools` or `code`, the action chunk is a tool in the agent's
+session (`emit_eef_actions` and similar, returning the measured state and
+current images), and `code` adds `run_program` beside direct tool calls.
+
+- **Migration**: replace `channel: X` with `act: [X]` in your recipes. Run
+  records write `act` instead of `channel`.
+- **Methods**: the library is `tools`, `code` and `action` (formerly `agentic`,
+  `code_as_policy` and `direct_action`). `agent_policy`, `clean` and
+  `code_iterate` moved to `examples/recipes/` (`policy.yaml`, `clean.yaml`,
+  `code_iterate.yaml`); `tool_team` is removed (Studio agent cards start from
+  `tools`). The recipe field `paradigms` is removed.
+- Both modes keep the same tool schemas. The tools prompt is unchanged; the
+  code prompt uses the new `from evoab.agent.act.code import Robot` import.
+
+### Layered package layout
+
+`evoab/` is regrouped by layer: `agent/` (loop, `act/code`, `act/action`,
+`context`, `models`, `memory`, `team`), `recipe/`, `methods/`, `tools/`,
+`runtime/` (was `execution/`), `envs/` (was `integrations/`, plus `protocol/`,
+`observation/` and `docker/`), `servers/` (actor, perception and verifier), `records/`
+(artifacts, telemetry, events) and `apps/` (console, Studio, replay,
+workbench). There are no compatibility aliases; update imports such as
+`evoab.integrations.X` to `evoab.envs.X` and `evoab.services.environment` to
+`evoab.envs.protocol`.
+
+### Images no longer contain EvoAB's code
+
+Setup's local layer holds only EvoAB's runtime dependencies and the benchmark's
+`prepare` commands; every container mounts the host's `evoab` package read-only.
+Image tags derive from the recipe, base image, dependencies and pins
+(`evoab/<name>:env-<hash>`), and setup reuses an existing image, so code changes
+never require a rebuild. `--wheel` still bakes a pinned `evoab-runtime`. Runtime
+records move to schema 2: rerun `evoab setup --integration X` once for each
+prepared benchmark.
+
+Removed leftovers: the agent registry and agent protocol (one agent remains),
+the empty SFT export package and the `train_*` result fields.
+
+### Real robots removed
+
+EvoAB now targets simulated benchmarks in Docker only. Removed, with all their
+code: the ARX ONE and Piper-X integrations, their `arx_one`/`piper_x` extras,
+and the device protocol only they used (`/device-*` and `/interrupts` routes,
+`DeviceEpisodeInfo`, device steps and interrupts in the environment client and
+service). Tool schemas and prompts are unchanged for every simulated environment.
+
 - Removed the built-in `planner_direct` recipe. On RoboDojo, the planner can
   call Direct through `actor_act` using the existing `agent_policy` recipe.
   Standalone `direct_action` remains available.

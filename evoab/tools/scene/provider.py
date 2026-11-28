@@ -2,9 +2,9 @@
 from dataclasses import replace
 import time
 
-from evoab.context.prompt import PromptContribution
-from evoab.execution.scheduler import ToolExecutionPolicy
-from evoab.services.environment.contracts import CaptureRequest
+from evoab.agent.context.prompt import PromptContribution
+from evoab.runtime.scheduler import ToolExecutionPolicy
+from evoab.envs.protocol.contracts import CaptureRequest
 from evoab.tools.presentation import state_for_model
 from evoab.tools.scene.perception import locate, snapshot_images, snapshot_metadata
 from evoab.tools.toolkit import ToolOutput, ToolProvider, ToolSpec, bind_tools, schema
@@ -24,7 +24,7 @@ def tool_policies():
 
 
 def tool_specs(cameras, *, segmentation_enabled=True, depth_cameras=None, calibrated_cameras=None,
-               scene_geometry=False, device_episode=False):
+               scene_geometry=False):
     if not cameras:
         return [ToolSpec("view_env_state",
                          "Read a measured state record. Use step=-1 for the latest or 0 for the initial record.",
@@ -88,12 +88,6 @@ def tool_specs(cameras, *, segmentation_enabled=True, depth_cameras=None, calibr
         properties["fit_table"] = {"type": "boolean", "default": False}
         descriptions.append("Alternatively supply correspondences=[observations,...] for multiple points; "
                             "fit_table=true fits at least three valid non-collinear world points. Do not also supply observations.")
-    if device_episode:
-        from dataclasses import replace
-        specs = [replace(spec, description=(
-            "Read completed immutable image/state records; step is the record index, not simulated physics."
-            if spec.name == "view_env_state" else
-            "Freeze current camera streams and calibration into an immutable snapshot. Camera timing and depth pairing are described in its metadata; capture does not calibrate devices.")) for spec in specs]
     if not calibrated_cameras:
         from dataclasses import replace
         specs = [replace(spec, description=(
@@ -132,8 +126,7 @@ class SceneTools(ToolProvider):
         specs = tool_specs([camera.name for camera in cameras], segmentation_enabled=self.perception is not None,
                           depth_cameras=[camera.name for camera in cameras if camera.has_depth],
                           calibrated_cameras=[camera.name for camera in cameras if camera.has_calibration],
-                          scene_geometry=self.episode.description.environment.metadata.get("scene_geometry", False),
-                          device_episode=self.episode.description.protocol_version in {"devices-1", "devices-2"})
+                          scene_geometry=self.episode.description.environment.metadata.get("scene_geometry", False))
         specs = [spec for spec in specs if spec.name in self.names]
         if "locate" not in self.names:
             channels = "RGB, depth and calibration" if any(camera.has_depth for camera in cameras) else (
@@ -202,8 +195,7 @@ class SceneTools(ToolProvider):
         images = snapshot_images(self.episode.env, manifest, cameras, mirror=self.episode.artifact_mirror)
         return ToolOutput(extra={"record_index": manifest.get("record_index", step),
             "state": state_for_model(manifest["state"]), "state_version": manifest["state_version"],
-            **({"command_index": manifest["state"]["completed_commands"]} if manifest["state"].get("kind") == "devices"
-               else {"step": manifest["state"]["native_steps"]}), "snapshot_id": manifest["snapshot_id"],
+            "step": manifest["state"]["native_steps"], "snapshot_id": manifest["snapshot_id"],
             "image_cameras": [image.name for image in images],
             **snapshot_metadata(manifest, [image.name for image in images], mirror=self.episode.artifact_mirror),
             **self.robot_reference()}, images=images)

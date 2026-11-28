@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from evoab.observation.hub import ObservationHub
+from evoab.envs.observation.hub import ObservationHub
 from evoab.tools.toolkit import (
     ToolDef, ToolOutput, ToolProvider, ToolSpec, bind_tools, schema,
 )

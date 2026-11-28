@@ -1,4 +1,0 @@
-"""Version evidence shared with the installed Body host."""
-from evoab.integrations.piper_x.body.host.version import fingerprint
-
-__all__ = ["fingerprint"]

@@ -1,9 +1,9 @@
 """Model-facing arm-pose and scalar-gripper operations."""
 from __future__ import annotations
 
-from evoab.context.prompt import PromptContribution
-from evoab.execution.scheduler import ToolExecutionPolicy
-from evoab.services.environment.contracts import EpisodeInfo, RequestRejected
+from evoab.agent.context.prompt import PromptContribution
+from evoab.runtime.scheduler import ToolExecutionPolicy
+from evoab.envs.protocol.contracts import EpisodeInfo, RequestRejected
 from evoab.tools.toolkit import ActionOutcome, ToolOutput, ToolProvider, ToolSpec, bind_tools, schema
 from evoab.tools.gripper.contracts import MOTION_PROFILES, GripperRequest, HoldRequest, MoveRequest, motion_profiles
 from evoab.tools.gripper.opening import native_opening, normalized_opening_tolerance

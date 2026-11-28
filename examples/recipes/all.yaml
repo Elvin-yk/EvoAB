@@ -1,0 +1,11 @@
+# All three ways of acting in one session: call tools, write programs, or emit action chunks.
+id: all
+label: Tools, code and action
+summary: One agent chooses per step between a tool call, a program and an action chunk.
+roles:
+  main:
+    act: [tools, code, action]
+    capabilities: [skills, scene, gripper, episode]
+    action: {representation: abs_eef, horizon: [3, 15], step_limits: [0.02, 0.1]}
+loop: {entry: main}
+execution: {return_mode: immediate}

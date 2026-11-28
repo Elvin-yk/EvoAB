@@ -8,7 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
 
-from evoab.telemetry.logging import get_logger
+from evoab.records.telemetry.logging import get_logger
 
 logger = get_logger("toolkit")
 
@@ -185,9 +185,9 @@ class Toolkit:
         """Record a receipt, including admission failures with no executed step."""
         result_dict = result.to_dict()
         if self._event_bus:
-            from evoab.events import ToolResult as ToolResultEvent
-            from evoab.execution import current_execution_id
-            from evoab.execution.correlation import current_call
+            from evoab.records.events import ToolResult as ToolResultEvent
+            from evoab.runtime import current_execution_id
+            from evoab.runtime.correlation import current_call
 
             self._event_bus.emit(
                 ToolResultEvent(

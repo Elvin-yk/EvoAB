@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from evoab.services.environment.snapshots import CameraFrame
+from evoab.envs.protocol.snapshots import CameraFrame
 
 
 def project_pixels(frame: CameraFrame, pixels) -> dict:

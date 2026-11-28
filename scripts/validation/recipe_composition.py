@@ -19,11 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from tool_composition import assembled, config, surface  # noqa: E402
 
-from evoab.composition.compiler import compile_recipe  # noqa: E402
-from evoab.composition.graph import annotate_with_trace, recipe_graph  # noqa: E402
-from evoab.composition.methods import get_method, list_methods  # noqa: E402
-from evoab.composition.recipe import Recipe, with_overrides  # noqa: E402
-from evoab.integrations import load_integration  # noqa: E402
+from evoab.recipe.compiler import compile_recipe  # noqa: E402
+from evoab.recipe.graph import annotate_with_trace, recipe_graph  # noqa: E402
+from evoab.recipe.methods import get_method, list_methods  # noqa: E402
+from evoab.recipe.schema import Recipe, read_recipe_file, with_overrides  # noqa: E402
+
+EXAMPLES = Path(__file__).resolve().parents[2] / "examples" / "recipes"
+from evoab.envs import load_integration  # noqa: E402
 
 
 def recipe(**roles) -> dict:
@@ -33,12 +35,12 @@ def recipe(**roles) -> dict:
 def delegation_recipe() -> Recipe:
     data = recipe(
         planner={
-            "channel": "tools",
+            "act": ["tools"],
             "capabilities": ["skills", {"id": "scene", "tools": ["view_env_state", "capture_scene"]}, "episode",
                              {"id": "delegate", "options": {"roles": ["controller"]}}],
             "prompt": {"append": "Split the task into sub-goals and hand them to the controller."},
         },
-        controller={"channel": "action", "action": {"max_calls": 6}},
+        controller={"act": ["action"], "action": {"max_calls": 6}},
     )
     data["execution"] = {"return_mode": "immediate"}
     return Recipe.model_validate(data)
@@ -51,23 +53,23 @@ class RecipeValidation(unittest.TestCase):
             "unknown role": recipe(main={"capabilities": [{"id": "delegate", "options": {"roles": ["ghost"]}}]}),
             "back to the loop entry": recipe(main={"capabilities": [{"id": "delegate", "options": {"roles": ["sub"]}}]},
                                              sub={"capabilities": [{"id": "delegate", "options": {"roles": ["main"]}}]}),
-            "emits action chunks only": recipe(main={"channel": "action", "capabilities": ["scene"]}),
-            "require channel: action": recipe(main={"action": {}}),
+            "only through action has no tools": recipe(main={"act": ["action"], "capabilities": ["scene"]}),
+            "require action in act": recipe(main={"action": {}}),
             "at most once": recipe(main={"capabilities": ["scene", "scene"]}),
         }
         for message, data in cases.items():
             with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
                 Recipe.model_validate(data)
-        data = recipe(main={"channel": "tools", "capabilities": ["scene"]})
+        data = recipe(main={"act": ["tools"], "capabilities": ["scene"]})
         data["loop"]["episodes"] = {"carry": ["programs"]}
-        with self.assertRaisesRegex(ValueError, "code entry role"):
+        with self.assertRaisesRegex(ValueError, "code in the entry role"):
             Recipe.model_validate(data)
         data["loop"]["episodes"] = {"carry": ["skills"]}
         with self.assertRaisesRegex(ValueError, "write: true"):
             Recipe.model_validate(data)
 
     def test_overrides_by_path(self):
-        method = get_method("direct_action").recipe
+        method = get_method("action").recipe
         changed = with_overrides(method, {"roles.main.action.horizon": "[2, 9]",
                                           "roles.main.action.representation": "joint_abs",
                                           "roles.main.action.history": [5, 2]})
@@ -78,33 +80,30 @@ class RecipeValidation(unittest.TestCase):
             with_overrides(method, {"horizon": "[2, 9]"})  # short parameter names no longer exist
         with self.assertRaisesRegex(ValueError, "horizon"):
             with_overrides(method, {"roles.main.action.horizon": "[9, 2]"})
-        agentic = get_method("agentic").recipe
-        narrowed = with_overrides(agentic, {"roles.main.capabilities.gripper.tools": ["move"]})
+        tools = get_method("tools").recipe
+        narrowed = with_overrides(tools, {"roles.main.capabilities.gripper.tools": ["move"]})
         self.assertEqual(narrowed.entry.capability("gripper").tools, ["move"])
 
     def test_every_method_runs_on_the_built_in_agent(self):
         from types import SimpleNamespace
-        from evoab.composition.compiler import apply_to_args
-        spec = load_integration("robodojo").get_integration_spec()
-        for method in ("agentic", "code_as_policy", "direct_action", "agent_policy", "code_iterate"):
+        from evoab.recipe.compiler import apply_to_args
+        spec = load_integration("calvin").get_integration_spec()
+        recipes = [get_method(method).recipe for method in ("tools", "code", "action")]
+        recipes += [read_recipe_file(path) for path in sorted(EXAMPLES.glob("*.yaml"))]
+        for item in recipes:
             args = SimpleNamespace(model="preset")
-            apply_to_args(args, compile_recipe(get_method(method).recipe, spec))
-            self.assertEqual(args.agent_backend, "native", method)
+            apply_to_args(args, compile_recipe(item, spec))
+            self.assertEqual(args.agent_backend, "native", item.id)
         with self.assertRaisesRegex(ValueError, "Extra inputs"):
-            with_overrides(get_method("agentic").recipe, {"roles.main.brain.agent": "codex"})
+            with_overrides(get_method("tools").recipe, {"roles.main.brain.agent": "codex"})
 
     def test_agent_settings_live_in_the_recipe(self):
-        from evoab.composition.compiler import check_inputs
+        from evoab.recipe.compiler import check_inputs
         from evoab.config import SessionConfig
-        base = dict(integration="robodojo", env_url="http://127.0.0.1:18760")
-        rgb = SessionConfig(**base, recipe_overrides={"inputs.depth": False,
-                                                      "inputs.task_supplements": True}).resolve()
-        self.assertEqual((rgb.depth, rgb.camera_calibration, rgb.task_supplements, rgb.sam3_url),
-                         (False, None, True, None))
-        with self.assertRaisesRegex(ValueError, "publishes no task supplements"):
-            SessionConfig(integration="libero_pro", env_url=base["env_url"],
-                          recipe_overrides={"inputs.task_supplements": True}).resolve()
-        with self.assertRaisesRegex(ValueError, "requires inputs.depth: false"):
+        base = dict(integration="libero", env_url="http://127.0.0.1:18760")
+        rgb = SessionConfig(**base, recipe_overrides={"inputs.depth": False}).resolve()
+        self.assertEqual((rgb.depth, rgb.sam3_url), (False, None))
+        with self.assertRaisesRegex(ValueError, "Extra inputs"):
             SessionConfig(**base, recipe_overrides={"inputs.calibration": False}).resolve()
         segmented = {"roles.main.capabilities.scene.options": {"segmentation": True}}
         with self.assertRaisesRegex(ValueError, "--sam3-url"):
@@ -114,41 +113,33 @@ class RecipeValidation(unittest.TestCase):
                          "http://127.0.0.1:18762")
         # Without segmentation the SAM3 address is ignored: the recipe, not the command line, decides.
         self.assertIsNone(SessionConfig(**base, sam3_url="http://127.0.0.1:18762").resolve().sam3_url)
-        policy = SessionConfig(integration="robodojo", env_url=base["env_url"], recipe="agent_policy",
+        policy = SessionConfig(integration="calvin", env_url=base["env_url"], recipe=str(EXAMPLES / "policy.yaml"),
                                action_model_url="http://127.0.0.1:18761",
                                integration_options={"task": "t", "action_model_checkpoint_sha256": "a" * 64},
-                               recipe_overrides={"roles.main.capabilities.hybrid.options":
-                                                 {"binding": "robodojo_x5_joint", "review": False}}).resolve()
-        self.assertEqual((policy.action_model_binding, policy.vla_review), ("robodojo_x5_joint", False))
+                               recipe_overrides={"roles.main.capabilities.hybrid.options": {"review": False}}).resolve()
+        self.assertEqual((policy.action_model_binding, policy.vla_review), (None, False))
 
-        def described(depth, calibration=True):
-            camera = SimpleNamespace(has_depth=depth, has_calibration=calibration)
+        def described(depth):
+            camera = SimpleNamespace(has_depth=depth)
             return SimpleNamespace(environment=SimpleNamespace(cameras=[camera]))
-        inputs = get_method("agentic").recipe.inputs
+        inputs = get_method("tools").recipe.inputs
         check_inputs(inputs, described(True))  # None keeps whatever the environment provides
         check_inputs(inputs.model_copy(update={"depth": False}), described(False))
         with self.assertRaisesRegex(ValueError, "provides depth"):
             check_inputs(inputs.model_copy(update={"depth": False}), described(True))
 
     def test_studio_tool_picker_writes_the_recipe(self):
-        from evoab.workbench.launcher import LaunchRequest, resolve_run_recipe
-        request = LaunchRequest("robodojo", "", "m", "medium", method="agentic",
+        from evoab.apps.workbench.launcher import LaunchRequest, resolve_run_recipe
+        request = LaunchRequest("libero", "", "m", "medium", method="tools",
                                 visible_tools=["move", "capture_scene", "finish", "wait_for_tool"])
-        role = resolve_run_recipe(request, {"id": "agentic"}).entry
+        role = resolve_run_recipe(request, {"id": "tools"}).entry
         self.assertEqual({item.id: item.tools for item in role.capabilities},
                          {"scene": ["capture_scene"], "gripper": ["move"], "episode": ["finish"]})
         self.assertEqual(role.job_tools, ["wait_for_tool"])
 
-    def test_planner_calls_direct_without_a_delegate(self):
-        from evoab.workbench.team import team_roles
-        roles = team_roles("robodojo", [{"role": "planner", "tools": ["actor_act"]}])
-        self.assertEqual(set(roles), {"main"})
-        self.assertEqual(roles["main"]["capabilities"], [
-            {"id": "hybrid", "tools": ["actor_act"], "options": {"binding": "robodojo_direct_eef"}}])
-
     def test_run_program_tool(self):
-        from evoab.execution.code_as_policy.runner import ProgramTools
-        from evoab.execution.serial import SerialToolExecutor
+        from evoab.agent.act.code.runner import ProgramTools
+        from evoab.runtime.serial import SerialToolExecutor
         from evoab.tools.toolkit import Toolkit
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -170,17 +161,17 @@ class RecipeValidation(unittest.TestCase):
 
     def test_method_library(self):
         ids = {method.id for method in list_methods()}
-        self.assertTrue({"agentic", "clean", "direct_action", "code_as_policy", "agent_policy", "code_iterate"} <= ids)
+        self.assertEqual({"tools", "code", "action"}, ids)
         self.assertNotIn("planner_direct", ids)
         for method in list_methods():
             self.assertTrue(method.card.startswith("# "), method.id)
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "agentic"
+            root = Path(directory) / "tools"
             root.mkdir()
             (root / "method.yaml").write_text(
-                "id: agentic\nlabel: Replaced\nroles: {main: {capabilities: [scene]}}\n")
+                "id: tools\nlabel: Replaced\nroles: {main: {capabilities: [scene]}}\n")
             with patch.dict(os.environ, {"EVOAB_METHODS_DIR": directory}):
-                method = get_method("agentic")
+                method = get_method("tools")
                 self.assertEqual((method.recipe.label, method.source), ("Replaced", "user"))
             (root / "method.yaml").write_text("id: other\nlabel: X\nroles: {main: {}}\n")
             with patch.dict(os.environ, {"EVOAB_METHODS_DIR": directory}), \
@@ -188,24 +179,24 @@ class RecipeValidation(unittest.TestCase):
                 list_methods()
 
     def test_review_regressions(self):
-        spec = load_integration("robodojo").get_integration_spec()
+        spec = load_integration("calvin").get_integration_spec()
         serial = with_overrides(delegation_recipe(),
                                 {"execution.resource_scheduling": "global-serial"})
         compile_recipe(serial, spec)  # an action delegate steps the environment itself
         data = delegation_recipe().model_dump(mode="json")
-        data["roles"]["controller"] = {"channel": "tools", "capabilities": ["scene"]}
+        data["roles"]["controller"] = {"act": ["tools"], "capabilities": ["scene"]}
         data["execution"]["resource_scheduling"] = "global-serial"
         with self.assertRaisesRegex(ValueError, "global-serial"):
             compile_recipe(Recipe.model_validate(data), spec)
         with tempfile.TemporaryDirectory() as directory:
-            Path(directory, "agentic").mkdir()
+            Path(directory, "tools").mkdir()
             cwd = os.getcwd()
             os.chdir(directory)
             try:
-                self.assertEqual(get_method("agentic").source, "builtin")
+                self.assertEqual(get_method("tools").source, "builtin")
             finally:
                 os.chdir(cwd)
-        text = with_overrides(get_method("direct_action").recipe, {"roles.main.action.custom_prompt": '"Red" cup first'})
+        text = with_overrides(get_method("action").recipe, {"roles.main.action.custom_prompt": '"Red" cup first'})
         self.assertEqual(text.entry.action.custom_prompt, '"Red" cup first')
 
     def test_graph(self):
@@ -233,7 +224,7 @@ class MultiRoleAssembly(unittest.TestCase):
         self.temp.cleanup()
 
     def test_planner_sees_its_tools_and_the_delegate(self):
-        with patch("evoab.provider.catalog.presets", return_value=[{"name": "fixture"}]):
+        with patch("evoab.agent.models.catalog.presets", return_value=[{"name": "fixture"}]):
             path = self.directory.parent / "delegation.yaml"
             path.write_text(delegation_recipe().model_dump_json())
             cfg = config(recipe=str(path))
@@ -263,11 +254,11 @@ class MultiRoleAssembly(unittest.TestCase):
     def test_sub_role_prompt_is_separate(self):
         data = delegation_recipe().model_dump(mode="json")
         data["roles"]["helper"] = {"description": "Moves only.",
-                                   "channel": "tools", "capabilities": [{"id": "gripper", "tools": ["move"]}]}
+                                   "act": ["tools"], "capabilities": [{"id": "gripper", "tools": ["move"]}]}
         data["roles"]["planner"]["capabilities"][-1]["options"]["roles"].append("helper")
         path = self.directory.parent / "custom.yaml"
         path.write_text(json.dumps(data))
-        with patch("evoab.provider.catalog.presets", return_value=[{"name": "fixture"}]):
+        with patch("evoab.agent.models.catalog.presets", return_value=[{"name": "fixture"}]):
             with assembled(config(recipe=str(path)), self.directory) as (assembly, *_):
                 self.assertEqual(assembly.role_tools["helper"], frozenset({"move"}))
                 self.assertIn("move", surface(assembly))
@@ -282,7 +273,7 @@ class MultiRoleAssembly(unittest.TestCase):
 
 
     def test_session_runs_delegated_roles(self):
-        from evoab.agents.contracts import AgentResult
+        from evoab.agent.contracts import AgentResult
         from evoab.session import Session
         seen = {}
 
@@ -292,13 +283,13 @@ class MultiRoleAssembly(unittest.TestCase):
             return AgentResult(success=True, message="helped")
 
         data = delegation_recipe().model_dump(mode="json")
-        data["roles"]["helper"] = {"channel": "tools",
+        data["roles"]["helper"] = {"act": ["tools"],
                                    "capabilities": [{"id": "gripper", "tools": ["hold"]}]}
         data["roles"]["planner"]["capabilities"][-1]["options"]["roles"].append("helper")
         path = self.directory.parent / "fixture.yaml"
         path.write_text(json.dumps(data))
         from unittest import mock
-        from evoab.agents.native.agent import NativeAgent
+        from evoab.agent.loop import NativeAgent
 
         def run_direct(agent, *, episode, integration, instruction, session_dir):
             seen["direct"] = (instruction, agent.direct_config.max_calls, Path(session_dir).name, agent.preset)
@@ -325,8 +316,8 @@ class MultiRoleAssembly(unittest.TestCase):
 
 class ToolViewChecks(unittest.TestCase):
     def test_view_admits_and_denies(self):
-        from evoab.execution.serial import SerialToolExecutor
-        from evoab.execution.views import ToolView
+        from evoab.runtime.serial import SerialToolExecutor
+        from evoab.runtime.views import ToolView
         from evoab.tools.toolkit import ToolDef, ToolOutput, Toolkit
         toolkit = Toolkit()
         for name in ("a", "b"):
@@ -342,7 +333,7 @@ class ToolViewChecks(unittest.TestCase):
 
 class JointControl(unittest.TestCase):
     def description(self, commands=("pose", "joints")):
-        from evoab.services.environment.contracts import (
+        from evoab.envs.protocol.contracts import (
             ArmControlCapabilities, ArmDescription, EnvironmentDescription)
         return EnvironmentDescription(arms=[ArmDescription(
             name="arm", control_frame="grasp", grasp_site_description="fixture", rotation_radius_m=0.1,
@@ -350,7 +341,7 @@ class JointControl(unittest.TestCase):
             control_frequency_hz=10.0, max_episode_steps=8)
 
     def test_decode_and_clamp(self):
-        from evoab.direct.actions import REPRESENTATIONS, JointRow, Limits, OutputError
+        from evoab.agent.act.action.actions import REPRESENTATIONS, JointRow, Limits, OutputError
         joint = REPRESENTATIONS["joint_abs"].bind(self.description())
         schema = joint.schema((1, 3), ("arm",))
         self.assertEqual(schema["function"]["parameters"]["properties"]["actions"]["items"]["minItems"], 3)
@@ -367,7 +358,7 @@ class JointControl(unittest.TestCase):
 
     def test_direct_runner_sends_joint_commands(self):
         from PIL import Image
-        from evoab.direct.runner import DirectConfig, DirectPolicy
+        from evoab.agent.act.action.runner import DirectConfig, DirectPolicy
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             image = root / "front.png"
@@ -398,7 +389,7 @@ class JointControl(unittest.TestCase):
                 state=SimpleNamespace(ended=False, state_version=0), latest_snapshot=None,
                 image_paths=lambda snapshot: {"front": str(image)}, accept_primitive=lambda reply: None)
             episode.description.environment.cameras.append(
-                __import__("evoab.services.environment.contracts", fromlist=["CameraDescription"])
+                __import__("evoab.envs.protocol.contracts", fromlist=["CameraDescription"])
                 .CameraDescription(name="front"))
             completion = SimpleNamespace(error=None, finish_reason="tool_calls", usage={}, content="",
                                          reasoning=None, started_at=0.0, latency_s=0.1, tool_calls=[{
@@ -420,8 +411,8 @@ class JointControl(unittest.TestCase):
 
 class Experience(unittest.TestCase):
     def test_programs_promoted_only_after_success(self):
-        from evoab.composition import experience
-        method = get_method("code_iterate").recipe
+        from evoab.agent.memory import experience
+        method = read_recipe_file(EXAMPLES / "code_iterate.yaml")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             args = SimpleNamespace(experience_dir=str(root / "exp"), recipe=method)
@@ -439,8 +430,8 @@ class Experience(unittest.TestCase):
             self.assertEqual([entry["kept"] for entry in log], [[], ["programs"], []])
 
     def test_skills_are_staged_and_seeded(self):
-        from evoab.composition import experience
-        data = get_method("agentic").recipe.model_dump(mode="json")
+        from evoab.agent.memory import experience
+        data = get_method("tools").recipe.model_dump(mode="json")
         data["roles"]["main"]["capabilities"][0] = {"id": "skills", "options": {"write": True}}
         data["loop"]["episodes"] = {"carry": ["skills"], "keep": "always"}
         method = Recipe.model_validate(data)
@@ -452,10 +443,10 @@ class Experience(unittest.TestCase):
             experience.prepare(args, run)
             staged = Path(args.skills_root)
             self.assertTrue((staged / "general").is_dir())
-            (staged / "metaworld").mkdir(exist_ok=True)
-            (staged / "metaworld" / "learned.md").write_text("lesson\n")
+            (staged / "libero").mkdir(exist_ok=True)
+            (staged / "libero" / "learned.md").write_text("lesson\n")
             experience.persist(args, run, False)
-            self.assertEqual((root / "exp" / "skills" / "metaworld" / "learned.md").read_text(), "lesson\n")
+            self.assertEqual((root / "exp" / "skills" / "libero" / "learned.md").read_text(), "lesson\n")
 
 
 if __name__ == "__main__":

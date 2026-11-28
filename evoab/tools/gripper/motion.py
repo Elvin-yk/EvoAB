@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 
-from evoab.services.environment.contracts import (
+from evoab.envs.protocol.contracts import (
     GoalRegionRequest,
     ArmCommand,
     EnvironmentState,
