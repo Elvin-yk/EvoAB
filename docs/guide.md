@@ -245,8 +245,9 @@ up to four groups and twelve images. Adjust the per-request limits with
 `--max-camera-groups` and `--images-per-request`. The worker splits large
 groups across requests so every view is included.
 It writes the verdict and cited trajectory references to `result.json`.
-A boolean native verdict determines the score. With a null native verdict,
-the model can assess completion from evidence or return `insufficient_evidence`.
+A boolean native verdict determines the score. When `task_success` is null or
+absent, the worker skips model analysis and records `backend: skipped` and
+`result: insufficient_evidence` in the completed verification.
 Set the Session's `--verifier-timeout-s` to cover queueing and the API response time.
 
 ## Python SDK
