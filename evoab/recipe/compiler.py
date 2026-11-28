@@ -39,6 +39,11 @@ class CompiledRole:
         return self.role.stateless
 
     @property
+    def emits_chunks(self) -> bool:
+        """Action chunks as a tool in an agent session (``action`` next to tools or code)."""
+        return "action" in self.role.act and not self.role.stateless
+
+    @property
     def tool_modules(self) -> tuple[str, ...]:
         return tuple(item.name for item in self.modules)
 
@@ -71,6 +76,8 @@ def compile_recipe(recipe: Recipe, spec: Any, *, base_dir: Path | None = None) -
         raise ValueError(f"method {recipe.id!r} supports {', '.join(recipe.integrations)}, not {spec.name!r}")
     catalog = module_catalog(spec)
     roles = {name: _compile_role(name, role, catalog, spec, base_dir) for name, role in recipe.roles.items()}
+    if len({repr(role.direct) for role in roles.values() if role.emits_chunks}) > 1:
+        raise ValueError("roles that emit action chunks in an agent session must share one action setting")
     for name, role in roles.items():
         if role.observation_profile != "none" and name != recipe.loop.entry:
             raise ValueError("the observation capability is available to the loop entry role only")
@@ -90,6 +97,8 @@ def _compile_role(name: str, role: Role, catalog: dict, spec: Any, base_dir: Pat
             if not delegates or set(capability.options) - {"roles"} or capability.tools:
                 raise ValueError(f"{where}: delegate takes options.roles only")
             continue
+        if capability.id == "action":
+            raise ValueError(f"{where}: action chunks are a way of acting; add action to act instead of capabilities")
         if capability.id == "observation":
             if set(capability.options) - {"profile"} or capability.tools:
                 raise ValueError(f"{where}: observation takes options.profile only")
@@ -113,6 +122,9 @@ def _compile_role(name: str, role: Role, catalog: dict, spec: Any, base_dir: Pat
     if role.initial_observation and not any(item.name == "scene" for item in modules):
         raise ValueError(f"{where}: initial_observation requires the scene capability")
     direct = _direct_config(role, base_dir) if "action" in role.act else None
+    if "action" in role.act and not role.stateless:
+        from evoab.agent.act.action.tool import ACTION_MODULE
+        modules.append(ACTION_MODULE.select())
     return CompiledRole(name, role, tuple(modules), delegates, observation, direct,
                         _prompt_text(role, base_dir))
 

@@ -100,6 +100,7 @@ class DirectPolicy:
         self.root = Path(output_dir) / "direct"
         (self.root / "requests").mkdir(parents=True, exist_ok=True)
         self.frames: list[dict] = []
+        self.chunk_calls = 0  # chunks executed as agent tool calls
         self.cancelled = threading.Event()
         # Monotonic time after which no new inference starts (set by the caller's episode budget).
         self.deadline: float | None = None
@@ -202,9 +203,12 @@ class DirectPolicy:
             return JointRow(tuple(proprio["joints"]), closure)
         return Target(tuple(proprio["ee_pos"]), tuple(proprio["ee_quat"]), closure)
 
-    def _blocks(self) -> tuple[str, dict]:
-        """Capture the current frame and assemble the action prompt from it."""
-        self._capture()
+    def _blocks(self, *, reuse_latest: bool = False) -> tuple[str, dict]:
+        """Assemble the action prompt from a fresh capture, or from the episode's latest snapshot."""
+        if reuse_latest and self.episode.latest_snapshot is not None:
+            self._record_frame(self.episode.latest_snapshot)
+        else:
+            self._capture()
         snapshot = self.episode.latest_snapshot
         return prompts.assemble(
             description=self.description, representation=self.representation,
@@ -356,7 +360,7 @@ class DirectPolicy:
 
     def guidance(self) -> str:
         """The action contract for an agent that may also emit chunks among its other calls."""
-        _, parts = self._blocks()
+        _, parts = self._blocks(reuse_latest=True)
         self._write_policy(parts, [self.representation.schema(self.horizon, self.arm_names)], time.time())
         parts.pop("robot", None)  # the agent's environment prompt already describes the robot
         return (f"ACTION CHUNKS\nYou can also move the robot directly by calling {self.representation.tool} "
@@ -369,25 +373,19 @@ class DirectPolicy:
 
         A chunk that does not decode raises OutputError before anything moves.
         """
-        self._capture()  # other tools may have moved the robot since the last frame
+        if not self.frames or self.frames[-1]["state_version"] != self.episode.state.state_version:
+            self._capture()  # other tools moved the robot since this policy's last frame
         current = self.frames[-1]
         targets = self.representation.decode_chunk(arguments, self._measured_targets(current["proprio"]),
                                                    self.horizon, self.limits)
         rows, clamped = self._rows(targets)
-        self._calls = getattr(self, "_calls", 0) + 1
-        record = {"index": self._calls, "start_step": current["step"], "tool": self.representation.tool,
+        self.chunk_calls += 1
+        record = {"index": self.chunk_calls, "start_step": current["step"], "tool": self.representation.tool,
                   "arguments": arguments, "note": arguments.get("note", ""), "targets": rows,
                   "clamped": clamped, "safety_clamped": any(clamped), "executed": []}
         self._execute(targets, record)
         _jsonl(self.root / "calls.jsonl", record)
         return record
-
-    def latest_images(self) -> dict[str, bytes]:
-        """JPEG bytes of the most recent frame, resized as for model requests."""
-        frame = self.frames[-1]
-        return {camera: base64.b64decode(_data_url(self._absolute(path), self.config.image_max_side,
-                                                   self.config.jpeg_quality).split(",", 1)[1])
-                for camera, path in frame["images"].items()}
 
     def cancel(self) -> None:
         self.cancelled.set()

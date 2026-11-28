@@ -14,8 +14,8 @@ class ResolvedActor:
 
 def resolve_actor(settings: dict, *, backend: str | None = None) -> ResolvedActor:
     values = dict(settings)
-    requested = backend or values.pop("backend", None)
-    values.pop("backend", None)
+    configured = values.pop("backend", None)
+    requested = backend or configured
     if not requested:
         raise ValueError("Choose an actor backend (--backend or backend in the config)")
     definition = get_backend(requested)

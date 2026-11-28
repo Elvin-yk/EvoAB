@@ -31,7 +31,6 @@ from evoab.apps.workbench import jobs
 class BenchmarkInfo:
     integration: str
     title: str
-    kind: str  # "simulation"
     simulator: str
     embodiment: str
     setup: str  # "container" | "custom"
@@ -42,16 +41,16 @@ class BenchmarkInfo:
 
 
 REGISTRY: tuple[BenchmarkInfo, ...] = (
-    BenchmarkInfo("libero", "LIBERO", "simulation", "MuJoCo (robosuite 1.4)", "Franka Panda",
+    BenchmarkInfo("libero", "LIBERO", "MuJoCo (robosuite 1.4)", "Franka Panda",
                   "container", "Original LIBERO task suites and official initial states",
                   requirements="Public AllenAI LIBERO image; NVIDIA GPU", task_selector="suite/task"),
-    BenchmarkInfo("libero_pro", "LIBERO-PRO", "simulation", "MuJoCo (robosuite)", "Franka Panda",
+    BenchmarkInfo("libero_pro", "LIBERO-PRO", "MuJoCo (robosuite)", "Franka Panda",
                   "container", "LIBERO suites under instruction and position perturbations",
                   requirements="Public AllenAI LIBERO-PRO image; NVIDIA GPU", task_selector="suite/task"),
-    BenchmarkInfo("calvin", "CALVIN", "simulation", "PyBullet", "Franka Panda",
+    BenchmarkInfo("calvin", "CALVIN", "PyBullet", "Franka Panda",
                   "container", "Single-task CALVIN episodes",
                   requirements="Public AllenAI CALVIN image; NVIDIA GPU", task_selector="task"),
-    BenchmarkInfo("custom", "Custom benchmark", "simulation", "—", "—", "custom",
+    BenchmarkInfo("custom", "Custom benchmark", "—", "—", "custom",
                   "User-defined Gym-style benchmark in the user's Docker image", task_selector="profile"),
 )
 
@@ -293,7 +292,7 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
             elif container is not None:
                 status = "not_prepared"
             else:
-                status = info.setup  # real (or an integration without a container recipe)
+                status = info.setup  # an integration without a container recipe
             suites: dict[str, int] = {}
             for task in (runtime.tasks.values() if runtime else ()):
                 suites[task["suite"]] = suites.get(task["suite"], 0) + 1
@@ -319,7 +318,7 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
             "deploy": "container" if container else None,
             "integration": info.integration,
             "title": info.title,
-            "kind": info.kind,
+            "kind": "simulation",  # Studio groups benchmarks by kind
             "simulator": info.simulator,
             "embodiment": info.embodiment,
             "setup": info.setup,

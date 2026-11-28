@@ -82,7 +82,7 @@ def methods(integration: str | None = None) -> tuple[dict, ...]:
             "file": _recipe_file(method),
             "external_evaluator": False,
             "fixed_effort": None,
-            "act": list(entry.act), "agent": default_agent, "roles": list(recipe.roles),
+            "act": list(entry.act), "stateless": entry.stateless, "agent": default_agent, "roles": list(recipe.roles),
             "references": [reference.model_dump(mode="json") for reference in recipe.references],
             "episodes": recipe.loop.episodes.model_dump(mode="json"),
             "agents": agents if unavailable is None else [], "unavailable": unavailable,
@@ -160,7 +160,7 @@ def tool_groups(integration: str, method_id: str, agent_id: str) -> dict[str, li
         raise ValueError("Unknown benchmark")
     request = LaunchRequest(integration, "", "", "", method=method_id, agent=agent_id)
     _, method, agent = resolve_selection(request)
-    if method["act"] == ["action"] or len(method["roles"]) > 1:
+    if method["stateless"] or len(method["roles"]) > 1:
         raise ValueError("Tool selection applies to one-role methods that act through tools or code")
     entry = get_method(method_id)
     compiled = compile_recipe(entry.recipe, load_integration(integration).get_integration_spec(),

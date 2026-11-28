@@ -182,23 +182,12 @@ def assemble_session(args) -> SessionAssembly:
             for name in role.delegates:
                 target = compiled.roles[name]
                 from evoab.agent.team.delegation.provider import DelegateTarget
-                targets[name] = DelegateTarget(name, target.role.description, target.act, "native")
+                targets[name] = DelegateTarget(name, target.role.description, target.act, target.stateless)
         if targets:
             from evoab.agent.team.delegation.provider import DelegationTools, tool_policies as delegation_policies
             dispatch = RoleDispatch()
             tools.extend(DelegationTools(targets, dispatch).get_tools())
             policies.update(delegation_policies(targets))
-        # Agent roles that also act through action chunks share one chunk tool.
-        action_tools = None
-        chunk_roles = [role for role in compiled.roles.values() if "action" in role.act and not role.stateless]
-        if chunk_roles:
-            if len({repr(role.direct) for role in chunk_roles}) > 1:
-                raise ValueError("roles that emit action chunks in an agent session must share one action setting")
-            from evoab.agent.act.action.tool import ActionTools
-            action_tools = ActionTools(session.episode, chunk_roles[0].direct, integration=args.integration,
-                                       output_dir=session_dir)
-            tools.extend(action_tools.get_tools())
-            policies.update(action_tools.policies())
 
         profile_name = getattr(args, "observation_profile", "none")
         if profile_name != "none":
@@ -220,15 +209,13 @@ def assemble_session(args) -> SessionAssembly:
                 provided = module_tools.get(item.name, set())
                 names |= provided if item.selection.tools is None else provided & set(item.selection.tools)
             names |= {tool_name(target) for target in role.delegates}
-            if action_tools is not None and "action" in role.act:
-                names.add(action_tools.name)
             names.update(role.role.job_tools or ())
             return frozenset(names)
 
         role_tools = {name: visible(role) for name, role in compiled.roles.items()}
         entry_name = compiled.recipe.loop.entry
         extra_entry = {tool.name for tool in tools} - set().union(*module_tools.values()) - {
-            f"delegate_{name}" for name in targets} - ({action_tools.name} if action_tools else set())
+            f"delegate_{name}" for name in targets}
         # Workspace (TUI) and observation-profile tools belong to the entry role.
         role_tools[entry_name] = role_tools[entry_name] | frozenset(extra_entry)
 
@@ -267,7 +254,7 @@ def assemble_session(args) -> SessionAssembly:
         prompt_builder = get_prompt_builder(prompt_integration)
         prompt_context = PromptContext(
             integration_name=prompt_integration,
-            act=args.act if not compiled.entry.stateless else ("tools",),
+            act=args.act,
             task="",
             action_model_name=session.action_model_name,
             episode=session.episode,
@@ -302,14 +289,6 @@ def assemble_session(args) -> SessionAssembly:
             (session_dir / "initial_observation.json").write_text(
                 json.dumps(initial_metadata, indent=2, allow_nan=False) + "\n")
 
-        guidance_text = []
-
-        def action_guidance() -> str:
-            # Assembled once, from the frame measured when the first agent prompt is built.
-            if not guidance_text:
-                guidance_text.append(action_tools.guidance())
-            return guidance_text[0]
-
         def build_prompt(task: str, role: str | None = None):
             compiled_role = compiled.roles[role or entry_name]
             is_entry = compiled_role.name == entry_name
@@ -340,8 +319,6 @@ def assemble_session(args) -> SessionAssembly:
                 base_prompt = base_prompt.append(
                     system=contribution.system, user=contribution.user, source=contribution.source,
                 )
-            if action_tools is not None and "action" in compiled_role.act:
-                base_prompt = base_prompt.append(system=action_guidance(), source="act:action")
             if compiled_role.prompt_text and not compiled_role.stateless:
                 base_prompt = base_prompt.append(system=compiled_role.prompt_text,
                                                  source=f"recipe:{args.recipe_id}:{compiled_role.name}")
@@ -369,7 +346,8 @@ def assemble_session(args) -> SessionAssembly:
             role_tools=role_tools,
             delegation=dispatch,
             obs_proxy=obs_proxy,
-            chunk_tool=action_tools.name if action_tools else None,
+            chunk_tool=next((tool.name for item, provider in zip(assembly.selected, assembly.providers)
+                             if item.name == "action" for tool in provider.get_tools()), None),
         )
     except BaseException as exc:
         # Stop producers and finish persistence before publishing even a failed startup.

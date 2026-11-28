@@ -39,10 +39,6 @@ class NativeAgent:
     )
 
     @classmethod
-    def add_cli_arguments(cls, parser) -> None:
-        """Action settings live in the recipe (``roles.<name>.action``)."""
-
-    @classmethod
     def validate_config(cls, args, explicit: set[str]) -> None:
         from evoab.agent.models import catalog
         names = {p["name"] for p in catalog.presets()}
@@ -52,10 +48,6 @@ class NativeAgent:
     @classmethod
     def config_options(cls, args) -> dict[str, Any]:
         return {"reasoning_effort": args.reasoning_effort, "direct": getattr(args, "direct_config", None)}
-
-    @classmethod
-    def resolve_defaults(cls, args) -> None:
-        return None
 
     def __init__(self, *, model: str, timeout_s: float | None = None, reasoning_effort: str | None = None,
                  direct=None):

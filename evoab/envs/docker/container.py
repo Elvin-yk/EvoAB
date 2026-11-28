@@ -58,8 +58,10 @@ import subprocess
 import tempfile
 import tomllib
 from dataclasses import dataclass, field
+from functools import lru_cache
 from importlib import resources
 from pathlib import Path
+from typing import NamedTuple
 
 PREFIX = "docker://"
 #: Where the host's ``evoab`` package is mounted read-only in every container (``|code``).
@@ -149,18 +151,21 @@ def parse(python: str) -> tuple[str, str]:
     return image, rest.split("|")[0]
 
 
-def options(python: str) -> tuple[bool, list[str]]:
-    """Whether a container interpreter runs as root, and its host paths to mount."""
+class Options(NamedTuple):
+    """Flags of a container interpreter: run as root, mount the host's code, extra host mounts."""
+
+    root: bool
+    mounts: list[str]
+    code: bool
+
+
+def options(python: str) -> Options:
     parts = str(python)[len(PREFIX):].partition("#")[2].split("|")[1:]
-    return "root" in parts, [part for part in parts if part.startswith("/")]
+    return Options("root" in parts, [part for part in parts if part.startswith("/")], "code" in parts)
 
 
-def mounts_code(python: str) -> bool:
-    """Whether a container interpreter runs the host's mounted ``evoab`` package."""
-    return "code" in str(python)[len(PREFIX):].partition("#")[2].split("|")[1:]
-
-
-def code_mounts() -> list[tuple[str, str]]:
+@lru_cache(maxsize=1)
+def code_mounts() -> tuple[tuple[str, str], ...]:
     """(host, container) pairs that make the running ``evoab`` importable at ``CODE_ROOT``.
 
     The package directory is mounted with a minimal distribution record naming the
@@ -175,8 +180,8 @@ def code_mounts() -> list[tuple[str, str]]:
         record.mkdir(parents=True, exist_ok=True)
         (record / "METADATA").write_text(f"Metadata-Version: 2.1\nName: evoab\nVersion: {__version__}\n",
                                          encoding="utf-8")
-    return [(str(Path(evoab.__file__).resolve().parent), f"{CODE_ROOT}/evoab"),
-            (str(record), f"{CODE_ROOT}/{record.name}")]
+    return ((str(Path(evoab.__file__).resolve().parent), f"{CODE_ROOT}/evoab"),
+            (str(record), f"{CODE_ROOT}/{record.name}"))
 
 
 def docker() -> str:
@@ -227,9 +232,9 @@ def python_command(python: str, arguments, *, environment=None, gpu: bool = Fals
     if not is_container(python):
         raise ValueError("Runtimes run only in Docker containers; rerun setup to build this runtime's image")
     image, inner = parse(python)
-    root, mounts = options(python)
+    root, mounts, code = options(python)
     return run_prefix(image, gpu=gpu, environment=environment or {}, mounts=mounts, root=root,
-                      code=mounts_code(python)) + [inner, *map(str, arguments)]
+                      code=code) + [inner, *map(str, arguments)]
 
 
 def wrap_plan(plan, runtime, *, gpu_index: int, name: str):
@@ -239,18 +244,18 @@ def wrap_plan(plan, runtime, *, gpu_index: int, name: str):
     if plan.command[0] != runtime.python:
         raise ValueError("A container launch plan must start with the runtime interpreter")
     gpu = gpu_index if runtime.data.get("container", {}).get("gpu", True) else False
-    root, extra = options(runtime.python)
+    root, extra, code = options(runtime.python)
     mounts = ([plan.cwd] if plan.cwd else []) + extra
     environment = {**runtime.environment, **plan.environment}
     command = run_prefix(image, gpu=gpu, environment=environment, mounts=mounts, name=name, root=root,
-                         code=mounts_code(runtime.python)) + [inner, *plan.command[1:]]
+                         code=code) + [inner, *plan.command[1:]]
     # The docker client itself needs the host proxy for nothing; keep the host environment minimal.
     return LaunchPlan(tuple(command), plan.url, plan.expected, {}, plan.cwd)
 
 
 def hand_back(python: str, path) -> None:
     """Give files a root container wrote under ``path`` back to the host user."""
-    root, _ = options(python)
+    root = options(python).root
     if not root or not shutil.which("docker"):
         return
     image, _ = parse(python)
@@ -326,45 +331,49 @@ def _fetch_sources(spec: ContainerSpec, report) -> Path:
 def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, report, *,
                         context: Path | None = None, constraints=(), local_image: str | None = None) -> str:
     """Pull or build the upstream image, then build EvoAB's local layer on it; return its tag."""
+    prefix = f"evoab/{spec.integration.replace('_', '-')}"
+    recipe = None
     if local_image:
-        # Docker builders resolve FROM by name; give the verified content ID a local tag.
         base = f"evoab/imported:{local_image.removeprefix('sha256:')}"
-        _stream([docker(), "tag", local_image, base], report)
     elif spec.image:
-        present = subprocess.run([docker(), "image", "inspect", spec.image], capture_output=True).returncode == 0
-        if not present:
-            _stream([docker(), "pull", spec.image], report)
         base = spec.image
     elif spec.build == "native":
         if context is None or not (Path(context) / "Dockerfile").is_file():
             raise ValueError("The native checkout has no Dockerfile to build")
         revision = subprocess.run(["git", "-C", str(context), "rev-parse", "HEAD"], capture_output=True,
                                   text=True).stdout.strip()[:12] or spec.digest[:12]
-        base = f"evoab/{spec.integration.replace('_', '-')}-base:{revision}"
-        forwarded = [arg for key in spec.build_args if os.environ.get(key)
-                     for arg in ("--build-arg", f"{key}={os.environ[key]}")]
-        _stream([docker(), "build", "-t", base, *_build_args(), *forwarded, str(context)], report)
+        base = f"{prefix}-base:{revision}"
     else:
         recipe = Path(str(resources.files(spec.package or f"evoab.envs.{spec.integration}")
                           .joinpath(spec.dockerfile)))
         # The tag hashes the recipe and its Dockerfile, so an existing one is reused as is.
-        base = (f"evoab/{spec.integration.replace('_', '-')}-base:"
+        base = (f"{prefix}-base:"
                 f"{hashlib.sha256((spec.digest + recipe.read_text(encoding='utf-8')).encode()).hexdigest()[:12]}")
-        if subprocess.run([docker(), "image", "inspect", base], capture_output=True).returncode:
-            build_context = _fetch_sources(spec, report) if spec.sources else recipe.parent
-            _stream([docker(), "build", "-t", base, "-f", recipe, *_build_args(), build_context], report)
     requirements = None if wheel else runtime_requirements()
     # The tag names exactly what the layer contains: the recipe, its base, the runtime
     # dependencies and pins. EvoAB's code is mounted, so code changes reuse the image.
     contents = (hashlib.sha256(wheel.read_bytes()).hexdigest() if wheel
                 else "requirements:" + "\n".join(requirements))
     identity = spec.digest + contents + base + "\n".join(spec.constraints or constraints)
-    digest = hashlib.sha256(identity.encode()).hexdigest()[:12]
-    tag = f"evoab/{spec.integration.replace('_', '-')}:{f'{version}-' if wheel else 'env-'}{digest}"
-    if not wheel and subprocess.run([docker(), "image", "inspect", tag], capture_output=True).returncode == 0:
+    tag = f"{prefix}:{f'{version}-' if wheel else 'env-'}{hashlib.sha256(identity.encode()).hexdigest()[:12]}"
+    if not wheel and _image_present(tag):
         if report is not None:
             report(f"Reusing {tag}: recipe and dependencies are unchanged")
         return tag
+    # Only now provide the base the layer builds on.
+    if local_image:
+        # Docker builders resolve FROM by name; give the verified content ID a local tag.
+        _stream([docker(), "tag", local_image, base], report)
+    elif spec.image:
+        if not _image_present(base):
+            _stream([docker(), "pull", base], report)
+    elif spec.build == "native":
+        forwarded = [arg for key in spec.build_args if os.environ.get(key)
+                     for arg in ("--build-arg", f"{key}={os.environ[key]}")]
+        _stream([docker(), "build", "-t", base, *_build_args(), *forwarded, str(context)], report)
+    elif not _image_present(base):
+        build_context = _fetch_sources(spec, report) if spec.sources else recipe.parent
+        _stream([docker(), "build", "-t", base, "-f", recipe, *_build_args(), build_context], report)
     with tempfile.TemporaryDirectory(prefix="evoab-image-") as context:
         context_path = Path(context)
         python = shlex.quote(spec.python)
@@ -400,19 +409,13 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
     return tag
 
 
-#: Planner-only dependencies the service runtime never needs (pyproject [tool.evoab.runtime]).
-RUNTIME_EXCLUDED: tuple[str, ...] = ()
-
-
 def runtime_requirements() -> list[str]:
     """The running ``evoab`` distribution's runtime requirements (no extras), sorted."""
     from importlib import metadata
     requirements = []
     for requirement in metadata.requires("evoab") or []:
-        name = re.split(r"[<>=!~\[; ]", requirement, maxsplit=1)[0].lower()
-        if "extra ==" in requirement or name in RUNTIME_EXCLUDED:
-            continue
-        requirements.append(requirement)
+        if "extra ==" not in requirement:
+            requirements.append(requirement)
     return sorted(requirements)
 
 
@@ -552,6 +555,11 @@ class RuntimeInUse(ContainerError):
         super().__init__(f"{image} is used by container {names}{more}; stop or remove it first")
         self.image = image
         self.containers = containers
+
+
+def _image_present(reference: str) -> bool:
+    """Whether Docker has an image locally; daemon errors raise instead of reading as absent."""
+    return image_record(reference) is not None
 
 
 def _docker_run(*arguments: str, timeout: float = 60):

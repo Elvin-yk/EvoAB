@@ -129,13 +129,14 @@ def assemble_prompt(
     prompt = _append_resource(prompt, prompts / "runtime" / "process_control.md")
     calls = ("tool_calling.md", "batch.md", f"resource_{context.resource_scheduling}.md",
              f"return_{context.tool_return_mode}.md")
-    if "code" in context.act:
-        resources = (calls + ("code_as_policy.md", "tools_and_code.md") if "tools" in context.act
-                     else ("code_as_policy.md",))
-    else:
-        resources = calls
     if compact:
         resources = ("tool_calling.md", "return_immediate.md")
+    elif "code" not in context.act:
+        resources = calls
+    elif "tools" in context.act:
+        resources = (*calls, "code_as_policy.md", "tools_and_code.md")
+    else:
+        resources = ("code_as_policy.md",)
     for name in resources:
         prompt = _append_resource(prompt, prompts / "runtime" / name)
     for name in context.tool_prompt_resources:

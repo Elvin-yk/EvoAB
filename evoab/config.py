@@ -59,7 +59,6 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
         if not getattr(args, "model", None):
             raise ValueError(f"--model is required (or pin roles.{args.recipe.loop.entry}.brain.model "
                              f"in method {args.recipe_id!r})")
-        NativeAgent.resolve_defaults(args)
     # Read environment variables at the entry point; business modules receive resolved values.
     for name in (
         "env_url",

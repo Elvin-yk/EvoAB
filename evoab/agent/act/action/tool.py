@@ -5,15 +5,20 @@ action chunk is one more call in the agent's session: the same representation,
 step limits and decoding as a stateless action role, executed one row per
 control step through the environment's controller. The result reports what ran
 and attaches the camera images measured afterwards.
+
+The recipe compiler adds :data:`ACTION_MODULE` to every such role, so the chunk
+tool is assembled, scheduled, shown and prompted like any other capability.
 """
 
 from __future__ import annotations
 
+from functools import cached_property
 from pathlib import Path
 
-from evoab.agent.act.action.actions import OutputError
+from evoab.agent.act.action.actions import REPRESENTATIONS, OutputError
+from evoab.envs.composition import ModuleSelection, ToolModule
 from evoab.runtime.scheduler import ToolExecutionPolicy
-from evoab.tools.toolkit import ActionOutcome, ImageAttachment, ToolOutput, ToolProvider, ToolSpec, bind_tools
+from evoab.tools.toolkit import ActionOutcome, ToolOutput, ToolProvider, ToolSpec, bind_tools
 
 
 class ActionTools(ToolProvider):
@@ -21,6 +26,7 @@ class ActionTools(ToolProvider):
 
     def __init__(self, episode, config, *, integration: str, output_dir: Path):
         from evoab.agent.act.action.runner import DirectPolicy
+        self.episode = episode
         self.policy = DirectPolicy(episode, None, integration=integration, instruction="",
                                    output_dir=output_dir, config=config)
 
@@ -35,13 +41,10 @@ class ActionTools(ToolProvider):
             "before anything moves. Returns the executed rows, the measured state and current camera images."),
             function["parameters"])
 
-    def policies(self) -> dict[str, ToolExecutionPolicy]:
-        return {self.name: ToolExecutionPolicy(resource_key="episode", return_mode="background",
-                                               concurrency="exclusive", mutates_world=True,
-                                               replan_observation=True)}
-
-    def guidance(self) -> str:
-        return self.policy.guidance()
+    @cached_property
+    def prompt_contributions(self):
+        from evoab.agent.context.prompt import PromptContribution
+        return (PromptContribution(system=self.policy.guidance(), source="act:action"),)
 
     def get_tools(self):
         return bind_tools([self.spec()], provider_id=self.provider_id, handlers={self.name: self._handle})
@@ -53,10 +56,11 @@ class ActionTools(ToolProvider):
             return ToolOutput(success=False, error=f"chunk rejected, nothing moved: {error}",
                               extra={"no_execution": True},
                               action=ActionOutcome(complete=False, executed="none"))
+        from evoab.tools.scene.perception import snapshot_images
         executed = len(record["executed"])
         failure = record.get("execution_error")
         frame = self.policy.frames[-1]
-        images = [ImageAttachment(data, "image/jpeg", camera) for camera, data in self.policy.latest_images().items()]
+        images = snapshot_images(self.episode.env, self.episode.latest_snapshot, mirror=self.episode.artifact_mirror)
         return ToolOutput(
             success=failure is None, error=failure,
             extra={"requested_rows": len(record["targets"]), "executed_rows": executed,
@@ -65,3 +69,18 @@ class ActionTools(ToolProvider):
             images=images,
             action=ActionOutcome(complete=failure is None and executed == len(record["targets"]),
                                  executed="some" if executed else "none"))
+
+
+def configure_action(session, selection: ModuleSelection) -> ActionTools:
+    # The compiler checks that every role emitting chunks in a session shares one action setting.
+    config = next(role.direct for role in session.args.compiled_recipe.roles.values() if role.emits_chunks)
+    return ActionTools(session.episode, config, integration=session.args.integration,
+                       output_dir=session.context.session_dir)
+
+
+ACTION_MODULE = ToolModule(
+    "action", configure_action,
+    {representation.tool: ToolExecutionPolicy(resource_key="episode", return_mode="background",
+                                              concurrency="exclusive", mutates_world=True, replan_observation=True)
+     for representation in REPRESENTATIONS.values()},
+    label="Action chunks", description="Emit an action chunk the controller executes row by row (act: action).")

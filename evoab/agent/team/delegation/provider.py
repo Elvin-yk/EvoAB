@@ -27,7 +27,12 @@ class DelegateTarget:
     name: str
     description: str
     act: tuple[str, ...]
-    agent: str
+    # Acts only through action chunks: steps the environment itself, outside the executor.
+    stateless: bool
+
+
+WAYS = {"tools": "calls its own robot tools", "code": "writes and runs programs against the robot API",
+        "action": "emits action chunks"}
 
 
 def tool_name(role: str) -> str:
@@ -37,7 +42,7 @@ def tool_name(role: str) -> str:
 def tool_policies(targets: Mapping[str, DelegateTarget]) -> dict[str, ToolExecutionPolicy]:
     return {
         tool_name(name): (ToolExecutionPolicy(resource_key="episode", concurrency="exclusive", mutates_world=True)
-                          if target.act == ("action",) else
+                          if target.stateless else
                           ToolExecutionPolicy(resource_key="delegation", concurrency="parallel"))
         for name, target in targets.items()
     }
@@ -46,11 +51,9 @@ def tool_policies(targets: Mapping[str, DelegateTarget]) -> dict[str, ToolExecut
 def tool_specs(targets: Mapping[str, DelegateTarget]) -> list[ToolSpec]:
     specs = []
     for name, target in targets.items():
-        ways = {"tools": "calls its own robot tools", "code": "writes and runs programs against the robot API",
-                "action": "emits action chunks"}
-        how = ("emits action chunks directly from camera frames" if target.act == ("action",)
-               else " and ".join(ways[way] for way in target.act))
-        description = (f"Hand a sub-goal to the {name!r} role ({target.agent}), which {how} against the "
+        how = ("emits action chunks directly from camera frames" if target.stateless
+               else " and ".join(WAYS[way] for way in target.act))
+        description = (f"Hand a sub-goal to the {name!r} role, which {how} against the "
                        f"current episode and returns a report when it stops. "
                        + (target.description.strip() + " " if target.description.strip() else "")
                        + "Give a self-contained instruction. Observe the scene afterwards; the report "
@@ -75,7 +78,7 @@ class DelegationTools(ToolProvider):
         def delegate(instruction: str) -> ToolOutput:
             report = self.run_role(role, instruction)
             action = None
-            if self.targets[role].act == ("action",):
+            if self.targets[role].stateless:
                 # The sub-run stepped the environment itself; report what it executed for replanning.
                 steps = report.get("steps")
                 executed = "unknown" if steps is None else ("some" if steps > 0 else "none")
