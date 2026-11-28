@@ -257,6 +257,8 @@ up to four groups and twelve images. Adjust the per-request limits with
 `--max-camera-groups` and `--images-per-request`. The worker splits large
 groups across requests so every view is included.
 It writes the verdict and cited trajectory references to `result.json`.
+The model can return an empty list of event citations. The worker still records
+the diagnosis with a reference to the native verdict and acknowledges completion.
 A boolean native verdict determines the score. When `task_success` is null or
 absent, the worker skips model analysis and records `backend: skipped` and
 `result: insufficient_evidence` in the completed verification.

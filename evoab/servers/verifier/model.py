@@ -30,7 +30,8 @@ The images are periodic samples and may end before the episode terminates. A mis
 transition cannot establish why an action failed.
 Return only a JSON object with result (success or failure),
 evidence (an array of supplied integer event_seq IDs), failure_reason, and lesson.
-Cite the events supporting your diagnosis. If the cause is unknown, say so. For a success,
+Cite the execution events or camera samples supporting your diagnosis. Use an empty evidence
+array when no relevant event is available. If the cause is unknown, say so. For a success,
 describe any observed recovery or say no failure was observed.
 Give one practical lesson supported by these records."""
 
