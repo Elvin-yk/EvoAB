@@ -4,7 +4,7 @@ from pathlib import Path
 
 from evoab.envs.simulation import materialized_asset
 from evoab.envs.docker.config import LaunchPlan
-from .server import BUDGETS
+from .family import BUDGETS
 
 
 def task_catalog(args, suites, state_path, *, allow_empty=False, budgets=BUDGETS):

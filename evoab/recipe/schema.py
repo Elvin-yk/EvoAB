@@ -190,21 +190,11 @@ class ExecutionSpec(Spec):
 class Inputs(Spec):
     """What the episode gives every role. ``None`` keeps the environment's default.
 
-    ``depth`` and ``calibration`` are applied when EvoAB starts the environment
-    (``--deploy local``) and checked against the description of a connected one.
-    ``task_supplements`` appends the environment's extra task clarifications
-    (only environments that publish them, such as RoboDojo).
+    ``depth`` is applied when EvoAB starts the environment and checked against
+    the description of a connected one.
     """
 
     depth: bool | None = None
-    calibration: bool | None = None
-    task_supplements: bool = False
-
-    @model_validator(mode="after")
-    def calibration_needs_no_depth(self):
-        if self.calibration is False and self.depth is not False:
-            raise ValueError("inputs.calibration: false requires inputs.depth: false")
-        return self
 
 
 class Reference(Spec):

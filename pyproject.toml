@@ -39,14 +39,7 @@ Homepage = "https://github.com/Elvin-yk/EvoAB"
 # The built-in agent: model providers, presets and usage accounting.
 agent = ["nanobot-ai==0.4.1", "scipy>=1.10"]
 benchmarks = ["scipy>=1.10", "PyYAML>=6,<7"]
-xpolicylab = ["websockets>=14,<18", "msgpack>=1,<2", "msgpack-numpy==0.4.8"]
 dev = ["build>=1", "twine>=6", "tomli-w>=1"]
-robodojo = [
-    "trimesh>=4,<5",
-    "imageio>=2.0",
-    "scipy>=1.10",
-    "imageio-ffmpeg>=0.4",
-]
 
 [project.scripts]
 evoab = "evoab.cli:main"
@@ -68,16 +61,11 @@ namespaces = false
 "evoab.apps.studio" = ["static/*.html", "static/*.js", "static/*.css", "static/model-assets/*", "static/*.txt"]
 "evoab" = ["py.typed"]
 "evoab.methods" = ["*/method.yaml", "*/CARD.md", "*/prompts/*.md"]
-"evoab.resources" = ["prompts/**/*.md", "prompts/robodojo/task_requirements.json", "prompts/robodojo/instruction_supplements.json", "skills/**/*.md"]
+"evoab.resources" = ["prompts/**/*.md", "skills/**/*.md"]
 "evoab.envs.libero" = ["deployment.toml", "container.toml"]
-"evoab.envs.libero_plus" = ["deployment.toml", "container.toml", "Dockerfile"]
 "evoab.envs.libero_pro" = ["deployment.toml", "container.toml", "previews/sources.json", "previews/NOTICE", "previews/LICENSE"]
-"evoab.envs.metaworld" = ["deployment.toml", "container.toml", "Dockerfile"]
 "evoab.envs.calvin" = ["deployment.toml", "container.toml"]
-"evoab.envs.robotwin" = ["deployment.toml", "container.toml", "Dockerfile"]
-"evoab.envs.robodojo" = ["deployment.toml", "container.toml", "SOURCE.md", "UPSTREAM_LICENSE", "environment/*.urdf"]
 
-"evoab.servers.actor" = ["recipes/*.toml"]
 
 # Native services run in separate environments without planner/UI dependencies.
 [tool.evoab.runtime]

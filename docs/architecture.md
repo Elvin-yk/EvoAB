@@ -191,7 +191,7 @@ Tools report what an action did in `ToolOutput.action` (`executed` none/some/unk
 | **A tool for your own methods** | A `@tool` function in a file selected with `user_tools` ([guide](guide.md#methods-and-recipes)); no EvoAB code changes. |
 | **A capability** | A `ToolModule` (provider factory `create(session, selection)`, policies, selectable `tools`, typed `options`, label) whose schemas and handlers live in `tools/<family>/`; integrations that support it publish it in `tool_modules`. |
 | **An action representation** | A `Representation` in `agent/act/action/actions.py`. There is no fourth way of acting. |
-| **An environment** | An integration package with `get_integration_spec()`: native execution, observations and outcome in the adapter, an accurate description (arms, frames, units, limits, cameras, calibration), the tool modules it supports, a deployment module with a `container.toml` (a pinned upstream image or a `Dockerfile`; see `envs/docker/container.py`), and a section in [benchmarks](benchmarks.md). Environments run only in containers. It must not define its own model tools. |
+| **An environment** | An integration package with `get_integration_spec()`: native execution, observations and outcome in the adapter, an accurate description (arms, frames, units, limits, cameras, calibration), the tool modules it supports, a deployment module with a `container.toml` naming a published simulator image pinned by digest (EvoAB supports only benchmarks that publish one; see `envs/docker/container.py`), and a section in [benchmarks](benchmarks.md). Environments run only in containers. It must not define its own model tools. |
 | **An action model** | An `ActorBackend` registered in `servers/actor/registry.py`; environment-specific conversion stays in the integration's binding. |
 | **A model vendor** | Add a provider and preset with `evoab models` (or Studio, 设置 → 模型); no code changes. |
 
@@ -202,7 +202,6 @@ python scripts/validation/recipe_composition.py     # recipes, roles, experience
 python scripts/validation/tool_composition.py       # tool schemas, visibility, prompts, act combinations
 python scripts/validation/calvin_actor.py           # CALVIN Hybrid execution against fixture services
 python scripts/validation/libero_actor.py           # LIBERO policy observation and native action binding
-python scripts/validation/metaworld_actor.py        # MetaWorld policy observation and native/pose action binding
 python scripts/validation/observation_toolpackage.py
 evoab methods validate METHOD --integration X
 ```

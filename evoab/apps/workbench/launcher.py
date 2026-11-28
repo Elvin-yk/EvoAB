@@ -38,9 +38,8 @@ class LaunchRequest:
     agent_options: dict[str, int] | None = None
     visible_tools: list[str] | None = None
     team: list[dict] | None = None
-    # Evaluation set and frozen layout index, for benchmarks whose tasks declare them (RoboDojo).
+    # Evaluation seed, for benchmarks whose tasks declare selectable seeds.
     seed: int | None = None
-    layout_id: int | None = None
 
 
 def _agent_choice(name: str, launch: AgentLaunch) -> dict:
@@ -214,8 +213,6 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
     ]
     if request.seed is not None:
         command.extend(("--seed", str(request.seed)))
-    if request.layout_id is not None:
-        command.extend(("--layout-id", str(request.layout_id)))
     return command + [
         "--output-dir", str(output_root),
         # Port 0 picks a free port; the CLI then prints the run directory at start.
@@ -224,19 +221,15 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
 
 
 def _check_episode_choice(request: LaunchRequest, task: dict) -> None:
-    """Seed and layout must be ones the task declares (bool is not an index)."""
-    for name in ("seed", "layout_id"):
-        value = getattr(request, name)
-        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
-            raise ValueError(f"{name} must be an integer")
-    if request.seed is None and request.layout_id is None:
+    """A seed must be one the task declares (bool is not an index)."""
+    if request.seed is None:
         return
+    if isinstance(request.seed, bool) or not isinstance(request.seed, int):
+        raise ValueError("seed must be an integer")
     if "seeds" not in task:
-        raise ValueError("This task has no selectable evaluation seeds or layouts")
-    if request.seed is not None and request.seed not in task["seeds"]:
+        raise ValueError("This task has no selectable evaluation seeds")
+    if request.seed not in task["seeds"]:
         raise ValueError(f"seed must be one of {task['seeds']}")
-    if request.layout_id is not None and not 0 <= request.layout_id < task["layouts_per_seed"]:
-        raise ValueError(f"layout_id must be between 0 and {task['layouts_per_seed'] - 1}")
 
 
 def validate(request: LaunchRequest) -> dict:

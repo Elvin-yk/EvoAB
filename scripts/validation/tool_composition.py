@@ -27,8 +27,8 @@ from evoab.tools.hybrid.contracts import HybridCapabilities
 from evoab.tools.selection import TOOL_GROUPS
 from evoab.tools.toolkit import ToolOutput
 
-INTEGRATIONS = ("robodojo", "robotwin", "libero", "libero_plus", "libero_pro", "calvin", "metaworld")
-HYBRID = ("robodojo", "calvin", "libero", "metaworld")
+INTEGRATIONS = ("libero", "libero_pro", "calvin")
+HYBRID = ("calvin", "libero")
 BASE_TOOLS = {"list_skills", "read_skill", "view_env_state", "capture_scene",
               "locate", "move", "grasp", "release", "hold", "finish"}
 JOBS = set(TOOL_GROUPS["@jobs"])
@@ -81,7 +81,7 @@ PROFILE_METHODS = {"direct": "tools", "hybrid": str(EXAMPLES / "policy.yaml"), "
 OVERRIDES = {"tool_return_mode": "execution.return_mode", "observation_profile": "execution.observation_profile"}
 
 
-def config(integration="robodojo", profile="direct", *, recipe=None, overrides=None, skill_writing=False,
+def config(integration="libero", profile="direct", *, recipe=None, overrides=None, skill_writing=False,
            **settings):
     """A tool-only session for one built-in method; profile names map to the methods that replaced them."""
     options = {"task": "validation-task"}
@@ -324,7 +324,7 @@ class CompositionChecks(unittest.TestCase):
             close=lambda: None)
         with patch("evoab.session.load_observation_profile",
                    return_value=SimpleNamespace(create_observation_profile=lambda *a: profile)):
-            cfg = config("robodojo", observation_profile="robodojo")
+            cfg = config("libero", observation_profile="libero")
             with assembled(cfg, self.directory) as (assembly, *_):
                 self.assertTrue(set(TOOL_GROUPS["@observation"]) <= surface(assembly))
                 result = assembly.executor.call("capture_observation", {})
@@ -336,9 +336,9 @@ class CompositionChecks(unittest.TestCase):
             with assembled(config(skill_writing=True, tool_return_mode="immediate"),
                            self.directory) as (assembly, *_):
                 result = assembly.executor.call("write_skill",
-                    {"path": "robodojo/learned.md", "content": "Fixture experience"})
+                    {"path": "libero/learned.md", "content": "Fixture experience"})
                 self.assertTrue(result.output.success)
-                self.assertEqual((library / "robodojo/learned.md").read_text(), "Fixture experience")
+                self.assertEqual((library / "libero/learned.md").read_text(), "Fixture experience")
 
     def test_capabilities_and_failed_assembly_cleanup(self):
         with assembled(config(), self.directory, calibrated=False) as (assembly, *_):
@@ -353,7 +353,7 @@ class CompositionChecks(unittest.TestCase):
             self.assertFalse({"move", "grasp", "release", "hold"} & surface(assembly))
             self.assertNotIn("Gripper operation labels", assembly.build_prompt("Observe").flatten())
         from evoab.envs.composition import validate_modules
-        spec = load_integration("robodojo").get_integration_spec()
+        spec = load_integration("libero").get_integration_spec()
         with self.assertRaisesRegex(ValueError, "Duplicate tool module"):
             validate_modules((spec.tool_modules[0], spec.tool_modules[0]))
 

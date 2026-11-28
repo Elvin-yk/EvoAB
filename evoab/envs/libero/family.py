@@ -1,13 +1,12 @@
-"""Serve one LIBERO-Plus task with its official perturbations and initial state."""
+"""Shared service setup for the LIBERO family (stock LIBERO and LIBERO-PRO): suites, budgets and episode preparation."""
 from pathlib import Path
 
-from evoab.envs.simulation import server_parser, serve_episode, source_root
+from evoab.envs.simulation import server_parser, source_root
 
-REVISION = "4976dc30028e805ff8094b55501d532c48fec182"
 BUDGETS = {"libero_spatial": 220, "libero_object": 280, "libero_goal": 300, "libero_10": 520}
 
 
-def parser(*, suites=tuple(BUDGETS), description=__doc__, port=18781):
+def parser(*, suites=tuple(BUDGETS), description=__doc__, port=18801):
     p = server_parser(description, port)
     p.add_argument("--suite", choices=suites, required=True)
     p.add_argument("--init-state-index", type=int, default=0)
@@ -16,7 +15,7 @@ def parser(*, suites=tuple(BUDGETS), description=__doc__, port=18781):
     return p
 
 
-def prepare(args, *, benchmark_name="libero_plus", revision=REVISION, budgets=BUDGETS, adapter_factory=None):
+def prepare(args, *, benchmark_name, revision, budgets=BUDGETS, adapter_factory=None):
     import hashlib
     import os
     import numpy as np
@@ -40,7 +39,7 @@ def prepare(args, *, benchmark_name="libero_plus", revision=REVISION, budgets=BU
     from libero.libero.envs import OffScreenRenderEnv
     from robosuite import macros
     from importlib.metadata import version
-    from .adapter import CAMERAS, LiberoAdapter
+    from .base_adapter import CAMERAS, LiberoAdapter
 
     if not Path(benchmark.__file__).resolve().is_relative_to(root):
         raise ValueError("A different LIBERO package is already imported; use a fresh service process")
@@ -86,11 +85,3 @@ def prepare(args, *, benchmark_name="libero_plus", revision=REVISION, budgets=BU
         env.close()
         raise
 
-
-def main():
-    args = parser().parse_args()
-    serve_episode(lambda: prepare(args), args, "libero_plus")
-
-
-if __name__ == "__main__":
-    main()

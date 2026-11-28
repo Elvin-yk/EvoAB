@@ -53,8 +53,7 @@ print('Installed SDK:', evoab.__file__)
     command([executable, '--help'])
     command([python, '-m', 'evoab', '--version'])
     # Offline method checks: the built-in agent needs no model or credential to validate a recipe.
-    for integration in ('robodojo', 'robotwin', 'libero', 'libero_plus',
-                        'libero_pro', 'calvin', 'metaworld'):
+    for integration in ('libero', 'libero_pro', 'calvin'):
         for method in ('tools', 'code', 'action'):
             command([python, '-m', 'evoab', 'methods', 'validate', method, '--integration', integration])
     command([python, '-I', '-c', """from pathlib import Path
@@ -62,37 +61,30 @@ from importlib.util import find_spec
 import evoab
 from evoab import Session, SessionConfig, SetupConfig, DeploymentConfig
 from evoab.agent.context.prompt import get_prompt_builder
-from evoab.envs.robodojo.action_binding import create_binding as x5_binding
+from evoab.envs.calvin.action_binding import create_binding as calvin_binding
 from evoab.tools.hybrid.provider import HybridTools
-from evoab.servers.actor.backends.openpi.config import resolve_config, recipe_settings
+from evoab.servers.actor.registry import backend_names
 import sys
-assert callable(x5_binding)
-assert not any(name in sys.modules for name in ('isaacsim', 'mujoco', 'torch', 'scipy'))
+assert callable(calvin_binding)
+assert set(backend_names()) == {'starvla_calvin', 'starvla_libero'}
+assert not any(name in sys.modules for name in ('mujoco', 'torch', 'scipy'))
 root = Path(evoab.__file__).parent
-assert callable(get_prompt_builder('robodojo'))
+assert callable(get_prompt_builder('libero'))
 for resource in ('apps/web/static/index.html', 'apps/web/static/app.js',
-                 'envs/robodojo/deployment.toml',
-                 'envs/metaworld/container.toml', 'envs/metaworld/Dockerfile',
-                 'servers/actor/recipes/robodojo_pi05.toml'):
+                 'envs/libero/container.toml', 'envs/calvin/container.toml', 'envs/libero_pro/container.toml'):
     assert (root / resource).is_file(), resource
 session = Session(SessionConfig(integration='libero_pro',
     env_url='http://127.0.0.1:18760'))
 session.close()  # Validate configuration only; do not connect or finalize an episode.
-for profile, widths in (("robodojo_pi05", (14,14,50)),):
-    config = resolve_config(dict(profile=profile, native_root="/unused/source",
-        checkpoint="/unused/checkpoint", checkpoint_sha256="a" * 64))
-    assert (len(config.profile.observation_fields), len(config.profile.action_fields),
-            config.profile.action_horizon) == widths
-    assert recipe_settings(profile)["actor"]["model"] == "pi05"
-SetupConfig(integration="metaworld").resolve()
-DeploymentConfig(integration="metaworld", task="reach-v3", depth=False).resolve()
+SetupConfig(integration="calvin").resolve()
+DeploymentConfig(integration="libero", task="libero_spatial/0", depth=False).resolve()
 try:
     SetupConfig(service="sam3")
 except ValueError:
     pass  # policy and SAM3 services are run by users and reached by URL
 else:
     raise AssertionError('A model-service setup was accepted')
-assert not any(name in sys.modules for name in ("mujoco", "jax", "openpi", "torch", "scipy"))
+assert not any(name in sys.modules for name in ("mujoco", "jax", "torch", "scipy"))
 resolved = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools').resolve()
 assert resolved.recipe_id == 'tools' and resolved.act == ('tools',)
 mixed = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools',
@@ -103,7 +95,7 @@ clean = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760'
     'roles.main.style': 'compact', 'execution.return_mode': 'immediate', 'roles.main.capabilities': [
         {'id': 'gripper', 'tools': ['move', 'hold']}, {'id': 'scene', 'tools': ['capture_scene']}, 'episode']}).resolve()
 assert clean.selected_tools == ('move', 'hold', 'capture_scene', 'finish')
-hybrid = SessionConfig(integration='robodojo', env_url='http://127.0.0.1:18760',
+hybrid = SessionConfig(integration='calvin', env_url='http://127.0.0.1:18760',
     recipe='tools', action_model_url='http://127.0.0.1:18769',
     integration_options={'action_model_checkpoint_sha256': 'a' * 64},
     recipe_overrides={'roles.main.capabilities': ['skills', 'scene', 'gripper',
@@ -120,22 +112,8 @@ assert {'tools', 'code', 'action'} == {
     m.id for m in __import__('evoab.recipe.methods', fromlist=['x']).list_methods()}
 for resource in ('methods/tools/method.yaml', 'methods/action/CARD.md', 'resources/prompts/runtime/tools_and_code.md'):
     assert (root / resource).is_file(), resource
-SetupConfig(integration='robodojo')
-DeploymentConfig(integration='robodojo', task='stack_bowls')
-rgb = DeploymentConfig(integration='robodojo', task='stack_bowls',
-                       depth=False, camera_calibration=False).resolve()
-assert rgb.depth is False and rgb.camera_calibration is False
-try:
-    DeploymentConfig(integration='robodojo', task='stack_bowls',
-                     camera_calibration=False).resolve()
-except ValueError as error:
-    assert 'requires --no-depth' in str(error)
-else:
-    raise AssertionError('Uncalibrated depth configuration accepted')
-from evoab.envs.robodojo.prompt import load_task_requirements
-assert load_task_requirements('make_kong') == ''
-assert '2 cm' not in load_task_requirements('arrange_largest_number_random')
-assert 'object itself more than 10 cm' in load_task_requirements('general_pickup')
+for name in ('robodojo', 'robotwin', 'libero_plus', 'metaworld'):
+    assert find_spec(f'evoab.envs.{name}') is None, name
 for name in ('robodojo_internal', 'efe', 'franka_robotiq', 'franka_sharpa', '_franka', 'dexterous_hand'):
     assert find_spec(f'evoab.envs.{name}') is None, name
     assert not (root / 'integrations' / name).exists(), name

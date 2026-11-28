@@ -39,11 +39,9 @@ REQUIRED_MODULES = (
 
 
 KNOWN_INTEGRATIONS = (
-    "robodojo",
-    "robotwin",
     "libero",
-    "libero_plus",
     "libero_pro",
+    "calvin",
 )
 
 # (variable, hint). Presence is reported; values are never read.

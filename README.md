@@ -28,8 +28,9 @@ around it. EvoAB makes that harness out of shared parts:
   policy, and your own Python functions (`@tool`) plug in the same way.
 - **The recipe is the method.** How it acts, inputs, roles, tools, budgets and
   experience across episodes live in one file; the command line only picks the run.
-- **Same environments for everyone.** Benchmarks run in Docker with their native
-  scoring; the agent never sees the verdict.
+- **Same environments for everyone.** Benchmarks run in their published Docker
+  images with native scoring; EvoAB's code is mounted, never baked in, and the
+  agent never sees the verdict.
 
 ```mermaid
 flowchart LR
@@ -45,12 +46,11 @@ flowchart LR
 - **2026/11** Tools, code and action combine freely in one agent session; the method library is the three of them.
 - **2026/11** One agent: every method runs on the built-in agent over your model presets.
 - **2026/11** Your own tools: decorate a Python function with `@tool` and select it in a recipe.
-- **2026/11** Benchmarks run only in Docker; `evoab run` starts and stops the container itself.
-- **2026/11** RoboDojo: 42 tasks in five capability dimensions, with selectable seeds and layouts.
+- **2026/11** Benchmarks run in published images only (LIBERO, LIBERO-PRO, CALVIN); code changes never rebuild an image.
 
 ## Quickstart
 
-Linux, Python 3.11 and Docker. MetaWorld needs no GPU.
+Linux, Python 3.11, Docker and an NVIDIA GPU with the NVIDIA Container Toolkit.
 
 ```bash
 git clone https://github.com/Elvin-yk/EvoAB.git && cd EvoAB
@@ -61,8 +61,9 @@ export MY_API_KEY=...                                  # any OpenAI-compatible e
 evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_KEY
 evoab models add-preset my-model --provider my_api --model MODEL_ID
 
-evoab setup --integration metaworld                    # builds the benchmark image once
-evoab run --integration metaworld --task reach-v3 --recipe tools --model my-model --output-dir ./runs
+evoab setup --integration libero --runtime-profile libero_spatial   # pulls AllenAI's LIBERO image once
+evoab run --integration libero --runtime-profile libero_spatial --recipe tools --model my-model \
+  --task pick_up_the_black_bowl_between_the_plate_and_the_ramekin_and_place_it_on_the_plate --output-dir ./runs
 evoab replay ./runs                                    # step through what the agent saw, did and spent
 ```
 
@@ -73,13 +74,13 @@ Or paste this into a coding agent on the target machine:
 
 | Command | What it does |
 |---|---|
-| `evoab run --integration robodojo --task stack_bowls --recipe tools --model my-model` | One agent calls robot tools on a dual-arm RoboDojo task |
+| `evoab run --integration calvin --task open_drawer --recipe tools --model my-model` | One agent calls robot tools on a CALVIN task |
 | `… --recipe code` | The agent writes and runs Python programs against the robot API |
 | `… --recipe action` | The model emits action chunks itself, as in Astranomy's Direct form |
 | `… --set 'roles.main.act=[tools,code,action]'` | One agent that may call a tool, run a program or emit a chunk at each step |
 | `… --set inputs.depth=false` | Same method, RGB-only observations |
 | `… --recipe examples/recipes/policy.yaml` | A VLA policy as one more tool (`actor_act`) |
-| `evoab benchmarks tasks robodojo` | Tasks with their dimension, real instruction and step limit |
+| `evoab benchmarks tasks calvin` | Tasks with their instruction and step limit |
 | `evoab methods list` | Every method and where its `method.yaml` lives |
 
 ## Methods
@@ -105,11 +106,8 @@ delegate to each other. More reproductions are on the
 
 | Environment | Robot | Notes |
 |---|---|---|
-| RoboDojo | Dual-arm ARX X5, Isaac Sim | 42 tasks, 5 capability dimensions, policy tool (Pi0.5) |
-| MetaWorld | Sawyer, MuJoCo | CPU only; fastest check |
-| LIBERO · LIBERO-Plus · LIBERO-PRO | Panda | Standard, perturbed and robustness suites |
-| RoboTwin 2.0 | ALOHA-AgileX | Dual-arm |
-| CALVIN | Panda | Policy tool (StarVLA) |
+| LIBERO · LIBERO-PRO | Panda, MuJoCo | Standard and robustness suites; policy tool (StarVLA) on LIBERO |
+| CALVIN | Panda, PyBullet | One task per episode; policy tool (StarVLA) |
 | Your own | Any | Name your Docker image in a manifest |
 
 Policy and SAM3 services are yours to start; pass `--action-model-url` or `--sam3-url`.

@@ -1,6 +1,6 @@
 # Tools plus a VLA / world-action policy, which is just another tool (actor_act).
-# evoab run --integration robodojo --task stack_bowls --recipe examples/recipes/policy.yaml --model my-model \
-#   --action-model-url http://HOST:PORT
+# evoab run --integration calvin --task open_drawer --recipe examples/recipes/policy.yaml --model my-model \
+#   --action-model-url http://HOST:PORT --action-model-checkpoint-sha256 SHA256
 id: policy
 label: Tools + policy
 summary: The agent hands contact-rich motion to an action model through actor_act and checks the result.
@@ -11,6 +11,6 @@ roles:
       - skills
       - scene
       - {id: gripper, optional: true}
-      - hybrid                     # actor_act; options: {binding: robodojo_direct_eef} uses the model itself as the policy
+      - hybrid                     # actor_act: the VLA served at --action-model-url
       - episode
 loop: {entry: main}

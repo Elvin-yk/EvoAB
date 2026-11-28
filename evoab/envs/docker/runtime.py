@@ -70,10 +70,7 @@ def read_runtime(args, recipe, root=None):
 
 
 def runtime_for(args, recipe, adapter):
-    runtime = read_runtime(args, recipe)
-    if getattr(args, 'assets_dir', None):
-        raise ValueError('--assets-dir is a setup input; the prepared runtime records it')
-    return runtime
+    return read_runtime(args, recipe)
 
 
 def check_python(python, imports=(), *, environment=None, timeout=600):

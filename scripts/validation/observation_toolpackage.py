@@ -5,7 +5,7 @@ Run from a checkout with:
 
 Exercises config validation, hybrid prompt resolution, SAM3 + FoundationPose
 processors, non-destructive rendering, full Environment Protocol v4 HTTP proxy
-forwarding (including RemoteArtifactMirror and Q0-Preview's x5_observation),
+forwarding (including RemoteArtifactMirror),
 runtime /ob/targets override, and offline CLI/SessionConfig validation.
 """
 from __future__ import annotations
@@ -30,8 +30,6 @@ from PIL import Image
 from evoab import SessionConfig
 from evoab.records.artifacts.mirror import RemoteArtifactMirror
 from evoab.records.artifacts.store import ArtifactStore
-from evoab.envs.robodojo.actor_profiles import X5_CAMERAS
-from evoab.envs.robodojo.x5_observation import x5_observation
 from evoab.envs.observation.toolpackage import (
     AutoPromptConfig,
     DetectionAnnotation,
@@ -95,6 +93,9 @@ def _make_camera_frame(height: int = 64, width: int = 80) -> CameraFrame:
     extrinsic = np.eye(4, dtype=np.float64)
     extrinsic[:3, 3] = [0.2, 0.0, 0.9]
     return CameraFrame(rgb=rgb, depth_m=depth, intrinsic_K=intrinsic, T_world_from_optical=extrinsic)
+
+#: Fixture cameras of a three-view environment.
+X5_CAMERAS = ("head", "left_wrist", "right_wrist")
 
 
 class _DummyCustomProcessor:
@@ -288,7 +289,7 @@ class ObservationToolPackageTests(unittest.TestCase):
         self.assertEqual(exact[0].source, "task_config:stack_bowls")
 
         suite_match = resolve_targets(
-            task="robodojo/stack_bowls",
+            task="libero/stack_bowls",
             instruction="Stack the bowls neatly",
             targets_config=targets_cfg,
             auto_prompt=AutoPromptConfig(),
@@ -489,7 +490,7 @@ class ObservationToolPackageTests(unittest.TestCase):
         info = EpisodeInfo(
             episode_id=episode_id,
             task="stack_bowls",
-            integration="robodojo",
+            integration="libero",
             environment=backend.description,
             metadata={"instruction": instruction},
         )
@@ -544,12 +545,6 @@ class ObservationToolPackageTests(unittest.TestCase):
                             mirrored_rgb = mirror.mirror_ref(enh_ref)
                             enh_bytes = local_store.read_bytes(mirrored_rgb["artifact_id"])
                             self.assertEqual(hashlib.sha256(enh_bytes).hexdigest(), enh_ref["sha256"])
-
-                        # 3. Q0-Preview's exact x5_observation consumer works transparently!
-                        x5_obs = x5_observation(snap, client.artifact_bytes)
-                        self.assertEqual(x5_obs["instruction"], instruction)
-                        for cam in X5_CAMERAS:
-                            self.assertEqual(x5_obs["vision"][f"cam_{cam}"]["color"].shape, (64, 80, 3))
 
                         # 4. Caching: re-reading same snapshot_id or /records does not re-run processor
                         calls_after_first = processor.calls
@@ -619,7 +614,7 @@ class ObservationToolPackageTests(unittest.TestCase):
     def test_cli_and_session_config_offline_validation(self):
         pipeline_path = REPO_ROOT / "examples/observation/auto_sam3.yaml"
         cfg = SessionConfig(
-            integration="robodojo",
+            integration="libero",
             env_url="http://127.0.0.1:18760",
             obs_pipeline=pipeline_path,
             integration_options={"task": "stack_bowls"},
@@ -632,8 +627,8 @@ class ObservationToolPackageTests(unittest.TestCase):
         from evoab.cli import build_parser
         from evoab.config import resolve_settings
         from evoab.envs import load_integration
-        spec = load_integration("robodojo").get_integration_spec()
-        argv = ["run", "--integration", "robodojo", "--recipe", "tools", "--model", "fixture",
+        spec = load_integration("libero").get_integration_spec()
+        argv = ["run", "--integration", "libero", "--recipe", "tools", "--model", "fixture",
                 "--task", "stack_bowls", "--env-url", "http://127.0.0.1:18760",
                 "--obs-pipeline", str(pipeline_path)]
         with mock.patch("evoab.agent.models.catalog.presets", return_value=[{"name": "fixture"}]):

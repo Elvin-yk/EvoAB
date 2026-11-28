@@ -10,8 +10,6 @@ summary: One agent observes, calls tools and decides from their feedback in a pe
 status: builtin
 inputs:                            # what the episode gives the agent; null keeps the environment's default
   depth: null
-  calibration: null
-  task_supplements: false          # append the environment's task clarifications (RoboDojo)
 roles:
   main:
     description: Plans and acts with the shared scene, motion, skill and episode tools.

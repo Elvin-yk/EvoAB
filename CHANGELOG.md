@@ -6,6 +6,20 @@
   sampled camera paths, and the worker writes a placeholder verdict to
   `result.json` before acknowledging completion.
 
+### Only benchmarks with published images
+
+EvoAB now supports only benchmarks whose simulator image is published and
+pulled as is: LIBERO, LIBERO-PRO and CALVIN (AllenAI's images), plus `custom`
+with your own image. Removed, with all their code, assets, prompts, skills and
+scripts: RoboDojo, RoboTwin, LIBERO-Plus and MetaWorld (the shared LIBERO adapter
+moved into `envs/libero/`). Removed with them: the OpenPI, XPolicyLab and
+SmolVLA-MetaWorld actor backends, actor recipes and the `pi05` alias, the
+in-process Direct actor behind `actor_act` (use `act: [tools, action]`), the
+`robodojo` and `xpolicylab` extras, `inputs.calibration`,
+`inputs.task_supplements`, and the `--layout`, `--layout-id`, `--assets-dir` and
+`--camera-calibration` options. Observation profiles fall back to the shared
+snapshot profile for every environment.
+
 ### Tools, code and action in any combination
 
 A role's `act` replaces `channel`: any non-empty set of `tools`, `code` and

@@ -42,30 +42,15 @@ class BenchmarkInfo:
 
 
 REGISTRY: tuple[BenchmarkInfo, ...] = (
-    BenchmarkInfo("robodojo", "RoboDojo", "simulation", "Isaac Sim 5.1", "Dual ARX X5",
-                  "container", "Bimanual tasks with frozen evaluation layouts",
-                  requirements="Local Docker build of the pinned upstream checkout (Isaac Sim EULA); NVIDIA GPU",
-                  task_selector="task"),
     BenchmarkInfo("libero", "LIBERO", "simulation", "MuJoCo (robosuite 1.4)", "Franka Panda",
                   "container", "Original LIBERO task suites and official initial states",
                   requirements="Public AllenAI LIBERO image; NVIDIA GPU", task_selector="suite/task"),
     BenchmarkInfo("libero_pro", "LIBERO-PRO", "simulation", "MuJoCo (robosuite)", "Franka Panda",
                   "container", "LIBERO suites under instruction and position perturbations",
                   requirements="Public AllenAI LIBERO-PRO image; NVIDIA GPU", task_selector="suite/task"),
-    BenchmarkInfo("libero_plus", "LIBERO-Plus", "simulation", "MuJoCo (robosuite 1.4)", "Franka Panda",
-                  "container", "Official LIBERO-Plus perturbation suites",
-                  requirements="Local Docker build of the pinned LIBERO-Plus revision; NVIDIA GPU",
-                  task_selector="suite/task"),
-    BenchmarkInfo("robotwin", "RoboTwin 2.0", "simulation", "SAPIEN", "ALOHA AgileX dual-arm",
-                  "container", "Dual-arm tasks with domain randomization",
-                  requirements="Local Docker build of the pinned RoboTwin revision; NVIDIA GPU",
-                  task_selector="task"),
     BenchmarkInfo("calvin", "CALVIN", "simulation", "PyBullet", "Franka Panda",
                   "container", "Single-task CALVIN episodes",
                   requirements="Public AllenAI CALVIN image; NVIDIA GPU", task_selector="task"),
-    BenchmarkInfo("metaworld", "MetaWorld MT50", "simulation", "MuJoCo", "Sawyer",
-                  "container", "50 single-arm tabletop manipulation tasks (MT50)",
-                  requirements="Small local Docker build (Meta-World 3.1.1); CPU only", task_selector="task"),
     BenchmarkInfo("custom", "Custom benchmark", "simulation", "—", "—", "custom",
                   "User-defined Gym-style benchmark in the user's Docker image", task_selector="profile"),
 )
@@ -234,7 +219,7 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
         if selector:
             runtime_profile, task_name = launch_target(integration, profile, task_id)
             tasks[task_id].update(runtime_profile=runtime_profile, native_task=task_name)
-        # Integration-owned catalog facts (e.g. RoboDojo's capability dimension and layout variants).
+        # Integration-owned catalog facts.
         facts = _integration_task_metadata(integration, task_id, payload.get("native_root"))
         tasks[task_id].update({key: value for key, value in facts.items()
                                if value is not None or key not in tasks[task_id]})

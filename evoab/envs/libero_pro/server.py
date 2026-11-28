@@ -1,5 +1,5 @@
 """Serve a pinned LIBERO-PRO task without generating or rewriting its assets."""
-from evoab.envs.libero_plus.server import BUDGETS, parser as family_parser, prepare
+from evoab.envs.libero.family import BUDGETS, parser as family_parser, prepare
 from evoab.envs.simulation import serve_episode
 
 REVISION = "eafdb809426b13153aa1e4c42d6601844217dfec"

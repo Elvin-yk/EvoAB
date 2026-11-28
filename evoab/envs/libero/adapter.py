@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from evoab.envs.libero_plus.adapter import LiberoAdapter
+from .base_adapter import LiberoAdapter
 from evoab.servers.actor.libero_profile import PROPRIOCEPTION
 from evoab.envs.protocol.contracts import RequestRejected
 

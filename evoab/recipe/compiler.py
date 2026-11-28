@@ -69,8 +69,6 @@ def compile_recipe(recipe: Recipe, spec: Any, *, base_dir: Path | None = None) -
     """Check a recipe against an integration without opening any service."""
     if recipe.integrations is not None and spec.name not in recipe.integrations:
         raise ValueError(f"method {recipe.id!r} supports {', '.join(recipe.integrations)}, not {spec.name!r}")
-    if recipe.inputs.task_supplements and not getattr(spec, "task_supplements", False):
-        raise ValueError(f"inputs.task_supplements: {spec.name} publishes no task supplements")
     catalog = module_catalog(spec)
     roles = {name: _compile_role(name, role, catalog, spec, base_dir) for name, role in recipe.roles.items()}
     for name, role in roles.items():
@@ -208,8 +206,7 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
     args.action_model_binding = policy.binding if policy else None
     args.vla_review = policy.review if policy else None
     inputs = recipe.inputs
-    args.depth, args.camera_calibration = inputs.depth, inputs.calibration
-    args.task_supplements = inputs.task_supplements
+    args.depth = inputs.depth
     execution = recipe.execution
     args.tool_return_mode = execution.return_mode
     args.resource_scheduling = execution.resource_scheduling
@@ -228,14 +225,12 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
 def check_inputs(inputs: Any, description: Any) -> None:
     """Fail when a connected environment gives the agent other inputs than the recipe asks for."""
     cameras = getattr(getattr(description, "environment", None), "cameras", None) or ()
-    for name, attribute in (("depth", "has_depth"), ("calibration", "has_calibration")):
-        wanted = getattr(inputs, name)
-        actual = {getattr(camera, attribute, None) for camera in cameras} - {None}
-        if wanted is not None and actual and actual != {wanted}:
-            raise ValueError(f"the recipe sets inputs.{name}: {str(wanted).lower()}, but the environment "
-                             f"{'provides' if True in actual else 'does not provide'} {name}; start it to match "
-                             f"(--deploy local applies the recipe, or evoab deploy env --{'' if wanted else 'no-'}"
-                             f"{'depth' if name == 'depth' else 'camera-calibration'})")
+    wanted = inputs.depth
+    actual = {getattr(camera, "has_depth", None) for camera in cameras} - {None}
+    if wanted is not None and actual and actual != {wanted}:
+        raise ValueError(f"the recipe sets inputs.depth: {str(wanted).lower()}, but the environment "
+                         f"{'provides' if True in actual else 'does not provide'} depth; start it to match "
+                         f"(evoab run applies the recipe, or evoab deploy env --{'' if wanted else 'no-'}depth)")
 
 
 # -- process boundary ---------------------------------------------------------------

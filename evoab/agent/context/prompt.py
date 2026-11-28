@@ -235,16 +235,8 @@ def register_prompt_builder(integration: str) -> Callable[[PromptBuilder], Promp
     return wrapper
 
 
-def _load_builtin_builders() -> None:
-    # Preserve registration order; load lightweight prompts without starting environments.
-    import importlib
-
-    importlib.import_module("evoab.envs.robodojo.prompt")
-
-
 def get_prompt_builder(integration: str) -> PromptBuilder:
     """Resolve an environment builder, falling back to the generic base prompt."""
-    _load_builtin_builders()
     return _PROMPT_REGISTRY.get(integration, _PROMPT_REGISTRY["*"])
 
 

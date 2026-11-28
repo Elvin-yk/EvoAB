@@ -5,7 +5,7 @@ from pathlib import Path
 from evoab.envs.docker.config import Recipe
 from evoab.envs.docker.runtime import query_python
 from .server import PORT, REVISION, SUITE_BUDGETS
-from evoab.envs.libero_plus.local import episode_plan, task_catalog
+from .local import episode_plan, task_catalog
 
 empty_catalog_hint = (
     "LIBERO lists only tasks with the official BDDL under "

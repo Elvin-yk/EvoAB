@@ -84,12 +84,8 @@ def positive(value):
 
 
 def validate_deployment(args):
-    if getattr(args, 'assets_dir', None) and args.integration != 'robodojo':
-        raise ValueError('--assets-dir currently applies only to RoboDojo')
     if getattr(args, 'deploy_gpu', 0) < 0:
         raise ValueError('GPU index must be nonnegative')
-    if getattr(args, 'camera_calibration', None) is not None and args.integration != 'robodojo':
-        raise ValueError('Camera calibration can only be switched off for a RoboDojo environment (inputs.calibration, or --no-camera-calibration on deploy env)')
     adapter = adapter_for(args)
     adapter.validate(args)
     if getattr(args, 'port', None) is not None and not 1 <= args.port <= 65535:
@@ -102,7 +98,6 @@ def validate_deployment(args):
 
 def add_runtime_arguments(parser):
     parser.add_argument('--cache-dir', type=Path, help='Persistent runtime cache (or EVOAB_CACHE_DIR)')
-    parser.add_argument('--assets-dir', type=Path, help='Host directory with already downloaded assets (RoboDojo)')
     parser.add_argument('--runtime-profile', help='Runtime profile selected by the environment integration')
 
 
@@ -113,21 +108,12 @@ def add_launch_arguments(parser, *, managed=False):
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--startup-timeout-s', type=float, default=900)
     parser.add_argument('--shutdown-timeout-s', type=float, default=30)
-    if '--layout' not in parser._option_string_actions:
-        parser.add_argument('--layout', type=Path)
-    parser.add_argument('--layout-sha256')
-    if '--layout-id' not in parser._option_string_actions:
-        parser.add_argument('--layout-id', type=int,
-                            help='Index of the frozen layout within the seed\'s evaluation set (RoboDojo)')
-    parser.add_argument('--task-dir', type=Path)
     if '--seed' not in parser._option_string_actions:
         parser.add_argument('--seed', type=int)
     if managed:
         return  # evoab run takes what the agent observes from the recipe's inputs
     parser.add_argument('--cameras', nargs='+')
     parser.add_argument('--depth', action=argparse.BooleanOptionalAction, default=None)
-    parser.add_argument('--camera-calibration', action=argparse.BooleanOptionalAction, default=None,
-                        help='RoboDojo environment deployment only; disabling requires --depth off')
 
 
 class RuntimeConfig(BaseModel):
@@ -136,7 +122,6 @@ class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     integration: str | None = None
     cache_dir: Path | None = None
-    assets_dir: Path | None = None
     runtime_profile: str | None = None
     accept_license: str | None = None
 
@@ -167,10 +152,6 @@ class DeploymentConfig(RuntimeConfig):
     host: str = "127.0.0.1"
     startup_timeout_s: float = Field(default=900, gt=0, allow_inf_nan=False)
     shutdown_timeout_s: float = Field(default=30, gt=0, allow_inf_nan=False)
-    layout: Path | None = None
-    layout_sha256: str | None = None
-    task_dir: Path | None = None
     seed: int | None = None
     cameras: list[str] | None = None
     depth: bool | None = None
-    camera_calibration: bool | None = None

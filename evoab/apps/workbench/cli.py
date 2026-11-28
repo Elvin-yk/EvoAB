@@ -310,11 +310,6 @@ def _benchmarks(bench, args) -> None:
                  t.get("max_steps") or "—", _clip(t.get("instruction") or "—", 70)] for t in tasks],
                ["TASK", *(["DIMENSION"] if dimensions else []), *(["ROBOT"] if embodiments else []),
                 "MAX_STEPS", "INSTRUCTION"])
-        layouts = sorted({t["layouts_per_seed"] for t in tasks if t.get("layouts_per_seed")})
-        if layouts:
-            seeds = sorted({s for t in tasks for s in t.get("seeds") or ()})
-            print(f"\nScenes: --seed {seeds[0]}..{seeds[-1]} picks the evaluation set, --layout-id the scene in it "
-                  f"(0..{layouts[0] - 1} for generalization tasks, 0..{layouts[-1] - 1} for the others).")
     elif args.action == "prepare":
         _print_json(bench.prepare(args.integration, args.profile, accept_license=args.accept_license))
     elif args.action == "check":

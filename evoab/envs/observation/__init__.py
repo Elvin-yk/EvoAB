@@ -17,13 +17,11 @@ from evoab.envs.observation.hub import (
 
 
 def load_observation_profile(name: str) -> Any:
-    """Load an optional observation profile independently of integration registration."""
+    """An integration's own observation profile, or the shared snapshot profile every environment supports."""
     module = importlib.import_module(f"evoab.envs.{name}")
-    if not callable(getattr(module, "create_observation_profile", None)):
-        raise ValueError(
-            f"observation profile evoab.envs.{name} is missing create_observation_profile()"
-        )
-    return module
+    if callable(getattr(module, "create_observation_profile", None)):
+        return module
+    return importlib.import_module("evoab.envs.observation.episode")
 
 __all__ = [
     "InsightRecord",

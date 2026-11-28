@@ -22,23 +22,17 @@ class BackendDefinition:
 
 _PACKAGE = "evoab.servers.actor.backends"
 _BACKENDS = {
-    "openpi": BackendDefinition("openpi", f"{_PACKAGE}.openpi", "OpenpiBackend"),
-    "xpolicylab": BackendDefinition("xpolicylab", f"{_PACKAGE}.xpolicylab", "XPolicyLabBackend"),
     "starvla_calvin": BackendDefinition("starvla_calvin", f"{_PACKAGE}.starvla_calvin", "StarVLACalvinBackend"),
     "starvla_libero": BackendDefinition("starvla_libero", f"{_PACKAGE}.starvla_libero", "StarVLALiberoBackend"),
-    "smolvla_metaworld": BackendDefinition("smolvla_metaworld", f"{_PACKAGE}.smolvla_metaworld",
-                                             "SmolVLAMetaWorldBackend"),
 }
-_ALIASES = {"pi05": "openpi"}
 
 
 def backend_names():
-    return (*_BACKENDS, *_ALIASES)
+    return tuple(_BACKENDS)
 
 
 def get_backend(name):
-    canonical = _ALIASES.get(name, name)
     try:
-        return _BACKENDS[canonical]
+        return _BACKENDS[name]
     except KeyError:
         raise ValueError(f"Unsupported actor backend: {name}") from None

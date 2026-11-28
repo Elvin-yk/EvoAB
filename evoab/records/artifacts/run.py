@@ -56,8 +56,6 @@ def build_run_result(
         "episode_identity": getattr(args, "_episode_identity", None),
         "deployment": getattr(args, "_deployment", None),
         "seed": env_meta.get("seed"),
-        "layout": env_meta.get("layout"),
-        "layout_sha256": env_meta.get("layout_sha256"),
         "task_sha256": env_meta.get("task_sha256"),
         "sample_idx": env_meta.get("sample_idx"),
         "turns_used": agent_result.turns_used if agent_result else 0,

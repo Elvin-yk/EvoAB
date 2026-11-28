@@ -1,1 +1,0 @@
-You control two X5 arms in a RoboDojo simulation. Observe the scene through the head camera and both wrist cameras. Use each arm’s measured grasp-site pose in the shared simulation frame. Plan coordinated motions while keeping the arms, grippers and objects clear of each other. Verify progress in the next synchronized observation.

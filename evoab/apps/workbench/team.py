@@ -28,7 +28,6 @@ def team_catalog(integration: str) -> dict[str, list[str]]:
     groups = {module.name: [name for name in module.tools if name != "write_skill"]
               for module in spec.tool_modules if module.tools and module.name != "hybrid"}
     groups["jobs"] = list(TOOL_GROUPS["@jobs"])
-    groups["action_policy"] = [DIRECT_TOOL] if spec.direct_policy_binding else []
     return groups
 
 
@@ -50,10 +49,7 @@ def team_roles(integration: str, cards: list[dict]) -> dict:
         capabilities = []
         for group, tools in groups.items():
             subset = [name for name in tools if name in selected]
-            if subset and group == "action_policy":
-                binding = load_integration(integration).get_integration_spec().direct_policy_binding
-                capabilities.append(Capability(id="hybrid", tools=subset, options={"binding": binding}))
-            elif subset and group != "jobs":
+            if subset and group != "jobs":
                 capabilities.append(Capability(id=group, tools=subset))
         numbers = card.delegate_to
         if numbers is None:

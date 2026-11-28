@@ -75,10 +75,8 @@ scripts/tmp/
 eval_results/
 
 # Historical external simulator checkout and its deployment-owned link
-/robots/robodojo/resources/
 
 # Deployment-owned native runtime, excluded from the distribution
-/evoab/envs/robodojo/resources
 
 # Local reference material; excluded from the public project
 /archive/

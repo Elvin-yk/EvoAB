@@ -43,13 +43,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--backend", choices=backend_names())
-    parser.add_argument("--runtime")
-    parser.add_argument("--profile", help="Named actor recipe (services/actor/recipes)")
-    parser.add_argument("--model-config", dest="model_config_name")
     parser.add_argument("--checkpoint")
     parser.add_argument("--checkpoint-sha256")
-    parser.add_argument("--xpolicylab-root", help="Compatibility alias for --native-root")
-    parser.add_argument("--native-root")
     parser.add_argument("--identity-output", type=Path)
     parser.add_argument("--host")
     parser.add_argument("--port", type=int)
@@ -62,15 +57,7 @@ def main():
     http_settings = settings.pop("http", {})
     batch_settings = settings.pop("batching", {})
     session_settings = settings.pop("sessions", {})
-    for field in (
-        "runtime",
-        "profile",
-        "model_config_name",
-        "checkpoint",
-        "checkpoint_sha256",
-        "xpolicylab_root",
-        "native_root",
-    ):
+    for field in ("checkpoint", "checkpoint_sha256"):
         if getattr(args, field) is not None:
             settings[field] = getattr(args, field)
     for field in ("host", "port"):
