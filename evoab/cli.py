@@ -144,6 +144,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     run = subparsers.add_parser(
         "run", parents=[common], allow_abbrev=False, help="Run an agent on one robot task"
     )
+    run.add_argument("--verifier-url", help="Submit the completed run to this verification service")
+    run.add_argument("--verifier-timeout-s", type=float, default=30, help="Verification acknowledgement timeout")
     for command, timeout in ((run, 10800),):
         command.add_argument("--instruction", help="Override the environment's task instruction")
         command.add_argument("--episode-timeout-s", type=_nonnegative, default=timeout,

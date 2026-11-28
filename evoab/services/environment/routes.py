@@ -99,6 +99,10 @@ def build_router(service: EnvironmentService | None = None, *,
     def snapshot(snapshot_id: str, current: Current):
         return current.snapshot(snapshot_id)
 
+    @router.get("/samples")
+    def samples(current: Current, start: int = 0):
+        return {"samples": current.snapshots.sampled_images(start)}
+
     @router.get("/records")
     def record(current: Current, index: int = -1):
         return current.record(index)

@@ -30,6 +30,14 @@ class SessionOpened(Event):
     instruction: str = ""
 
 
+@dataclass(kw_only=True)
+class ObservationSampled(Event):
+    native_step: int
+    captured_at: float
+    snapshot_ref: str
+    image_paths: dict[str, str]
+
+
 @dataclass
 class SessionClosed(Event):
     task_success: bool | None = None

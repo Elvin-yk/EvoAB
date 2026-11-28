@@ -204,6 +204,28 @@ what the agent saw), `trajectory.jsonl`, content-addressed `images/` and
 `artifacts/`, `roles/NNN_<role>/` for delegations and `direct/` for action-chunk
 requests. `evoab replay ./runs` replays saved runs in the browser without a model.
 
+To exercise the verifier transport, start the stub in a separate terminal with
+a shared directory containing the session files and environment image archive.
+
+```bash
+python -m evoab.services.verifier.server --runs-root ./outputs --port 18780
+```
+
+Add `--verifier-url http://127.0.0.1:18780` to `evoab run`, or set
+`SessionConfig.verifier_url` in the Python SDK. This option uses the EvoAB
+Session lifecycle. Use the same absolute filesystem paths on the service hosts.
+For simulations, rebuild the environment service to publish recorded image
+paths. Each `observation_sampled` row in `trajectory.jsonl` identifies its
+native step, capture time, snapshot manifest and per-camera PNG paths.
+
+The stub exercises queueing, file access, atomic persistence and completion
+acknowledgement. Its `verification.backend` is `stub` and its placeholder
+verdict is `insufficient_evidence`. The native evaluator supplies the task
+score. `--verifier-timeout-s` defaults to 30 seconds. When completion cannot
+be confirmed, the run reports a nonzero exit code. Inspect `result.json` for
+the latest persisted verification status. A queued job can finish after the
+request times out.
+
 ## Python SDK
 
 ```python

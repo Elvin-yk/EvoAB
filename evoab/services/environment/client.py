@@ -158,6 +158,9 @@ class EnvironmentClient:
             raise ValueError("record index must be -1 or nonnegative")
         return self._get(f"records?index={index}")
 
+    def sampled_images(self, start: int) -> list[dict]:
+        return self._get(f"samples?start={start}")["samples"]
+
     def artifact_bytes(self, artifact_id: str) -> bytes:
         return self._request("GET", "artifacts/" + quote(artifact_id, safe=""))
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from evoab.artifacts.run import build_run_result, write_result_json
+from evoab.artifacts.run import build_run_result, read_result_json, write_result_json
 from evoab.artifacts.records import RunResult
 from evoab.tools.client import ToolClient
 from evoab.config import SessionConfig
@@ -472,6 +472,9 @@ class Session:
             if args.instruction is None:
                 args.instruction = assembly.integration_session.episode.instruction
             self.events.emit(SessionOpened(integration=args.integration, instruction=args.instruction))
+            bind_samples = getattr(assembly.integration_session.episode, "bind_sample_events", None)
+            if bind_samples is not None:
+                bind_samples(self.events.emit)
             return self
         except BaseException as error:
             if self._assembly is not None:
@@ -790,6 +793,23 @@ def _finalize_run(assembly, subscriptions, args, result, error_msg, started, *, 
             storage_errors=storage_errors,
             artifact_storage=artifact_storage,
         )
+    verifier_url = getattr(args, "verifier_url", None)
+    job = None
+    if verifier_url:
+        from evoab.services.verifier.contracts import VerificationJob
+        candidate = VerificationJob.for_session(assembly.session_dir, uuid4())
+        errors = record.get("storage_errors", {})
+        unavailable = [path.name for path in (candidate.native_outcome_path, candidate.trajectory_path)
+                       if not path.is_file() or path.name in errors]
+        trajectory_failed = any(EventJsonlSubscriber.__name__ in key.split("/") for key in errors)
+        if (trajectory_failed or "sample_index" in errors) and candidate.trajectory_path.name not in unavailable:
+            unavailable.append(candidate.trajectory_path.name)
+        if unavailable:
+            record["verification"] = {"status": "incomplete", "missing_inputs": unavailable,
+                                      "error": "Execution evidence could not be finalized"}
+        else:
+            job = candidate
+            record["verification"] = {"request_id": str(job.request_id), "status": "pending"}
     try:
         record = write_result_json(assembly.session_dir, record)
     except Exception as e:  # noqa: BLE001 - result-write failure must not bypass resource cleanup.
@@ -805,7 +825,26 @@ def _finalize_run(assembly, subscriptions, args, result, error_msg, started, *, 
         agent_result=result,
         error_msg=error_msg,
     )
-    if finally_error and not exit_code:
+    if job is not None and not finally_error:
+        from evoab.services.verifier.client import submit_verification
+        try:
+            submit_verification(verifier_url, job, args.verifier_timeout_s)
+        except Exception as error:
+            # A lost ACK leaves the worker free to finish its atomic write.
+            logger.error("Verification completion unconfirmed for %s: %s", job.request_id, error)
+            exit_code = exit_code or 1
+        try:
+            persisted = read_result_json(job.result_path)
+            saved = persisted.get("verification")
+            if not isinstance(saved, dict) or saved.get("request_id") != str(job.request_id):
+                raise ValueError("No matching verification request in result.json")
+            record = persisted
+            if saved.get("status") != "completed":
+                raise ValueError("No matching completed verification in result.json")
+        except (OSError, ValueError) as error:
+            logger.error("Incomplete persisted verification: %s", error)
+            exit_code = exit_code or 1
+    if (finally_error or (verifier_url and job is None)) and not exit_code:
         exit_code = 1
     return RunResult(assembly.session_dir, record, exit_code)
 
