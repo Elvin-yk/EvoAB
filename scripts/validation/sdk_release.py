@@ -53,7 +53,7 @@ print('Installed SDK:', evoab.__file__)
     command([executable, '--help'])
     command([python, '-m', 'evoab', '--version'])
     # Offline method checks: the built-in agent needs no model or credential to validate a recipe.
-    for integration in ('libero', 'libero_pro', 'calvin'):
+    for integration in ('libero', 'libero_pro', 'calvin', 'rmbench'):
         for method in ('tools', 'code', 'action'):
             command([python, '-m', 'evoab', 'methods', 'validate', method, '--integration', integration])
     command([python, '-I', '-c', """from pathlib import Path
@@ -66,7 +66,7 @@ from evoab.tools.hybrid.provider import HybridTools
 from evoab.servers.actor.registry import backend_names
 import sys
 assert callable(calvin_binding)
-assert set(backend_names()) == {'starvla_calvin', 'starvla_libero'}
+assert set(backend_names()) == {'simplememvla_rmbench', 'starvla_calvin', 'starvla_libero'}
 assert not any(name in sys.modules for name in ('mujoco', 'torch', 'scipy'))
 root = Path(evoab.__file__).parent
 assert callable(get_prompt_builder('libero'))
@@ -101,6 +101,14 @@ hybrid = SessionConfig(integration='calvin', env_url='http://127.0.0.1:18760',
     recipe_overrides={'roles.main.capabilities': ['skills', 'scene', 'gripper',
                                                   {'id': 'hybrid', 'options': {'review': False}}, 'episode']}).resolve()
 assert hybrid.tool_modules == ('skills', 'scene', 'gripper', 'hybrid', 'episode')
+rmbench = SessionConfig(integration='rmbench', env_url='http://127.0.0.1:18785',
+    recipe='tools', action_model_url='http://127.0.0.1:18769',
+    integration_options={'action_model_checkpoint_sha256': 'a' * 64},
+    recipe_overrides={'roles.main.capabilities': [
+        'scene', {'id': 'hybrid', 'options': {'review': False}}, 'episode']}).resolve()
+assert rmbench.tool_modules == ('scene', 'hybrid', 'episode')
+assert 'actor_act' in rmbench.selected_tools and 'move' not in rmbench.selected_tools
+assert not any(name in sys.modules for name in ('rmbench_sim', 'mujoco', 'torch', 'scipy'))
 try:
     SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools',
                   recipe_overrides={'roles.main.capabilities': ['scene', 'hybrid', 'episode']}).resolve()

@@ -3,8 +3,11 @@ and adjustment. Use direct motion for a segment whose target, route and
 observation checkpoint are clear. Neither precision nor recovery alone requires
 a particular tool, and geometric pre-positioning is not an actor prerequisite.
 
-Give one short instruction naming the object and intended effect. It remains
-fixed throughout the call. Follow the tool's declared reviewer availability and
+Follow the instruction format declared by the tool schema. For a policy that
+accepts phase instructions, give a short instruction naming the object and
+intended effect. A policy with a required episode instruction uses that exact
+text for every call. The instruction remains fixed throughout the call.
+Follow the tool's declared reviewer availability and
 chunk limits. Internal chunks obtain fresh observations and proposals. Review
 before execution occurs only when the tool declares an enabled reviewer. A
 chunk budget is not evidence of completion or failure.

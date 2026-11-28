@@ -39,8 +39,9 @@ class ActorRunner:
         default, maximum = actor_action_limits(binding)
         actions_per_chunk = default if actions_per_chunk is None else actions_per_chunk
         max_chunks = binding.capabilities.default_max_chunks if max_chunks is None else max_chunks
-        if type(actions_per_chunk) is not int or not 1 <= actions_per_chunk <= maximum:
-            raise RequestRejected(f"actions_per_chunk must be in 1..{maximum}")
+        minimum = binding.capabilities.min_actions
+        if type(actions_per_chunk) is not int or not minimum <= actions_per_chunk <= maximum:
+            raise RequestRejected(f"actions_per_chunk must be in {minimum}..{maximum}")
         if type(max_chunks) is not int or max_chunks < 1:
             raise RequestRejected("max_chunks must be a positive integer")
         constraints = {} if constraints is None else constraints

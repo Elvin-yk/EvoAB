@@ -1,4 +1,4 @@
-"""Execute a bounded prefix of native single-arm policy actions."""
+"""Execute a bounded prefix of native policy actions."""
 
 from evoab.servers.actor.contracts import ActorProfile, NumericChunk, validate_prediction
 from evoab.envs.protocol.contracts import StepRequest
@@ -8,6 +8,10 @@ from evoab.tools.toolkit import schema
 
 
 class NativePolicyBinding:
+    arms = ("arm",)
+    default_actions = None
+    min_actions = 1
+    max_actions = None
     reviewer_supported = False
     reviewer_prompt = None
     validate_decision = staticmethod(validate_decision)
@@ -16,7 +20,7 @@ class NativePolicyBinding:
         environment = description.environment
         profile = actor_info.profile
         if (description.integration != self.integration or "native" not in description.capabilities
-                or environment.action_binding != self.name or [arm.name for arm in environment.arms] != ["arm"]
+                or environment.action_binding != self.name or tuple(arm.name for arm in environment.arms) != self.arms
                 or {camera.name for camera in environment.cameras} != set(self.cameras)):
             raise ValueError(f"{self.integration} Hybrid requires a prepared episode with native actions")
         if (not isinstance(profile, ActorProfile) or profile != self.make_profile(profile.action_horizon)
@@ -25,8 +29,9 @@ class NativePolicyBinding:
         self.profile = profile
         self.action_horizon = profile.action_horizon
         self.capabilities = HybridCapabilities(
-            groups=("arm",), constraint_schema=schema({}),
-            default_actions=self.action_horizon, max_actions=self.action_horizon,
+            groups=self.arms, constraint_schema=schema({}),
+            default_actions=self.default_actions or self.action_horizon,
+            min_actions=self.min_actions, max_actions=self.max_actions or self.action_horizon,
         )
 
     def validate_scope(self, active_groups, constraints):

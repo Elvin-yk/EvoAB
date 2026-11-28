@@ -22,6 +22,8 @@ class BackendDefinition:
 
 _PACKAGE = "evoab.servers.actor.backends"
 _BACKENDS = {
+    "simplememvla_rmbench": BackendDefinition("simplememvla_rmbench", f"{_PACKAGE}.simplememvla_rmbench",
+                                              "SimpleMemVLARMBenchBackend"),
     "starvla_calvin": BackendDefinition("starvla_calvin", f"{_PACKAGE}.starvla_calvin", "StarVLACalvinBackend"),
     "starvla_libero": BackendDefinition("starvla_libero", f"{_PACKAGE}.starvla_libero", "StarVLALiberoBackend"),
 }

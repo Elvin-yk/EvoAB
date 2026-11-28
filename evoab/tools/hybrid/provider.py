@@ -24,15 +24,18 @@ def tool_policies():
 def tool_specs(binding=None, reviewer=None):
     groups = {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": True}
     budget = {"type": "integer", "minimum": 1}
+    instruction = {"type": "string", "minLength": 1}
     chunks = {"type": "integer", "minimum": 1}
     constraints = schema({})
     notes = "No actor binding is configured; this tool is unavailable."
     if binding is not None:
         capabilities = binding.capabilities
+        if required := getattr(binding, "required_instruction", None):
+            instruction.update(enum=[required], description="Copy the complete recorded episode instruction verbatim.")
         default, maximum = actor_action_limits(binding)
         groups["items"]["enum"] = list(capabilities.groups)
         groups["maxItems"] = len(capabilities.groups)
-        budget.update(default=default, maximum=maximum)
+        budget.update(default=default, minimum=capabilities.min_actions, maximum=maximum)
         chunks["default"] = capabilities.default_max_chunks
         constraints = capabilities.constraint_schema
         modes = ["student", "stop", *capabilities.corrections]
@@ -45,7 +48,7 @@ def tool_specs(binding=None, reviewer=None):
         "instruction and active control groups fixed during this call. Constraints apply throughout, including "
         "corrections. Do not insert Direct actions between internal chunks. Inspect confirmed execution, partial or "
         "unknown outcomes, stop_reason and latest observations; completion is not task success. " + notes,
-        schema({"instruction": {"type": "string", "minLength": 1}, "active_groups": groups,
+        schema({"instruction": instruction, "active_groups": groups,
                 "constraints": constraints, "actions_per_chunk": budget, "max_chunks": chunks,
                 "task_progress": schema({"verified_completed": {"type": "array", "items": {"type": "string"}},
                     "currently_attempting": {"type": "string"}, "remaining": {"type": "array", "items": {"type": "string"}}},
