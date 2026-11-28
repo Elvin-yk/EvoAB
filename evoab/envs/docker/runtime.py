@@ -50,8 +50,10 @@ def read_runtime(args, recipe, root=None):
         raise ValueError(f'Runtime {recipe.name} is not prepared. Run the matching evoab setup command '
                          '(it pulls or builds the Docker image).')
     data = json.loads(path.read_text())
-    if data.pop('schema_version', None) != 1:
-        raise ValueError('Unsupported runtime record version; rerun setup')
+    from .config import RECORD_SCHEMA
+    if data.pop('schema_version', None) != RECORD_SCHEMA:
+        raise ValueError('This runtime was prepared by an older EvoAB that baked its code into the image; '
+                         'rerun setup once (later code changes need no rebuild)')
     runtime = Runtime(**{**data, 'root': Path(data['root'])})
     if runtime.recipe_digest != recipe.digest or runtime.package_version != __version__:
         raise ValueError('Runtime version mismatch; rerun setup')

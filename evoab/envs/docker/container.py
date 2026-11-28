@@ -1,8 +1,12 @@
 """Container runtimes: every benchmark environment runs in a Docker image.
 
 EvoAB has no other environment runtime. An environment is a simulator image
-with EvoAB's service package installed on top; the framework starts one
-container per launch, like Harbor. Policy (actor) and SAM3 services are not
+plus a thin local layer with EvoAB's Python dependencies; the framework starts
+one container per launch, like Harbor. EvoAB's own code is not in the image:
+every container mounts the running ``evoab`` package read-only, so changing
+EvoAB never requires rebuilding an image. Images change only when the simulator
+recipe, the dependencies or the ``prepare`` commands change, and their tags are
+derived from exactly those inputs. Policy (actor) and SAM3 services are not
 deployed here: users run them and pass their URLs. An integration declares
 ``container.toml`` next to its deployment module (a custom benchmark's manifest
 names the user's own image instead):
@@ -33,12 +37,14 @@ themselves, ``container_data(args, root, report)``: host-side preparation
 Without ``container_data``, setup calls the module's ``image_data(args)`` inside
 the image to record its facts (task catalogs, checkout paths).
 
-Setup builds a small local image ``FROM`` the upstream one that adds the
-``evoab-runtime`` wheel and the ``prepare`` commands. Nothing is pushed
+Setup builds a small local image ``FROM`` the upstream one that adds EvoAB's
+runtime dependencies and the ``prepare`` commands (or, with ``--wheel``, a pinned
+``evoab-runtime`` release baked in instead of the mounted code). Nothing is pushed
 anywhere. A prepared container runtime records its interpreter as
-``docker://<local image>#<inner python>``; queries and launches run there with
-host networking, the host user's identity and the run directory mounted at
-the same path, so service URLs and artifact paths are unchanged.
+``docker://<local image>#<inner python>[|code]``; queries and launches run there
+with host networking, the host user's identity, the run directory mounted at
+the same path and, with ``|code``, the host's ``evoab`` package mounted at
+``/opt/evoab-runtime``, so service URLs, artifact paths and code are the host's.
 """
 from __future__ import annotations
 
@@ -56,6 +62,8 @@ from importlib import resources
 from pathlib import Path
 
 PREFIX = "docker://"
+#: Where the host's ``evoab`` package is mounted read-only in every container (``|code``).
+CODE_ROOT = "/opt/evoab-runtime"
 #: Host variables forwarded into the local layer's build (package and model mirrors).
 BUILD_VARIABLES = ("PIP_INDEX_URL", "UV_INDEX_URL", "UV_DEFAULT_INDEX", "HF_ENDPOINT", "UBUNTU_MIRROR")
 PROXY_VARIABLES = ("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY")
@@ -128,9 +136,10 @@ def is_container(python: str) -> bool:
     return str(python).startswith(PREFIX)
 
 
-def runtime_python(image: str, inner: str, *, root: bool = False, mounts=()) -> str:
-    """Encode a container interpreter: ``docker://IMAGE#PYTHON[|root][|/mount...]``."""
-    return f"{PREFIX}{image}#{inner}" + ("|root" if root else "") + "".join(f"|{m}" for m in mounts)
+def runtime_python(image: str, inner: str, *, root: bool = False, mounts=(), code: bool = False) -> str:
+    """Encode a container interpreter: ``docker://IMAGE#PYTHON[|root][|code][|/mount...]``."""
+    return (f"{PREFIX}{image}#{inner}" + ("|root" if root else "") + ("|code" if code else "")
+            + "".join(f"|{m}" for m in mounts))
 
 
 def parse(python: str) -> tuple[str, str]:
@@ -144,6 +153,31 @@ def options(python: str) -> tuple[bool, list[str]]:
     return "root" in parts, [part for part in parts if part.startswith("/")]
 
 
+def mounts_code(python: str) -> bool:
+    """Whether a container interpreter runs the host's mounted ``evoab`` package."""
+    return "code" in str(python)[len(PREFIX):].partition("#")[2].split("|")[1:]
+
+
+def code_mounts() -> list[tuple[str, str]]:
+    """(host, container) pairs that make the running ``evoab`` importable at ``CODE_ROOT``.
+
+    The package directory and its distribution metadata are mounted, so the
+    container imports exactly the host's code and reports the host's version.
+    """
+    from importlib import metadata
+    import evoab
+    pairs = [(str(Path(evoab.__file__).resolve().parent), f"{CODE_ROOT}/evoab")]
+    for name in ("evoab", "evoab-runtime"):
+        try:
+            info = Path(str(getattr(metadata.distribution(name), "_path", "")))
+        except metadata.PackageNotFoundError:
+            continue
+        if info.name.endswith(".dist-info") and info.is_dir():
+            pairs.append((str(info.resolve()), f"{CODE_ROOT}/{info.name}"))
+        break
+    return pairs
+
+
 def docker() -> str:
     path = shutil.which("docker")
     if path is None:
@@ -152,8 +186,12 @@ def docker() -> str:
 
 
 def run_prefix(image: str, *, gpu: bool | int, environment: dict[str, str], mounts=(), name: str | None = None,
-               interactive: bool = False, root: bool = False, workdir: str | None = None) -> list[str]:
-    """``docker run`` for one EvoAB process: host network, host user unless root, same-path mounts."""
+               interactive: bool = False, root: bool = False, workdir: str | None = None,
+               code: bool = False) -> list[str]:
+    """``docker run`` for one EvoAB process: host network, host user unless root, same-path mounts.
+
+    ``code`` mounts the host's ``evoab`` package read-only at ``CODE_ROOT``.
+    """
     command = [docker(), "run", "--rm", "--init", "--network", "host", "--ipc", "host"]
     if not root:
         command += ["--user", f"{os.getuid()}:{os.getgid()}", "-e", "HOME=/tmp"]
@@ -173,6 +211,9 @@ def run_prefix(image: str, *, gpu: bool | int, environment: dict[str, str], moun
     for path in mounts:
         resolved = str(Path(path).resolve())
         command += ["-v", f"{resolved}:{resolved}"]
+    if code:
+        for host, inside in code_mounts():
+            command += ["-v", f"{host}:{inside}:ro"]
     for key, value in environment.items():
         if key in ("CUDA_VISIBLE_DEVICES", "PYTHONNOUSERSITE"):
             continue  # the container sees only its own GPU; the image owns its site-packages
@@ -186,7 +227,8 @@ def python_command(python: str, arguments, *, environment=None, gpu: bool = Fals
         raise ValueError("Runtimes run only in Docker containers; rerun setup to build this runtime's image")
     image, inner = parse(python)
     root, mounts = options(python)
-    return run_prefix(image, gpu=gpu, environment=environment or {}, mounts=mounts, root=root) + [inner, *map(str, arguments)]
+    return run_prefix(image, gpu=gpu, environment=environment or {}, mounts=mounts, root=root,
+                      code=mounts_code(python)) + [inner, *map(str, arguments)]
 
 
 def wrap_plan(plan, runtime, *, gpu_index: int, name: str):
@@ -199,8 +241,8 @@ def wrap_plan(plan, runtime, *, gpu_index: int, name: str):
     root, extra = options(runtime.python)
     mounts = ([plan.cwd] if plan.cwd else []) + extra
     environment = {**runtime.environment, **plan.environment}
-    command = run_prefix(image, gpu=gpu, environment=environment, mounts=mounts, name=name, root=root) \
-        + [inner, *plan.command[1:]]
+    command = run_prefix(image, gpu=gpu, environment=environment, mounts=mounts, name=name, root=root,
+                         code=mounts_code(runtime.python)) + [inner, *plan.command[1:]]
     # The docker client itself needs the host proxy for nothing; keep the host environment minimal.
     return LaunchPlan(tuple(command), plan.url, plan.expected, {}, plan.cwd)
 
@@ -307,10 +349,18 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
         base = f"evoab/{spec.integration.replace('_', '-')}-base:{spec.digest[:12]}"
         build_context = _fetch_sources(spec, report) if spec.sources else recipe.parent
         _stream([docker(), "build", "-t", base, "-f", recipe, *_build_args(), build_context], report)
-    package = None if wheel else _installed_package()
-    wheel_hash = hashlib.sha256(wheel.read_bytes()).hexdigest() if wheel else package[2]
-    identity = spec.digest + wheel_hash + base + "\n".join(spec.constraints or constraints)
-    tag = f"evoab/{spec.integration.replace('_', '-')}:{version}-{hashlib.sha256(identity.encode()).hexdigest()[:12]}"
+    requirements = None if wheel else runtime_requirements()
+    # The tag names exactly what the layer contains: the recipe, its base, the runtime
+    # dependencies and pins. EvoAB's code is mounted, so code changes reuse the image.
+    contents = (hashlib.sha256(wheel.read_bytes()).hexdigest() if wheel
+                else "requirements:" + "\n".join(requirements))
+    identity = spec.digest + contents + base + "\n".join(spec.constraints or constraints)
+    digest = hashlib.sha256(identity.encode()).hexdigest()[:12]
+    tag = f"evoab/{spec.integration.replace('_', '-')}:{f'{version}-' if wheel else 'env-'}{digest}"
+    if not wheel and subprocess.run([docker(), "image", "inspect", tag], capture_output=True).returncode == 0:
+        if report is not None:
+            report(f"Reusing {tag}: recipe and dependencies are unchanged")
+        return tag
     with tempfile.TemporaryDirectory(prefix="evoab-image-") as context:
         context_path = Path(context)
         python = shlex.quote(spec.python)
@@ -320,20 +370,13 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
             install = f"/tmp/evoab-wheel/{wheel.name}"
             copy = f"COPY {wheel.name} /tmp/evoab-wheel/\n"
         else:
-            # No runtime wheel: install the runtime dependencies and the exact package
-            # Studio itself runs, so the image always matches the host version.
-            source, requirements, _ = package
-            shutil.copytree(source, context_path / "evoab", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            # No runtime wheel: install only EvoAB's runtime dependencies. The code and its
+            # metadata are mounted at CODE_ROOT on every run (code_mounts), found through a .pth.
             (context_path / "requirements.txt").write_text("\n".join(requirements) + "\n", encoding="utf-8")
             install = "-r /tmp/evoab-wheel/requirements.txt"
-            copy = "COPY requirements.txt /tmp/evoab-wheel/\nCOPY evoab /opt/evoab-runtime/evoab\n"
-            place = ["RUN chmod -R a+rX /opt/evoab-runtime", f"RUN {python} -c \"import site, pathlib; pathlib.Path(site.getsitepackages()[0], "
-                     f"'evoab-runtime.pth').write_text('/opt/evoab-runtime\\n')\"",
-                     # Package metadata, so evoab.__version__ resolves as for a wheel install.
-                     f"RUN {python} -c \"import site, pathlib; d = pathlib.Path(site.getsitepackages()[0], "
-                     f"'evoab_runtime-{version}.dist-info'); d.mkdir(exist_ok=True); "
-                     f"(d / 'METADATA').write_text('Metadata-Version: 2.1\\nName: evoab-runtime\\nVersion: {version}\\n'); "
-                     f"(d / 'INSTALLER').write_text('evoab\\n')\""]
+            copy = "COPY requirements.txt /tmp/evoab-wheel/\n"
+            place = [f"RUN {python} -c \"import site, pathlib; pathlib.Path(site.getsitepackages()[0], "
+                     f"'evoab-runtime.pth').write_text('{CODE_ROOT}\\n')\""]
         uv_pins = pip_pins = ""
         constraints = tuple(spec.constraints or constraints)
         if constraints:
@@ -346,7 +389,8 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
                  *place,
                  "RUN rm -rf /tmp/evoab-wheel",
                  *[f"RUN {command}" for command in (() if local_image and local_image != spec.image_id else spec.prepare)],
-                 "ENTRYPOINT []", "CMD []", f'LABEL org.evoab.integration="{spec.integration}" org.evoab.version="{version}"']
+                 "ENTRYPOINT []", "CMD []", f'LABEL org.evoab.integration="{spec.integration}" '
+                 + (f'org.evoab.version="{version}"' if wheel else 'org.evoab.code="mounted"')]
         (context_path / "Dockerfile").write_text("\n".join(line for line in lines if line) + "\n", encoding="utf-8")
         _stream([docker(), "build", "-t", tag, *_build_args(), context_path], report)
     return tag
@@ -356,23 +400,16 @@ def build_runtime_image(spec: ContainerSpec, wheel: Path | None, version: str, r
 RUNTIME_EXCLUDED: tuple[str, ...] = ()
 
 
-def _installed_package() -> tuple[Path, list[str], str]:
-    """The running ``evoab`` package directory, its runtime requirements and a content hash."""
-    import re as _re
+def runtime_requirements() -> list[str]:
+    """The running ``evoab`` distribution's runtime requirements (no extras), sorted."""
     from importlib import metadata
-    import evoab
-    source = Path(evoab.__file__).resolve().parent
     requirements = []
     for requirement in metadata.requires("evoab") or []:
-        name = _re.split(r"[<>=!~\[; ]", requirement, maxsplit=1)[0].lower()
+        name = re.split(r"[<>=!~\[; ]", requirement, maxsplit=1)[0].lower()
         if "extra ==" in requirement or name in RUNTIME_EXCLUDED:
             continue
         requirements.append(requirement)
-    digest = hashlib.sha256()
-    for path in sorted(source.rglob("*")):
-        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
-            digest.update(str(path.relative_to(source)).encode() + b"\0" + path.read_bytes())
-    return source, requirements, "source-" + digest.hexdigest()
+    return sorted(requirements)
 
 
 def query(python: str, code: str, *arguments, environment=None, timeout=600):
@@ -437,7 +474,7 @@ def prepare(args, adapter, *, report=print):
                 if result.returncode or not result.stdout.strip().startswith("sha256:"):
                     raise RuntimeError(f"Cannot inspect imported runtime image: {result.stderr.strip()}")
                 tag = result.stdout.strip()
-            python = runtime_python(tag, spec.python, root=spec.root, mounts=mounts)
+            python = runtime_python(tag, spec.python, root=spec.root, mounts=mounts, code=args.wheel is None)
             if host_data is not None:
                 data = host_data
                 finalize = getattr(adapter, "container_finalize", None)

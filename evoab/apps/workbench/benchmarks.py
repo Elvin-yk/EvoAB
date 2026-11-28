@@ -3,7 +3,7 @@
 Every integration in ``evoab/envs`` appears here with how it is
 prepared: ``container`` integrations run ``evoab setup`` to pull or build their
 Docker image (per runtime profile where they have several), ``custom`` ones
-wrap a user's own image, and ``real`` ones are physical robots. Status comes
+wrap a user's own image. Status comes
 from the runtime records that setup writes under the cache directory.
 """
 
@@ -209,7 +209,8 @@ def _parse_runtime(record: Path) -> PreparedRuntime | None:
     profile = name[len(integration) + 1:] or "default"
     payload = data.get("data") or {}
     selector = _BY_INTEGRATION[integration].task_selector
-    if selector and (data.get("schema_version") != 1 or name != record.parent.parent.name
+    from evoab.envs.docker.config import RECORD_SCHEMA
+    if selector and (data.get("schema_version") != RECORD_SCHEMA or name != record.parent.parent.name
                      or Path(data.get("root") or ".").resolve() != record.parent.resolve()):
         return None
     tasks = {}

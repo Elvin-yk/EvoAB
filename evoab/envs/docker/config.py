@@ -12,6 +12,9 @@ from types import SimpleNamespace
 
 from pydantic import BaseModel, ConfigDict, Field
 
+#: Runtime record format. 2: EvoAB's code is mounted into the image (``|code``), not baked in.
+RECORD_SCHEMA = 2
+
 
 @dataclass(frozen=True)
 class Recipe:
@@ -44,7 +47,7 @@ class Runtime:
     environment: dict[str, str] = field(default_factory=dict)
 
     def record(self):
-        return dict(schema_version=1, name=self.name, python=self.python,
+        return dict(schema_version=RECORD_SCHEMA, name=self.name, python=self.python,
                     recipe_digest=self.recipe_digest, package_version=self.package_version,
                     root=str(self.root), data=self.data, environment=self.environment)
 

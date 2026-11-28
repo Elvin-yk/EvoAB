@@ -77,12 +77,13 @@ def container_data(args, root, report):
 def container_finalize(python, data, report):
     """Initialize the robot configurations with the image's interpreter (upstream's own setup step)."""
     import subprocess
-    from evoab.envs.docker.container import options, parse, run_prefix
+    from evoab.envs.docker.container import mounts_code, options, parse, run_prefix
     from .assets import verify_robot_configs
     image, inner = parse(python)
     root, mounts = options(python)
     assets = Path(data['assets_dir'])
-    command = run_prefix(image, gpu=False, environment={}, mounts=mounts, root=root, workdir=str(assets.parent)) \
+    command = run_prefix(image, gpu=False, environment={}, mounts=mounts, root=root, workdir=str(assets.parent),
+                         code=mounts_code(python)) \
         + [inner, str(Path(data['native_root']) / 'utils/update_embodiment_config_path.py')]
     if report is not None:
         report('Initializing RoboDojo robot configurations in the image')
