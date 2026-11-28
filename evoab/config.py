@@ -46,6 +46,9 @@ def resolve_config(args, parser, integration_spec, argv=()):
 def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True):
     """Resolve one runtime configuration without parsing arguments or exiting."""
     explicit = set(explicit)
+    if getattr(args, "benchmark", None) and not getattr(args, "integration", None):
+        from evoab.envs import apply_benchmark
+        apply_benchmark(args)  # --benchmark/--task -> integration, suite or manifest, native task
     from evoab.agent.loop import NativeAgent
     # One debug switch: verbose logs and raw model requests; the agent's inputs and tools are unchanged.
     args.debug = bool(getattr(args, "debug", False))
@@ -123,7 +126,7 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
             )
         if args.observation_profile != args.integration:
             raise ValueError(
-                "the observation profile must match --integration or be none"
+                "the observation profile must match the benchmark or be none"
             )
         from evoab.envs.observation import load_observation_profile
 
@@ -208,22 +211,23 @@ class AgentConfig(BaseModel):
 
 
 class SessionConfig(BaseModel):
-    """One prepared episode. Integration-specific options belong to its registered schema."""
+    """One prepared episode. Benchmark-specific options (task, seed, ...) belong to its schema."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    integration: str = Field(min_length=1)
+    benchmark: str = Field(min_length=1)
     env_url: str | None = None
     verifier_url: str | None = None
     verifier_timeout_s: float = Field(default=30, gt=0, allow_inf_nan=False)
     agent: AgentConfig | None = None
-    integration_options: dict[str, Any] = Field(default_factory=dict, repr=False)
+    # The benchmark's options, e.g. {"task": "libero_spatial/pick_up_...", "seed": 0}.
+    benchmark_options: dict[str, Any] = Field(default_factory=dict, repr=False)
     instruction: str | None = None
     action_model_url: str | None = None
     sam3_url: str | None = None
     obs_pipeline: Path | None = None
     output_dir: Path | None = None
     episode_timeout_s: int = Field(default=10800, ge=0)
-    # Method id or recipe file; None uses the integration's default method.
+    # Method id or recipe file; None uses the benchmark's default method.
     recipe: str | None = None
     # Dotted recipe paths or declared parameter names, e.g. {"horizon": "3:10"}.
     recipe_overrides: dict[str, Any] = Field(default_factory=dict)
@@ -233,11 +237,11 @@ class SessionConfig(BaseModel):
 
     def resolve(self):
         """Validate offline and return the internal shared runtime settings."""
-        from evoab.envs import load_integration
+        from evoab.envs import apply_benchmark, load_integration, resolve_benchmark
 
-        spec = load_integration(self.integration).get_integration_spec()
-        options = spec.config_model.model_validate(self.integration_options)
-        values = self.model_dump(exclude={"agent", "integration_options"})
+        spec = load_integration(resolve_benchmark(self.benchmark)[0]).get_integration_spec()
+        options = spec.config_model.model_validate(self.benchmark_options)
+        values = self.model_dump(exclude={"agent", "benchmark_options"})
         values.update({name: getattr(options, name) for name in type(options).model_fields})
         # Tool-only sessions retain model transport defaults for shared tool composition,
         # but do not load, validate or instantiate an agent backend.
@@ -247,9 +251,11 @@ class SessionConfig(BaseModel):
             if name not in {"model", "api_key"}
         })
         values.update(command="run", deploy=None)
+        namespace = SimpleNamespace(**values)
+        apply_benchmark(namespace)
         explicit = {"--" + name.replace("_", "-") for name in self.model_fields_set}
         if agent:
             explicit.update("--" + name.replace("_", "-") for name in agent.model_fields_set)
-        resolved = resolve_settings(SimpleNamespace(**values), spec, explicit=explicit,
+        resolved = resolve_settings(namespace, spec, explicit=explicit,
                                     agent_enabled=agent is not None)
         return resolved

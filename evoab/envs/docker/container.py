@@ -230,7 +230,7 @@ def run_prefix(image: str, *, gpu: bool | int, environment: dict[str, str], moun
 def python_command(python: str, arguments, *, environment=None, gpu: bool = False) -> list[str]:
     """A command running ``<python> <arguments>`` inside a container runtime."""
     if not is_container(python):
-        raise ValueError("Runtimes run only in Docker containers; rerun setup to build this runtime's image")
+        raise ValueError("Runtimes run only in Docker containers; pull its image: evoab images pull BENCHMARK")
     image, inner = parse(python)
     root, mounts, code = options(python)
     return run_prefix(image, gpu=gpu, environment=environment or {}, mounts=mounts, root=root,
@@ -491,7 +491,7 @@ def prepare(args, adapter, *, report=print):
                     hand_back(python, path)
             else:
                 inputs = {"native_root": spec.native_root, "runtime_profile": getattr(args, "runtime_profile", None),
-                          "command": "setup"}
+                          "command": "images"}
                 data = query(python, _IMAGE_DATA, adapter.__name__, json.dumps(inputs),
                              environment=environment)
             runtime = Runtime(recipe.name, python, recipe.digest, __version__, root,
@@ -648,7 +648,7 @@ def _recorded_image(root: Path) -> str:
     python = str(data.get("python") or "") if isinstance(data, dict) else ""
     recorded = parse(python)[0] if is_container(python) else None
     if image and recorded and image != recorded:
-        raise ContainerError("Runtime record and interpreter name different images; rerun setup")
+        raise ContainerError("Runtime record and interpreter name different images; pull it again: evoab images pull BENCHMARK")
     reference = image or recorded
     if not isinstance(reference, str) or _IMAGE_REFERENCE.fullmatch(reference) is None:
         raise ContainerError("Runtime record has no removable image reference")

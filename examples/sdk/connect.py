@@ -5,10 +5,10 @@ from evoab import Session, SessionConfig
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--integration', required=True)
+    parser.add_argument('--benchmark', required=True)
     parser.add_argument('--env-url', required=True)
     args = parser.parse_args()
-    with Session(SessionConfig(integration=args.integration, env_url=args.env_url)) as session:
+    with Session(SessionConfig(benchmark=args.benchmark, env_url=args.env_url)) as session:
         print([tool['name'] for tool in session.tools.list()])
         print(session.tools.call('view_env_state').to_dict())
     print(session.result.record)

@@ -14,14 +14,14 @@ from evoab.config import (
     public_config,
     resolve_config,
 )
-from evoab.envs import load_integration
+from evoab.envs import apply_benchmark, load_integration, resolve_benchmark
 
 
 WORKBENCH_COMMANDS = {
     "runs": "List, launch, trace and stop runs (same as Studio)",
     "methods": "The method library: list, components, validate",
     "models": "Model providers and presets",
-    "benchmarks": "List benchmarks and tasks; prepare runtimes",
+    "benchmarks": "List benchmarks and their tasks",
     "usage": "Token usage by API and model",
     "settings": "Show or change Studio defaults",
     "studio": "Start the Studio web client",
@@ -36,9 +36,9 @@ def _add_doctor_arguments(parser: argparse.ArgumentParser) -> None:
         help="Print the report as a machine-readable JSON object",
     )
     parser.add_argument(
-        "--integration",
+        "--benchmark",
         metavar="NAME",
-        help="Check only this integration and fail when it is unavailable",
+        help="Check only this benchmark and fail when it is unavailable",
     )
     parser.add_argument(
         "--output-dir",
@@ -60,7 +60,7 @@ def _run_doctor(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     try:
         report = doctor.run_checks(
-            integration=args.integration,
+            integration=resolve_benchmark(args.benchmark)[0] if args.benchmark else None,
             output_dir=args.output_dir,
         )
     except (ValueError, OSError) as error:
@@ -70,10 +70,12 @@ def _run_doctor(argv: list[str]) -> int:
 
 
 def _probe_integration_name(argv: list[str] | None = None) -> str | None:
+    """The integration behind --benchmark, so its own options can join the parser."""
     probe = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     probe.add_argument("command", nargs="?")
-    probe.add_argument("--integration", dest="integration")
-    return probe.parse_known_args(argv)[0].integration
+    probe.add_argument("--benchmark")
+    name = probe.parse_known_args(argv)[0].benchmark
+    return resolve_benchmark(name)[0] if name else None
 
 
 def build_parser(integration_spec=None) -> argparse.ArgumentParser:
@@ -86,15 +88,13 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     agent = common.add_argument_group("Agent")
     agent.add_argument(
-        "--integration",
-        dest="integration",
-        required=True,
-        help="Required environment integration, such as libero, libero_pro or calvin",
+        "--benchmark", required=True, metavar="NAME",
+        help="Benchmark: libero, libero_pro, calvin or a registered custom benchmark (evoab benchmarks list)",
     )
     agent.add_argument(
         "--recipe", metavar="METHOD",
         help="Method id from the method library (evoab methods) or a recipe file; "
-             "default: the integration's default method")
+             "default: the benchmark's default method")
     agent.add_argument(
         "--set", action="append", default=[], metavar="PATH=VALUE",
         help="Override a recipe value by dotted path, read as YAML, e.g. "
@@ -178,28 +178,13 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     add_ob_proxy_arguments(ob_proxy)
-    setup = subparsers.add_parser("setup", help="Pull or build a benchmark's Docker image and prepare its resources",
-                                  allow_abbrev=False)
-    setup.add_argument("--integration", required=True)
-    setup.add_argument("--wheel", type=Path, help="Install a matching evoab-runtime wheel into the image "
-                       "(default: the running evoab package)")
-    setup.add_argument("--setup-timeout-s", type=float, default=14400)
-    setup.add_argument("--skip-demo-download", action="store_true", help="Skip optional expert demonstration videos")
-    setup.add_argument("--image-archive", metavar="FILENAME",
-                       help="Import one docker save archive from EVOAB_IMAGE_IMPORT_DIR "
-                            "(default: the runtime cache's image-imports directory)")
-    setup.add_argument("--check-launch", action="store_true",
-                       help="After setup, start one task's environment service once and fail if it does not become ready")
-    setup.add_argument("--accept-license", metavar="NAME",
-                       help="Accept the named licence a container recipe requires (for example the NVIDIA Isaac Sim EULA)")
-    add_runtime_arguments(setup)
     deploy = subparsers.add_parser("deploy", help="Run a prepared environment container in the foreground",
                                    allow_abbrev=False)
     kinds = deploy.add_subparsers(dest="service", required=True)
     # Only environments are deployed; policy and SAM3 services are reached by URL.
     service = kinds.add_parser("env", allow_abbrev=False)
-    service.add_argument("--integration", required=True)
-    service.add_argument("--task")
+    service.add_argument("--benchmark", required=True, metavar="NAME")
+    service.add_argument("--task", help="Task ID as evoab benchmarks tasks lists it, e.g. libero_spatial/pick_up_...")
     service.add_argument("--check", action="store_true",
                          help="Start the service, wait until it is ready, print its identity and stop it")
     service.add_argument("--run-id")
@@ -207,6 +192,7 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     add_runtime_arguments(service)
     add_launch_arguments(service)
     # Resource commands are dispatched before this parser runs (see main); listed here for --help.
+    subparsers.add_parser("images", help="Pull, check, list and remove benchmark images", add_help=False)
     for name, text in WORKBENCH_COMMANDS.items():
         subparsers.add_parser(name, help=text, add_help=False)
     return parser
@@ -222,11 +208,14 @@ def main(argv=None, *, _supervised=False) -> None:
         from evoab.envs.observation.toolpackage.cli import main as ob_proxy_main
         raise SystemExit(ob_proxy_main(argv[1:]))
     # Same operations as Studio; they need no integration or run configuration.
+    if argv and argv[0] == "images":
+        from evoab.apps.workbench.images import main as images_main
+        raise SystemExit(images_main(argv[1:]))
     if argv and argv[0] in WORKBENCH_COMMANDS:
         from evoab.apps.workbench.cli import main as workbench_main
         raise SystemExit(workbench_main(argv))
-    integration_name = _probe_integration_name(argv)
     try:
+        integration_name = _probe_integration_name(argv)
         integration_spec = (
             load_integration(integration_name).get_integration_spec()
             if integration_name
@@ -239,6 +228,11 @@ def main(argv=None, *, _supervised=False) -> None:
     if args.command is None:
         parser.print_help()
         raise SystemExit(1)
+    if getattr(args, "benchmark", None):
+        try:
+            apply_benchmark(args)
+        except ValueError as error:
+            parser.error(str(error))
     if args.command == "replay":
         from evoab.apps.web.runtime import serve_directories
         try:
@@ -252,23 +246,14 @@ def main(argv=None, *, _supervised=False) -> None:
         parser.error("--monitor-port must be between 0 and 65535")
     if args.command == "run" and args.deploy is None and not (args.env_url or os.environ.get("EVOAB_ENV_URL")):
         args.deploy = "local"  # the default: start the prepared environment, run, and stop it
-    if args.command in ("setup", "deploy"):
+    if args.command == "deploy":
         from evoab.envs.docker.config import validate_deployment
         try:
             from evoab.envs.docker.process import enable_child_reaping
             enable_child_reaping()
             adapter = validate_deployment(args)
-            if args.command == "setup":
-                from evoab.envs.docker.setup import prepare
-                from evoab.envs.docker.process import cancellation_signals
-                with cancellation_signals():
-                    runtime = prepare(args, adapter)
-                    if getattr(args, "check_launch", False) and not getattr(args, "image_archive", None):
-                        from evoab.envs.docker.setup import check_launch
-                        check_launch(args, adapter, runtime)
-            else:
-                from evoab.envs.docker.manager import deploy
-                raise SystemExit(deploy(args, adapter))
+            from evoab.envs.docker.manager import deploy
+            raise SystemExit(deploy(args, adapter))
         except KeyboardInterrupt:
             raise SystemExit(130)
         except (ValueError, OSError, RuntimeError, TimeoutError) as error:

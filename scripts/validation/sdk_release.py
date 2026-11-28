@@ -52,14 +52,15 @@ print('Installed SDK:', evoab.__file__)
     command([executable, '--version'])
     command([executable, '--help'])
     command([python, '-m', 'evoab', '--version'])
+    command([python, '-m', 'evoab', 'images', '--help'])
     # Offline method checks: the built-in agent needs no model or credential to validate a recipe.
     for integration in ('libero', 'libero_pro', 'calvin'):
         for method in ('tools', 'code', 'action'):
-            command([python, '-m', 'evoab', 'methods', 'validate', method, '--integration', integration])
+            command([python, '-m', 'evoab', 'methods', 'validate', method, '--benchmark', integration])
     command([python, '-I', '-c', """from pathlib import Path
 from importlib.util import find_spec
 import evoab
-from evoab import Session, SessionConfig, SetupConfig, DeploymentConfig
+from evoab import Session, SessionConfig, ImageConfig, DeploymentConfig
 from evoab.agent.context.prompt import get_prompt_builder
 from evoab.envs.calvin.action_binding import create_binding as calvin_binding
 from evoab.tools.hybrid.provider import HybridTools
@@ -73,36 +74,36 @@ assert callable(get_prompt_builder('libero'))
 for resource in ('apps/web/static/index.html', 'apps/web/static/app.js',
                  'envs/libero/container.toml', 'envs/calvin/container.toml', 'envs/libero_pro/container.toml'):
     assert (root / resource).is_file(), resource
-session = Session(SessionConfig(integration='libero_pro',
+session = Session(SessionConfig(benchmark='libero_pro',
     env_url='http://127.0.0.1:18760'))
 session.close()  # Validate configuration only; do not connect or finalize an episode.
-SetupConfig(integration="calvin").resolve()
-DeploymentConfig(integration="libero", task="libero_spatial/0", depth=False).resolve()
+ImageConfig(benchmark="calvin").resolve()
+DeploymentConfig(benchmark="libero", task="libero_spatial/0", depth=False).resolve()
 try:
-    SetupConfig(service="sam3")
+    ImageConfig(service="sam3")
 except ValueError:
     pass  # policy and SAM3 services are run by users and reached by URL
 else:
     raise AssertionError('A model-service setup was accepted')
 assert not any(name in sys.modules for name in ("mujoco", "jax", "torch", "scipy"))
-resolved = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools').resolve()
+resolved = SessionConfig(benchmark='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools').resolve()
 assert resolved.recipe_id == 'tools' and resolved.act == ('tools',)
-mixed = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools',
+mixed = SessionConfig(benchmark='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools',
                       recipe_overrides={'roles.main.act': ['tools', 'code', 'action']}).resolve()
 assert mixed.act == ('tools', 'code', 'action') and mixed.direct_config.representation == 'abs_eef'
 assert resolved.tool_modules == ('skills', 'scene', 'gripper', 'episode')
-clean = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools', recipe_overrides={
+clean = SessionConfig(benchmark='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools', recipe_overrides={
     'roles.main.style': 'compact', 'execution.return_mode': 'immediate', 'roles.main.capabilities': [
         {'id': 'gripper', 'tools': ['move', 'hold']}, {'id': 'scene', 'tools': ['capture_scene']}, 'episode']}).resolve()
 assert clean.selected_tools == ('move', 'hold', 'capture_scene', 'finish')
-hybrid = SessionConfig(integration='calvin', env_url='http://127.0.0.1:18760',
+hybrid = SessionConfig(benchmark='calvin', env_url='http://127.0.0.1:18760',
     recipe='tools', action_model_url='http://127.0.0.1:18769',
-    integration_options={'action_model_checkpoint_sha256': 'a' * 64},
+    benchmark_options={'action_model_checkpoint_sha256': 'a' * 64},
     recipe_overrides={'roles.main.capabilities': ['skills', 'scene', 'gripper',
                                                   {'id': 'hybrid', 'options': {'review': False}}, 'episode']}).resolve()
 assert hybrid.tool_modules == ('skills', 'scene', 'gripper', 'hybrid', 'episode')
 try:
-    SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools',
+    SessionConfig(benchmark='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools',
                   recipe_overrides={'roles.main.capabilities': ['scene', 'hybrid', 'episode']}).resolve()
 except ValueError as error:
     assert "no capability 'hybrid'" in str(error)
@@ -119,9 +120,9 @@ for name in ('robodojo_internal', 'efe', 'franka_robotiq', 'franka_sharpa', '_fr
     assert not (root / 'integrations' / name).exists(), name
 for name in ('gripper', 'robodojo_internal', 'efe', 'franka_robotiq', 'franka_sharpa'):
     try:
-        Session(SessionConfig(integration=name, env_url='http://127.0.0.1:18760'))
+        Session(SessionConfig(benchmark=name, env_url='http://127.0.0.1:18760'))
     except ValueError as error:
-        assert 'not available' in str(error)
+        assert 'Unknown benchmark' in str(error)
     else:
         raise AssertionError(f'Unavailable integration accepted: {name}')
 assert find_spec('evoab.tools.dexterous_hand') is None

@@ -61,9 +61,10 @@ export MY_API_KEY=...                                  # any OpenAI-compatible e
 evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_KEY
 evoab models add-preset my-model --provider my_api --model MODEL_ID
 
-evoab setup --integration libero --runtime-profile libero_spatial   # pulls AllenAI's LIBERO image once
-evoab run --integration libero --runtime-profile libero_spatial --recipe tools --model my-model \
-  --task pick_up_the_black_bowl_between_the_plate_and_the_ramekin_and_place_it_on_the_plate --output-dir ./runs
+evoab images pull libero                              # AllenAI's LIBERO image + EvoAB's dependencies, once
+evoab benchmarks tasks libero --suite libero_spatial  # task IDs are SUITE/TASK
+evoab run --benchmark libero --recipe tools --model my-model --output-dir ./runs \
+  --task libero_spatial/pick_up_the_black_bowl_between_the_plate_and_the_ramekin_and_place_it_on_the_plate
 evoab replay ./runs                                    # step through what the agent saw, did and spent
 ```
 
@@ -74,7 +75,7 @@ Or paste this into a coding agent on the target machine:
 
 | Command | What it does |
 |---|---|
-| `evoab run --integration calvin --task open_drawer --recipe tools --model my-model` | One agent calls robot tools on a CALVIN task |
+| `evoab run --benchmark calvin --task open_drawer --recipe tools --model my-model` | One agent calls robot tools on a CALVIN task |
 | `… --recipe code` | The agent writes and runs Python programs against the robot API |
 | `… --recipe action` | The model emits action chunks itself, as in Astranomy's Direct form |
 | `… --set 'roles.main.act=[tools,code,action]'` | One agent that may call a tool, run a program or emit a chunk at each step |
@@ -131,4 +132,4 @@ develop with `pip install -e '.[dev,agent]'`, and open pull requests against
 ## License
 
 MIT. Third-party code, assets and models keep their own licenses; each
-integration's `SOURCE.md` records its provenance.
+benchmark package's `SOURCE.md` records its provenance.

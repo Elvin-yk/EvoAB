@@ -614,10 +614,10 @@ class ObservationToolPackageTests(unittest.TestCase):
     def test_cli_and_session_config_offline_validation(self):
         pipeline_path = REPO_ROOT / "examples/observation/auto_sam3.yaml"
         cfg = SessionConfig(
-            integration="libero",
+            benchmark="libero",
             env_url="http://127.0.0.1:18760",
             obs_pipeline=pipeline_path,
-            integration_options={"task": "stack_bowls"},
+            benchmark_options={"task": "stack_bowls"},
         )
         resolved = cfg.resolve()
         self.assertEqual(resolved.obs_pipeline, str(pipeline_path.resolve()))
@@ -628,7 +628,7 @@ class ObservationToolPackageTests(unittest.TestCase):
         from evoab.config import resolve_settings
         from evoab.envs import load_integration
         spec = load_integration("libero").get_integration_spec()
-        argv = ["run", "--integration", "libero", "--recipe", "tools", "--model", "fixture",
+        argv = ["run", "--benchmark", "libero", "--recipe", "tools", "--model", "fixture",
                 "--task", "stack_bowls", "--env-url", "http://127.0.0.1:18760",
                 "--obs-pipeline", str(pipeline_path)]
         with mock.patch("evoab.agent.models.catalog.presets", return_value=[{"name": "fixture"}]):

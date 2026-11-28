@@ -22,8 +22,8 @@ def recipe(args):
 
 def validate(args):
     if getattr(args, "runtime_profile", None):
-        raise ValueError("CALVIN uses one default runtime profile")
-    if args.command != "setup" and not getattr(args, "task", None):
+        raise ValueError("CALVIN task IDs have no suite; use a name from evoab benchmarks tasks calvin")
+    if args.command != "images" and not getattr(args, "task", None):
         raise ValueError("Local CALVIN deployment requires --task")
 
 

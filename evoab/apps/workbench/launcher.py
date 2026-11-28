@@ -196,14 +196,15 @@ def free_port() -> int:
 
 def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, output_root: Path,
                    recipe_path: Path | None = None) -> list[str]:
-    profile, task = benchmarks.launch_target(request.integration, request.profile, request.task)
+    benchmarks.launch_target(request.integration, request.profile, request.task)  # launchable?
+    # A custom benchmark is named by its manifest; the others by their integration.
+    benchmark = request.profile if request.integration == "custom" else request.integration
     command = [
         sys.executable, "-m", "evoab", "run",
-        "--integration", request.integration,
+        "--benchmark", benchmark,
         "--deploy", "local",
         "--env-port", str(free_port()),
-        *(["--runtime-profile", profile] if profile is not None else []),
-        "--task", task,
+        "--task", request.task,
         "--recipe", str(recipe_path) if recipe_path else method["id"],
         "--model", request.model,
         "--reasoning-effort", request.reasoning_effort,

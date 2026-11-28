@@ -69,7 +69,7 @@ def adapter_for(args):
     """
     from evoab.envs import load_integration
     if not args.integration:
-        raise ValueError('Environment deployment requires --integration')
+        raise ValueError('Environment deployment requires --benchmark')
     module = load_integration(args.integration).get_integration_spec().deployment_module
     if not module:
         raise ValueError(f'{args.integration} has no local deployment recipe; use --env-url')
@@ -98,7 +98,6 @@ def validate_deployment(args):
 
 def add_runtime_arguments(parser):
     parser.add_argument('--cache-dir', type=Path, help='Persistent runtime cache (or EVOAB_CACHE_DIR)')
-    parser.add_argument('--runtime-profile', help='Runtime profile selected by the environment integration')
 
 
 def add_launch_arguments(parser, *, managed=False):
@@ -117,28 +116,30 @@ def add_launch_arguments(parser, *, managed=False):
 
 
 class RuntimeConfig(BaseModel):
-    """Selection shared by explicit preparation and deployment."""
+    """Selection shared by image preparation and deployment."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    integration: str | None = None
+    benchmark: str = Field(min_length=1)
     cache_dir: Path | None = None
-    runtime_profile: str | None = None
-    accept_license: str | None = None
 
     def resolve(self):
+        from evoab.envs import apply_benchmark
         args = SimpleNamespace(**self.model_dump())
-        args.command = "setup" if isinstance(self, SetupConfig) else "deploy"
+        args.command = "images" if isinstance(self, ImageConfig) else "deploy"
+        if isinstance(self, ImageConfig):
+            args.setup_timeout_s = self.timeout_s
+        apply_benchmark(args)
         validate_deployment(args)
         return args
 
 
-class SetupConfig(RuntimeConfig):
-    """Explicit image preparation; never run implicitly by a Session."""
+class ImageConfig(RuntimeConfig):
+    """Pull (or import, or build) one benchmark's image; never run implicitly by a Session."""
 
     wheel: Path | None = None
     image_archive: str | None = None
-    skip_demo_download: bool = False
-    setup_timeout_s: float = Field(default=14400, gt=0, allow_inf_nan=False)
+    accept_license: str | None = None
+    timeout_s: float = Field(default=14400, gt=0, allow_inf_nan=False)
 
 
 class DeploymentConfig(RuntimeConfig):

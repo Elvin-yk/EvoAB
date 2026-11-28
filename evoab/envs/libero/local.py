@@ -34,7 +34,7 @@ def task_catalog(args, suites, state_path, *, allow_empty=False, budgets=BUDGETS
 def episode_plan(args, runtime, output, run_id, integration, default_port, *, init_state_index=0):
     suite, task = args.runtime_profile, args.task
     if f"{suite}/{task}" not in runtime.data["tasks"]:
-        raise ValueError("Select a prepared LIBERO suite with --runtime-profile and a native name with --task")
+        raise ValueError(f"Unknown task {suite}/{task}; choose one from evoab benchmarks tasks (e.g. libero_spatial/...)")
     seed = args.seed or 0
     port = args.port or default_port
     host = args.host

@@ -128,10 +128,10 @@ class CalvinActorChecks(unittest.TestCase):
                 stack.callback(actor_server.stop)
                 actor_server.start_background()
 
-                cfg = SessionConfig(integration="calvin", env_url=env_server.url,
+                cfg = SessionConfig(benchmark="calvin", env_url=env_server.url,
                     action_model_url=actor_server.url, recipe=str(Path(__file__).resolve().parents[2] / "examples" / "recipes" / "policy.yaml"),
                     recipe_overrides={"roles.main.capabilities": "[scene, hybrid, episode]"},
-                    integration_options={"action_model_checkpoint_sha256": CHECKPOINT},
+                    benchmark_options={"action_model_checkpoint_sha256": CHECKPOINT},
                     output_dir=directory / "agent")
                 session = stack.enter_context(Session(cfg))
                 tools = {spec["name"] for spec in session.tools.list()}
