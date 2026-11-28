@@ -1,8 +1,7 @@
 # Benchmarks
 
-How to prepare each environment. EvoAB supports only benchmarks with a
-published, ready-to-pull simulator image, so preparing one never builds a
-simulator. Running methods on a prepared environment is in
+How to prepare each environment. Managed setup uses published simulator images.
+The prepared episode SDK also accepts an externally started environment service. Running methods on a prepared environment is in
 the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 [architecture](architecture.md#extend-evoab).
 
@@ -12,6 +11,7 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 | `libero_pro` | LIBERO-PRO suites | Public | Motion | `_env`, `_object`, `_swap`, `_task`, `_lan` variants |
 | `calvin` | CALVIN Panda | Public | Motion, policy (StarVLA) | One task per episode |
 | `custom` | Your Gym-style benchmark | Your image | Motion | See [custom benchmarks](#custom-benchmarks) |
+| `rmbench` | RMBench from a prepared SimpleMemVLA runtime | External service | Policy and optional motion | Replay selected policy-baseline cases |
 
 ## Simulation image recording
 
@@ -162,6 +162,27 @@ reviewer.
 
 Each integration's `SOURCE.md` pins the sources, assets and weights it was
 validated with.
+
+## RMBench prepared episodes
+
+Use the pinned SimpleMemVLA runtime and its vendored RMBench simulator.
+`scripts/validation/rmbench_policy_baseline.py` records expert-admitted seeds,
+instructions and initial observations in `manifest.json`. Replay one case using
+`python -m evoab.envs.rmbench.server --baseline-manifest CASE_MANIFEST` with
+the selected `--task`, `--seed` and vendored simulator path as `--native-root`.
+Start the actor with `python -m evoab.servers.actor.server --config ACTOR.toml`.
+Set `backend = "simplememvla_rmbench"`, `native_root` to the SimpleMemVLA
+checkout, and set `checkpoint` and `checkpoint_sha256` to the selected weights.
+
+Connect with `SessionConfig` using the prepared `env_url`, the actor URL and
+checkpoint SHA-256, and a native planner model preset. Use
+`examples/recipes/policy.yaml` with the `scene`, `hybrid` and `episode`
+capabilities for policy-only motion. For mixed control, add
+`--mixed-control` on the environment service and add the `gripper` capability
+to the recipe. Both controllers use the same native clock and camera history.
+The policy executes 16 dense targets per prediction and stops at native
+termination. The actor receives the original task instruction and controls
+both arm groups.
 
 ## Custom benchmarks
 

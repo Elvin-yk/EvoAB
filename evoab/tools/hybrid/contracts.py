@@ -19,11 +19,12 @@ class HybridCapabilities:
     max_actions: int = 40
     default_max_chunks: int = 6
     max_correction_actions: int = 5
+    min_actions: int = 1
 
     def __post_init__(self):
         if not self.groups or len(set(self.groups)) != len(self.groups):
             raise ValueError("Hybrid groups must be nonempty and distinct")
-        if not 1 <= self.default_actions <= self.max_actions or self.default_max_chunks < 1:
+        if not 1 <= self.min_actions <= self.default_actions <= self.max_actions or self.default_max_chunks < 1:
             raise ValueError("Invalid hybrid execution budgets")
 
 

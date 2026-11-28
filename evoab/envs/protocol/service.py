@@ -79,6 +79,9 @@ class EnvironmentService:
         self._closed = False
         self._last_published_step = -1
         self._image_stride = metadata.get("image_recording_stride")
+        self._action_snapshot_interval = metadata.get("action_snapshot_interval_steps", 1)
+        if type(self._action_snapshot_interval) is not int or self._action_snapshot_interval < 1:
+            raise ValueError("Action snapshot interval must be a positive native step count")
         if self._image_stride is not None and (type(self._image_stride) is not int or self._image_stride < 1):
             raise ValueError("Image recording stride must be a positive native step count")
         if self._image_stride and artifacts.root is not None:
@@ -265,7 +268,9 @@ class EnvironmentService:
             snapshot = None
             publication_error = None
             try:
-                snapshot = self._capture(record=True, sample=True)
+                if (self._action_snapshot_interval == 1 or after.ended
+                        or after.native_steps - self._last_published_step >= self._action_snapshot_interval):
+                    snapshot = self._capture(record=True, sample=True)
             except Exception as error:  # noqa: BLE001 - preserve the physical receipt if publication fails.
                 publication_error = f"{type(error).__name__}: {error}"
             trace, archive_error = self._archive({
