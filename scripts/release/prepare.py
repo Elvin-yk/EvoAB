@@ -61,7 +61,7 @@ def main():
     manifest = {
         'name': project['name'], 'version': version,
         'checks': ['sdist-to-wheel build', 'release contents', 'runtime source parity', 'twine check --strict'],
-        'installation_check': 'Run scripts/validation/sdk_release.py and runtime_release.py separately',
+        'installation_check': 'Run scripts/validation/sdk_release.py separately',
         'files': {name: {'sha256': digests[name], 'bytes': (dist / name).stat().st_size}
                   for name in digests},
         'published': False,

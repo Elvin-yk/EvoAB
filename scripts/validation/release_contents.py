@@ -22,7 +22,7 @@ SOURCE_SUFFIXES = {'.py', '.md', '.toml', '.json', '.sh', '.txt', '.png', '.pdf'
                    '.yaml', '.cpp', '.hpp', '.h', '.msg', '.srv', '.xml'}
 # Files without a suffix that travel with vendored native sources.
 SOURCE_NAMES = {'UPSTREAM_LICENSE', 'LICENSE', 'NOTICE', 'SHA256SUMS', 'Dockerfile'}
-STUDIO_MODEL_ASSETS = Path('evoab/ui/studio/static/model-assets')
+STUDIO_MODEL_ASSETS = Path('evoab/apps/studio/static/model-assets')
 
 
 def public_files(root: Path) -> dict[str, bytes]:

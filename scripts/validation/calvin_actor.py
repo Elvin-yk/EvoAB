@@ -10,20 +10,20 @@ from unittest.mock import patch
 import numpy as np
 
 from evoab import Session, SessionConfig
-from evoab.artifacts.store import ArtifactStore
-from evoab.integrations.calvin.adapter import CalvinAdapter
-from evoab.integrations.calvin.relative_action import BINDING_NAME
-from evoab.services.actor.calvin_profile import actor_profile
-from evoab.services.actor.contracts import ActorInfo, NumericChunk
-from evoab.services.actor.images import decode_image
-from evoab.services.actor.routes import build_router as actor_router
-from evoab.services.actor.service import ActorService
-from evoab.services.environment.contracts import (
+from evoab.records.artifacts.store import ArtifactStore
+from evoab.envs.calvin.adapter import CalvinAdapter
+from evoab.envs.calvin.relative_action import BINDING_NAME
+from evoab.servers.actor.calvin_profile import actor_profile
+from evoab.servers.actor.contracts import ActorInfo, NumericChunk
+from evoab.servers.actor.images import decode_image
+from evoab.servers.actor.routes import build_router as actor_router
+from evoab.servers.actor.service import ActorService
+from evoab.envs.protocol.contracts import (
     ArmCommand, EpisodeInfo, NativeCommand, Pose, PoseCommand, RequestRejected,
 )
-from evoab.services.environment.routes import build_router as environment_router
-from evoab.services.environment.service import EnvironmentService
-from evoab.services.hosting import HttpServer, create_app
+from evoab.envs.protocol.routes import build_router as environment_router
+from evoab.envs.protocol.service import EnvironmentService
+from evoab.servers.hosting import HttpServer, create_app
 
 CHECKPOINT = "a" * 64
 ROW = [.1, .2, .3, -.4, -.5, -.6, -1.]
@@ -95,8 +95,8 @@ def adapter_fixture(native):
     def score(initial, current, tasks):
         return tasks if current["native_steps"] == 3 else set()
 
-    with patch("evoab.integrations.robot_resources.urdf_kinematics", return_value={}), patch(
-        "evoab.integrations.robot_resources.add_robot_resources"
+    with patch("evoab.envs.robot_resources.urdf_kinematics", return_value={}), patch(
+        "evoab.envs.robot_resources.add_robot_resources"
     ):
         return CalvinAdapter(native, SimpleNamespace(get_task_info_for_set=score),
                              task="open_drawer", instruction="open drawer", episode_id="calvin-fixture",
@@ -129,7 +129,7 @@ class CalvinActorChecks(unittest.TestCase):
                 actor_server.start_background()
 
                 cfg = SessionConfig(integration="calvin", env_url=env_server.url,
-                    action_model_url=actor_server.url, recipe="agent_policy",
+                    action_model_url=actor_server.url, recipe=str(Path(__file__).resolve().parents[2] / "examples" / "recipes" / "policy.yaml"),
                     recipe_overrides={"roles.main.capabilities": "[scene, hybrid, episode]"},
                     integration_options={"action_model_checkpoint_sha256": CHECKPOINT},
                     output_dir=directory / "agent")

@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from evoab.services.environment.contracts import (
+from evoab.envs.protocol.contracts import (
     Contract,
     FiniteFloat,
 )

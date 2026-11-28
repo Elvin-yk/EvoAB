@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import math
 from typing import Any, Protocol
 
-from evoab.services.actor.contracts import ActorObservation, Prediction
+from evoab.servers.actor.contracts import ActorObservation, Prediction
 
 from .observations import ObservationInputs
 

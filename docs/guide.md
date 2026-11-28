@@ -2,7 +2,7 @@
 
 Install EvoAB, connect models, and run, compose and inspect methods. How it is
 built and extended is in [architecture](architecture.md); preparing each
-simulator or robot is in [benchmarks](benchmarks.md).
+simulator is in [benchmarks](benchmarks.md).
 
 ## Install
 
@@ -18,14 +18,13 @@ evoab doctor
 ```
 
 If cloning fails, run `gh auth login` and `gh repo clone Elvin-yk/EvoAB ~/evoab`.
-Extras add harness-side dependencies only (`agent` is required; `robodojo`,
-`benchmarks`, `xpolicylab`, `arx_one`, `piper_x`, `dev`); benchmark images, assets
-and model checkpoints are prepared separately ([benchmarks](benchmarks.md)).
+Extras add harness-side dependencies only (`agent` is required; `benchmarks`,
+`dev`); benchmark images and model checkpoints are prepared separately
+([benchmarks](benchmarks.md)).
 
-**Docker**: Docker Engine and the user in the `docker` group. GPU benchmarks
-also need the NVIDIA Container Toolkit (`sudo nvidia-ctk runtime
-configure --runtime=docker`, then restart Docker); MetaWorld runs on the CPU.
-Allow about 120 GiB of disk for the GPU benchmarks.
+**Docker**: Docker Engine and the user in the `docker` group, plus the NVIDIA
+Container Toolkit (`sudo nvidia-ctk runtime configure --runtime=docker`, then
+restart Docker). Allow about 60 GiB of disk for the benchmark images.
 `evoab benchmarks check` reports anything missing.
 
 **Networks.** If proxy variables break HTTPS to PyPI, install without them
@@ -63,8 +62,7 @@ tmux new-session -d -s evoab-studio "evoab studio --runs-root ~/evoab-runs --por
 
 Open `http://<host>:8770`. The header shows the commit Studio runs and turns
 amber when that build has local changes or was updated while the page was open.
-**发起任务** picks benchmark, task (RoboDojo: by capability dimension, with seed
-and layout), method and model; **运行记录** replays runs step by step with token
+**发起任务** picks benchmark, task, method and model; **运行记录** replays runs step by step with token
 cost; **设置** manages models and benchmark runtimes. Every Studio action is also
 a command (`evoab runs launch|list|trace|stop`, `evoab benchmarks list|tasks`,
 add `--json`); the HTTP API is at `/openapi.json`. Studio is frozen while new
@@ -74,8 +72,8 @@ capabilities land in the CLI, recipes and SDK first.
 
 One `evoab run` is one episode. The split is strict:
 
-- **The recipe says how the agent works**: what it is given (`inputs`), which
-  channel it acts through, which tools and options it has, its context, budget
+- **The recipe says how the agent works**: what it is given (`inputs`), how it
+  acts (`act`: tools, code, action), which tools and options it has, its context, budget
   and loop. Change it in the YAML or for one run with `--set PATH=VALUE`.
 - **The command line says which run**: integration, task and scene, where the
   environment and services run, which model, and where output goes.
@@ -84,18 +82,18 @@ EvoAB starts the benchmark's container for the episode and stops it afterwards;
 you never start environments or pass their addresses yourself.
 
 ```bash
-evoab run --integration robodojo --task stack_bowls \
-  --recipe agentic --model my-model --output-dir ./runs --monitor
+evoab run --integration calvin --task open_drawer \
+  --recipe tools --model my-model --output-dir ./runs --monitor
 
-# the same method, RGB only and with the environment's task supplements
-evoab run --integration robodojo --task stack_bowls --recipe agentic --model my-model \
-  --set inputs.depth=false --set inputs.task_supplements=true
+# the same method, RGB only, acting through tools and action chunks
+evoab run --integration calvin --task open_drawer --recipe tools --model my-model \
+  --set inputs.depth=false --set 'roles.main.act=[tools,action]'
 ```
 
 | Flag | Selects |
 |---|---|
 | `--integration`, `--recipe`, `--set` | The environment adapter, the method (id, directory or file), recipe overrides |
-| `--task`, `--seed`, `--layout-id`, `--layout`, `--instruction` | The episode and scene |
+| `--task`, `--runtime-profile`, `--seed`, `--instruction` | The episode (LIBERO: the suite is the runtime profile) |
 | `--env-gpu` | Which GPU the environment's container uses |
 | `--sam3-url`, `--action-model-url`, `--action-model-checkpoint-sha256` | Where perception and policy services run, and which checkpoint |
 | `--model`, `--reasoning-effort` | Which model preset, and its effort |
@@ -111,21 +109,34 @@ decides success and the agent never sees the verdict.
 
 ## Methods and recipes
 
-A method is a directory in `evoab/methods/` with `method.yaml` (the recipe) and
-`CARD.md` (paper, setting, results). A recipe has **inputs**, one or more
-**roles** and the **loop** connecting them.
+An agent acts in three ways: it calls **tools**, writes **code** (programs that
+call the same tools through `run_program`), or emits **action** chunks. A role's
+`act` enables any combination. The built-in methods `tools`, `code` and `action`
+(`evoab/methods/<id>/`, each a commented `method.yaml` plus `CARD.md`) are the
+three alone; everything else is a recipe over them, such as those in
+[`examples/recipes/`](../examples/recipes/).
+
+| `act` | The agent session |
+|---|---|
+| `[tools]` | Calls tools and reads each result |
+| `[code]` | Runs programs with `run_program`; only skill reading stays a direct call |
+| `[action]` | No session: each inference is one stateless request that must return an action chunk (Astranomy's Direct form) |
+| `[tools, code]` | Calls tools directly or runs programs that call them |
+| `[tools, action]`, `[code, action]`, `[tools, code, action]` | The chunk tool (`emit_eef_actions` and similar) is one more call; its result has the measured state and current images |
+
+A recipe has **inputs**, one or more **roles** and the **loop** connecting them.
 
 ```yaml
-id: use_direct_actor
-label: Call the Direct actor
+id: tools_and_policy
+label: Tools and a VLA policy
 inputs: {depth: false}                 # optional; null keeps the environment's default
 roles:
   main:
-    channel: tools
+    act: [tools]
     capabilities:
       - skills
       - {id: scene, tools: [view_env_state, capture_scene], options: {segmentation: false}}
-      - {id: hybrid, tools: [actor_act], options: {binding: robodojo_direct_eef}}
+      - {id: hybrid, tools: [actor_act], options: {review: false}}
       - episode
     max_turns: 0
 loop: {entry: main}
@@ -134,8 +145,8 @@ execution: {return_mode: immediate}
 
 | Part | Settings |
 |---|---|
-| `inputs` | `depth`, `calibration` (applied when EvoAB starts the environment), `task_supplements` (environments that publish them) |
-| Role `channel` | `tools` (tool calls), `code` (Python programs against the robot API, run through the `run_program` tool), `action` (one stateless request per action chunk: `abs_eef`, `delta_eef`, `joint_abs`) |
+| `inputs` | `depth` (applied when EvoAB starts the environment) |
+| Role `act` | Any of `tools`, `code`, `action`; `action` settings (`representation`: `abs_eef`, `delta_eef`, `joint_abs`; `horizon`, `step_limits`, and `history` when acting only through action) |
 | Role `capabilities` | Tool modules, optionally narrowed (`tools`) and configured (`options`); `{id: X, optional: true}` is skipped where missing. `scene` has `segmentation` (SAM3 for `locate`); `hybrid`, the policy tool, has `binding` and `review` |
 | Role `prompt`, `max_turns`, `brain` | Method instructions, turn budget, an optional model preset or effort for this role |
 | `loop` | Entry role; `episodes.repeat`, `carry: [skills]` or `[programs]`, `keep: success\|always` |
@@ -147,6 +158,7 @@ for one run with `--set` and the value's dotted path; capabilities are addressed
 by id and values are read as YAML:
 
 ```bash
+--set 'roles.main.act=[tools,action]'
 --set 'roles.main.action.horizon=[16,32]'
 --set 'roles.main.capabilities.gripper.tools=[move,hold]'
 --set inputs.depth=false
@@ -155,7 +167,7 @@ by id and values are read as YAML:
 **Your own tools.** A Python function marked `@tool` is an agent tool: the
 docstring is the description the model sees, type hints are the arguments, and
 the first parameter, `robot`, calls the episode's other tools. Select the file
-with the `user_tools` capability; it works with any environment and channel.
+with the `user_tools` capability; it works with any environment and way of acting.
 
 ```python
 from evoab import tool
@@ -178,22 +190,21 @@ A tool returns text, a dict, a PIL image or `(text, [images])`; a failing inner
 call reaches the model as this tool's error. See `examples/tools/lift.py`.
 
 `delegate` exposes other roles as `delegate_<role>(instruction)`: the role runs
-with its own brain, channel and tools against the same episode and returns a
+with its own brain, ways of acting and tools against the same episode and returns a
 report. Validation is offline and strict: unknown fields, unreachable roles and
 missing capabilities fail before anything starts.
 
 ```bash
-evoab methods list --integration robodojo       # ids and where each method.yaml lives
-evoab methods components --integration robodojo
-evoab methods validate ./my_method/ --integration robodojo
+evoab methods list --integration calvin         # ids and where each method.yaml lives
+evoab methods components --integration calvin
+evoab methods validate ./my_method.yaml --integration calvin
 ```
 
-**Add a method**: copy the closest directory in `evoab/methods/`, edit
-`method.yaml`, put instructions in `prompt.append` or `prompts/*.md`, write
-`CARD.md` (paper and code links, setting, what is and is not reproduced, results),
-validate against every target integration, run one episode and check
-`recipe.json` and `effective_prompt.md`. Run it with `--recipe ./my_method/` or add
-a root with `EVOAB_METHODS_DIR`. If it needs something missing, add a component
+**Add a method**: copy the closest `method.yaml` or example recipe, choose `act`
+and capabilities, put instructions in `prompt.append`, record the paper in
+`references`, validate against every target integration, run one episode and
+check `recipe.json` and `effective_prompt.md`. Run it with `--recipe ./my_method.yaml`
+or add a root with `EVOAB_METHODS_DIR`. If it needs something missing, add a component
 ([architecture](architecture.md#extend-evoab)), never special-case the method.
 
 ## Results
@@ -208,14 +219,15 @@ To exercise the verifier transport, start the stub in a separate terminal with
 a shared directory containing the session files and environment image archive.
 
 ```bash
-python -m evoab.services.verifier.server --runs-root ./outputs --port 18780
+python -m evoab.servers.verifier.server --runs-root ./outputs --port 18780
 ```
 
 Add `--verifier-url http://127.0.0.1:18780` to `evoab run`, or set
 `SessionConfig.verifier_url` in the Python SDK. This option uses the EvoAB
 Session lifecycle. Use the same absolute filesystem paths on the service hosts.
-For simulations, rebuild the environment service to publish recorded image
-paths. Each `observation_sampled` row in `trajectory.jsonl` identifies its
+Restart the benchmark container after updating the mounted EvoAB checkout so
+its environment service publishes recorded image paths. For a wheel-based
+runtime, rebuild with the updated wheel. Each `observation_sampled` row in `trajectory.jsonl` identifies its
 native step, capture time, snapshot manifest and per-camera PNG paths.
 
 The stub exercises queueing, file access, atomic persistence and completion
@@ -232,8 +244,8 @@ request times out.
 from evoab import AgentConfig, SessionConfig, run
 
 result = run(SessionConfig(
-    integration="robodojo", env_url="http://127.0.0.1:18760",
-    recipe="agent_policy", recipe_overrides={"roles.main.capabilities.hybrid.options.binding": "robodojo_direct_eef"},
+    integration="calvin", env_url="http://127.0.0.1:18760",
+    recipe="code", recipe_overrides={"roles.main.act": ["tools", "code"]},
     agent=AgentConfig(model="my-model"),
 ))
 print(result.task_success)
@@ -242,19 +254,3 @@ print(result.task_success)
 `Session(SessionConfig(...))` gives direct access to the episode's tools;
 `setup()` and `deploy()` prepare and start benchmark containers. Examples are in
 [`examples/sdk/`](../examples/sdk/).
-
-## Replace `planner_direct` with `actor_act`
-
-On RoboDojo, select **Direct** on the Planner card in Studio. The Planner calls
-`actor_act` with a sub-goal and the arms to use. Direct reads the current camera
-frames and arm poses and proposes an action chunk. The tool executes the
-requested steps and returns the result to the Planner. This uses one Agent and
-an in-process policy.
-
-On the CLI, select the existing `agent_policy` recipe and its Direct binding:
-
-```bash
-evoab run --integration robodojo --task stack_bowls --deploy local \
-  --recipe agent_policy --model my-preset \
-  --set roles.main.capabilities.hybrid.options.binding=robodojo_direct_eef
-```

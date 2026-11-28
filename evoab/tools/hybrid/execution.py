@@ -1,7 +1,7 @@
 """One bounded execution loop over already validated proposal rows."""
 from __future__ import annotations
 
-from evoab.services.environment.client import EnvironmentRequestError
+from evoab.envs.protocol.client import EnvironmentRequestError
 
 from .contracts import ExecutionResult, HybridBinding
 

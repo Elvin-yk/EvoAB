@@ -25,7 +25,7 @@ class ChunkReviewer:
         if enabled:
             if not model:
                 raise ValueError("An enabled reviewer needs a model preset (--vla-review-model or the run's model)")
-            from evoab.provider.catalog import ModelClient
+            from evoab.agent.models.catalog import ModelClient
             self._client = ModelClient(model, reasoning_effort="medium")
 
     def close(self):
