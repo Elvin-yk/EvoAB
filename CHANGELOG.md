@@ -35,14 +35,15 @@ current images), and `code` adds `run_program` beside direct tool calls.
   `code_iterate` moved to `examples/recipes/` (`policy.yaml`, `clean.yaml`,
   `code_iterate.yaml`); `tool_team` is removed (Studio agent cards start from
   `tools`). The recipe field `paradigms` is removed.
-- Tool schemas and prompts are unchanged for `act: [tools]` and `act: [code]`.
+- Both modes keep the same tool schemas. The tools prompt is unchanged; the
+  code prompt uses the new `from evoab.agent.act.code import Robot` import.
 
 ### Layered package layout
 
 `evoab/` is regrouped by layer: `agent/` (loop, `act/code`, `act/action`,
 `context`, `models`, `memory`, `team`), `recipe/`, `methods/`, `tools/`,
 `runtime/` (was `execution/`), `envs/` (was `integrations/`, plus `protocol/`,
-`observation/` and `docker/`), `servers/` (actor and perception), `records/`
+`observation/` and `docker/`), `servers/` (actor, perception and verifier), `records/`
 (artifacts, telemetry, events) and `apps/` (console, Studio, replay,
 workbench). There are no compatibility aliases; update imports such as
 `evoab.integrations.X` to `evoab.envs.X` and `evoab.services.environment` to

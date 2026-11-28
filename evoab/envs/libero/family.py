@@ -84,4 +84,3 @@ def prepare(args, *, benchmark_name, revision, budgets=BUDGETS, adapter_factory=
     except BaseException:
         env.close()
         raise
-

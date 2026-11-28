@@ -58,5 +58,3 @@ class AgentInterrupted(KeyboardInterrupt):
     def __init__(self, result: AgentResult):
         super().__init__(result.error or "Agent interrupted")
         self.result = result
-
-

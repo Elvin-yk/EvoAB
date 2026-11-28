@@ -67,7 +67,7 @@ evoab/
 │   ├── protocol/    the environment HTTP protocol (snapshots, receipts)
 │   ├── observation/ observation pipeline and ToolPackage proxy
 │   └── docker/      setup and start of benchmark containers
-├── servers/     model services you run yourself: actor (VLA/WAM), perception (SAM3)
+├── servers/     user-run services: actor (VLA/WAM), perception (SAM3), session verifier
 ├── records/     artifacts, telemetry and events of a run
 ├── apps/        console, Studio, replay and the runs/benchmarks commands (workbench/)
 └── resources/   prompts and skills the robot agent reads at run time

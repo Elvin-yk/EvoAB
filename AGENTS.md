@@ -29,7 +29,7 @@ families are examples of this architecture, not a closed list of allowed tools.
 | `tools/` | Define model-visible tool schemas, handlers, orchestration, feedback and resource requirements |
 | `runtime/` | Schedule tool work, enforce resource exclusion and manage background jobs |
 | `envs/` | Adapt native environments (one package per benchmark) and compose tool families; `protocol/` the environment service contract and client, `observation/` observation collection, `docker/` container setup and start |
-| `servers/` | Model services users run (actor for VLA/WAM, perception for SAM3): typed contracts, clients and hosts |
+| `servers/` | User-run actor, perception and session verification services, including their contracts, clients and hosts |
 | `records/` | Run artifacts, telemetry and shared events |
 | `apps/` | Console, Studio, replay and workbench commands: present state and route user intent through session interfaces |
 | `resources/` | Package robot-facing prompts and runtime skills |

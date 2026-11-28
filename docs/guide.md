@@ -225,8 +225,9 @@ python -m evoab.servers.verifier.server --runs-root ./outputs --port 18780
 Add `--verifier-url http://127.0.0.1:18780` to `evoab run`, or set
 `SessionConfig.verifier_url` in the Python SDK. This option uses the EvoAB
 Session lifecycle. Use the same absolute filesystem paths on the service hosts.
-For simulations, rebuild the environment service to publish recorded image
-paths. Each `observation_sampled` row in `trajectory.jsonl` identifies its
+Restart the benchmark container after updating the mounted EvoAB checkout so
+its environment service publishes recorded image paths. For a wheel-based
+runtime, rebuild with the updated wheel. Each `observation_sampled` row in `trajectory.jsonl` identifies its
 native step, capture time, snapshot manifest and per-camera PNG paths.
 
 The stub exercises queueing, file access, atomic persistence and completion
