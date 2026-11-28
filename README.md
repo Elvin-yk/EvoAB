@@ -21,24 +21,28 @@ VLAs, EvoAB aims to be for robot agents.
 Robot-use agents keep a frozen general-purpose model and differ in the harness
 around it. EvoAB makes that harness out of shared parts:
 
-- **Three ways to act, nothing else.** An agent calls tools, writes programs that
-  call the same tools, or emits action chunks directly.
+- **Three ways to act, in any combination.** An agent calls tools, writes
+  programs that call the same tools, or emits action chunks directly; a recipe
+  enables any mix of the three (`act: [tools, code, action]`).
 - **Everything else is a tool.** Motion, perception, a VLA or world-action
   policy, and your own Python functions (`@tool`) plug in the same way.
-- **The recipe is the method.** Inputs, roles, tools, budgets and experience
-  across episodes live in one file; the command line only picks the run.
+- **The recipe is the method.** How it acts, inputs, roles, tools, budgets and
+  experience across episodes live in one file; the command line only picks the run.
 - **Same environments for everyone.** Benchmarks run in Docker with their native
   scoring; the agent never sees the verdict.
 
 ```mermaid
 flowchart LR
-    R["method.yaml<br/>(recipe)"] --> A["Built-in agent<br/>+ model preset"]
-    A -- "tools · code · action" --> T["Tools<br/>motion · perception · policy · @tool"]
+    R["recipe<br/>act: tools · code · action"] --> A["Built-in agent<br/>+ model preset"]
+    A -- "tool calls" --> T["Tools<br/>motion · perception · policy · @tool"]
+    A -- "programs" --> T
+    A -- "action chunks" --> E
     T --> E["Environment<br/>Docker simulator"]
 ```
 
 ## News
 
+- **2026/11** Tools, code and action combine freely in one agent session; the method library is the three of them.
 - **2026/11** One agent: every method runs on the built-in agent over your model presets.
 - **2026/11** Your own tools: decorate a Python function with `@tool` and select it in a recipe.
 - **2026/11** Benchmarks run only in Docker; `evoab run` starts and stops the container itself.
@@ -58,7 +62,7 @@ evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_K
 evoab models add-preset my-model --provider my_api --model MODEL_ID
 
 evoab setup --integration metaworld                    # builds the benchmark image once
-evoab run --integration metaworld --task reach-v3 --recipe agentic --model my-model --output-dir ./runs
+evoab run --integration metaworld --task reach-v3 --recipe tools --model my-model --output-dir ./runs
 evoab replay ./runs                                    # step through what the agent saw, did and spent
 ```
 
@@ -69,30 +73,33 @@ Or paste this into a coding agent on the target machine:
 
 | Command | What it does |
 |---|---|
-| `evoab run --integration robodojo --task stack_bowls --recipe agentic --model my-model` | One agent calls robot tools on a dual-arm RoboDojo task |
-| `… --recipe direct_action` | The model emits action chunks itself, as in Astranomy's Direct form |
-| `… --recipe code_as_policy` | The agent writes and runs Python programs against the robot API |
+| `evoab run --integration robodojo --task stack_bowls --recipe tools --model my-model` | One agent calls robot tools on a dual-arm RoboDojo task |
+| `… --recipe code` | The agent writes and runs Python programs against the robot API |
+| `… --recipe action` | The model emits action chunks itself, as in Astranomy's Direct form |
+| `… --set 'roles.main.act=[tools,code,action]'` | One agent that may call a tool, run a program or emit a chunk at each step |
 | `… --set inputs.depth=false` | Same method, RGB-only observations |
-| `… --recipe direct_action --set 'roles.main.action.horizon=[16,32]'` | Change any recipe value for one run |
+| `… --recipe examples/recipes/policy.yaml` | A VLA policy as one more tool (`actor_act`) |
 | `evoab benchmarks tasks robodojo` | Tasks with their dimension, real instruction and step limit |
 | `evoab methods list` | Every method and where its `method.yaml` lives |
 
 ## Methods
 
-Each method is a directory with `method.yaml` (the recipe, commented line by
-line) and `CARD.md` (paper, setting, results).
+An agent acts in three ways. Each is a built-in method (`method.yaml`, commented
+line by line, and `CARD.md`), and a recipe can enable any combination:
 
-| Method | Acts through | Idea |
+| Method | `act` | What the model does |
 |---|---|---|
-| `agentic` | tools | Observe, call tools, decide from feedback |
-| `clean` | tools | Four tools and compact results; a minimal baseline |
-| `direct_action` | action | One stateless request per action chunk ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/)) |
-| `code_as_policy` | code | Programs against the robot API ([Code as Policies](https://arxiv.org/abs/2209.07753)) |
-| `code_iterate` | code | Programs kept across episodes after successes ([RAX](https://arxiv.org/abs/2610.22496)) |
-| `agent_policy` | tools + policy | The agent hands contact-rich motion to a VLA and checks it |
-| `tool_team` | tools | Several roles that delegate sub-goals to each other |
+| `tools` | `[tools]` | Observes, calls tools and decides from their feedback |
+| `code` | `[code]` | Writes programs that call the same tools ([Code as Policies](https://arxiv.org/abs/2209.07753)) |
+| `action` | `[action]` | Emits action chunks, one stateless request each ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/)) |
 
-More reproductions are on the [method roadmap](https://github.com/Elvin-yk/EvoAB/issues/34).
+Everything else is a recipe option over these three: a VLA policy as a tool
+([`policy.yaml`](examples/recipes/policy.yaml)), programs kept across episodes
+as in RAX ([`code_iterate.yaml`](examples/recipes/code_iterate.yaml)), a
+four-tool baseline ([`clean.yaml`](examples/recipes/clean.yaml)), all three ways
+in one session ([`all.yaml`](examples/recipes/all.yaml)), or several roles that
+delegate to each other. More reproductions are on the
+[method roadmap](https://github.com/Elvin-yk/EvoAB/issues/34).
 
 ## Environments
 

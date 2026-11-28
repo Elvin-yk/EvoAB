@@ -6,6 +6,38 @@
   sampled camera paths, and the worker writes a placeholder verdict to
   `result.json` before acknowledging completion.
 
+### Tools, code and action in any combination
+
+A role's `act` replaces `channel`: any non-empty set of `tools`, `code` and
+`action`. Acting only through `action` keeps the stateless one-request-per-chunk
+loop. Next to `tools` or `code`, the action chunk is a tool in the agent's
+session (`emit_eef_actions` and similar, returning the measured state and
+current images), and `code` adds `run_program` beside direct tool calls.
+
+- **Migration**: replace `channel: X` with `act: [X]` in your recipes. Run
+  records write `act` instead of `channel`.
+- **Methods**: the library is `tools`, `code` and `action` (formerly `agentic`,
+  `code_as_policy` and `direct_action`). `agent_policy`, `clean` and
+  `code_iterate` moved to `examples/recipes/` (`policy.yaml`, `clean.yaml`,
+  `code_iterate.yaml`); `tool_team` is removed (Studio agent cards start from
+  `tools`). The recipe field `paradigms` is removed.
+- Tool schemas and prompts are unchanged for `act: [tools]` and `act: [code]`.
+
+### Layered package layout
+
+`evoab/` is regrouped by layer: `agent/` (loop, `act/code`, `act/action`,
+`context`, `models`, `memory`, `team`), `recipe/`, `methods/`, `tools/`,
+`runtime/` (was `execution/`), `envs/` (was `integrations/`, plus `protocol/`,
+`observation/` and `docker/`), `servers/` (actor and perception), `records/`
+(artifacts, telemetry, events) and `apps/` (console, Studio, replay,
+workbench). There are no compatibility aliases; update imports such as
+`evoab.integrations.X` to `evoab.envs.X` and `evoab.services.environment` to
+`evoab.envs.protocol`. Benchmark images bake the package at setup, so rerun
+`evoab setup --integration X` after upgrading.
+
+Removed leftovers: the agent registry and agent protocol (one agent remains),
+the empty SFT export package and the `train_*` result fields.
+
 ### Real robots removed
 
 EvoAB now targets simulated benchmarks in Docker only. Removed, with all their

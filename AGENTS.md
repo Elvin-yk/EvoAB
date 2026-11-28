@@ -24,25 +24,20 @@ families are examples of this architecture, not a closed list of allowed tools.
 | Layer | Responsibility |
 |---|---|
 | `cli.py`, `config.py`, `session.py` | Resolve configuration and assemble/own the run lifecycle |
-| `composition/`, `methods/` | Recipes (roles, channels, capabilities, loops), their compilation, the method library and graphs |
-| `agents/` | The built-in agent: run the model loop, deliver tool calls through the executor, record events |
-| `provider/` | Model presets: providers, models and usage (calls go through the presets' client) |
-| `context/` | Assemble prompts |
+| `recipe/`, `methods/` | Recipes (roles, `act`, capabilities, loops), their compilation, the method library (tools, code, action) and graphs |
+| `agent/` | The built-in agent: `loop.py` runs the model over a role's calls; `act/` the three ways of acting (`code/`: run_program and bridge, `action/`: chunk representations, the action tool and the stateless loop); `context/` prompts; `models/` presets; `memory/` experience; `team/` roles and delegation |
 | `tools/` | Define model-visible tool schemas, handlers, orchestration, feedback and resource requirements |
-| `direct/` | Direct policies: prompt packs, action-chunk representations, and the observe → infer → execute loop on episode contracts |
-| `execution/` | Schedule tool work, enforce resource exclusion and manage background jobs |
-| `integrations/` | Compose tool families and adapt native environments, controllers, observations and model/resource bindings |
-| `services/` | Own typed service contracts, clients, hosts and environment/model service lifecycles |
-| `observation/` | Coordinate observation collection, freshness and observer insights |
-| `events/` | Define and distribute shared execution events |
-| `artifacts/` | Store run artifacts and support persistence/export |
-| `telemetry/` | Record traces, logs and diagnostics |
-| `ui/` | Present state/events and route user intent through the session interfaces |
+| `runtime/` | Schedule tool work, enforce resource exclusion and manage background jobs |
+| `envs/` | Adapt native environments (one package per benchmark) and compose tool families; `protocol/` the environment service contract and client, `observation/` observation collection, `docker/` container setup and start |
+| `servers/` | Model services users run (actor for VLA/WAM, perception for SAM3): typed contracts, clients and hosts |
+| `records/` | Run artifacts, telemetry and shared events |
+| `apps/` | Console, Studio, replay and workbench commands: present state and route user intent through session interfaces |
 | `resources/` | Package robot-facing prompts and runtime skills |
 
-- To add or reproduce a method, write a recipe in `evoab/methods/<id>/` with a
-  `CARD.md`; follow [the add-method skill](docs/agent_skills/add-evoab-method/SKILL.md).
-  Never branch on a method id in code; extend recipe contracts instead.
+- To add or reproduce a method, write a recipe over the three ways of acting and
+  the capabilities; follow [the add-method skill](docs/agent_skills/add-evoab-method/SKILL.md).
+  `evoab/methods/` holds only `tools`, `code` and `action`. Never branch on a
+  method id in code; extend recipe contracts instead.
 - To change robot behavior, modify or add tools in an existing tool set, or
   create `tools/<family>/` for a new tool set. Keep reusable behavior there even
   when the first user is one environment. Avoid concrete integration imports;
@@ -54,8 +49,8 @@ families are examples of this architecture, not a closed list of allowed tools.
 - Reuse compatible observation contracts and scene tools. Extend them or add
   a tool family for a different agent capability; native sensor setup belongs
   in the adapter. Expose only capabilities the selected environment supports.
-- Keep the agent loop in `agents/`, model connections in `provider/` presets,
-  and scheduling in `execution/`. Rendering and logging consume
+- Keep the agent loop in `agent/`, model connections in `agent/models/` presets,
+  and scheduling in `runtime/`. Rendering and logging consume
   shared state/events; they do not implement robot control.
 - Keep native dependencies at service/startup boundaries so CLI help and offline
   configuration validation do not require robot or model runtimes.
@@ -87,7 +82,7 @@ families are examples of this architecture, not a closed list of allowed tools.
 ## Code Review Rules
 
 Flag integration-local model tools, generic `execute_tool(name, args)` service
-routes, tool-family imports of native integrations, duplicated episode state,
+routes, a fourth way of acting, tool-family imports of native integrations, duplicated episode state,
 unsupported capabilities advertised to the planner, agent-specific decisions in
 generic scheduling, and robot control implemented in UI/telemetry. Review changes
 to shared contracts for affected callers and migration, not for conformity to

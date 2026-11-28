@@ -74,8 +74,8 @@ capabilities land in the CLI, recipes and SDK first.
 
 One `evoab run` is one episode. The split is strict:
 
-- **The recipe says how the agent works**: what it is given (`inputs`), which
-  channel it acts through, which tools and options it has, its context, budget
+- **The recipe says how the agent works**: what it is given (`inputs`), how it
+  acts (`act`: tools, code, action), which tools and options it has, its context, budget
   and loop. Change it in the YAML or for one run with `--set PATH=VALUE`.
 - **The command line says which run**: integration, task and scene, where the
   environment and services run, which model, and where output goes.
@@ -85,10 +85,10 @@ you never start environments or pass their addresses yourself.
 
 ```bash
 evoab run --integration robodojo --task stack_bowls \
-  --recipe agentic --model my-model --output-dir ./runs --monitor
+  --recipe tools --model my-model --output-dir ./runs --monitor
 
 # the same method, RGB only and with the environment's task supplements
-evoab run --integration robodojo --task stack_bowls --recipe agentic --model my-model \
+evoab run --integration robodojo --task stack_bowls --recipe tools --model my-model \
   --set inputs.depth=false --set inputs.task_supplements=true
 ```
 
@@ -111,9 +111,22 @@ decides success and the agent never sees the verdict.
 
 ## Methods and recipes
 
-A method is a directory in `evoab/methods/` with `method.yaml` (the recipe) and
-`CARD.md` (paper, setting, results). A recipe has **inputs**, one or more
-**roles** and the **loop** connecting them.
+An agent acts in three ways: it calls **tools**, writes **code** (programs that
+call the same tools through `run_program`), or emits **action** chunks. A role's
+`act` enables any combination. The built-in methods `tools`, `code` and `action`
+(`evoab/methods/<id>/`, each a commented `method.yaml` plus `CARD.md`) are the
+three alone; everything else is a recipe over them, such as those in
+[`examples/recipes/`](../examples/recipes/).
+
+| `act` | The agent session |
+|---|---|
+| `[tools]` | Calls tools and reads each result |
+| `[code]` | Runs programs with `run_program`; only skill reading stays a direct call |
+| `[action]` | No session: each inference is one stateless request that must return an action chunk (Astranomy's Direct form) |
+| `[tools, code]` | Calls tools directly or runs programs that call them |
+| `[tools, action]`, `[code, action]`, `[tools, code, action]` | The chunk tool (`emit_eef_actions` and similar) is one more call; its result has the measured state and current images |
+
+A recipe has **inputs**, one or more **roles** and the **loop** connecting them.
 
 ```yaml
 id: use_direct_actor
@@ -121,7 +134,7 @@ label: Call the Direct actor
 inputs: {depth: false}                 # optional; null keeps the environment's default
 roles:
   main:
-    channel: tools
+    act: [tools]
     capabilities:
       - skills
       - {id: scene, tools: [view_env_state, capture_scene], options: {segmentation: false}}
@@ -135,7 +148,7 @@ execution: {return_mode: immediate}
 | Part | Settings |
 |---|---|
 | `inputs` | `depth`, `calibration` (applied when EvoAB starts the environment), `task_supplements` (environments that publish them) |
-| Role `channel` | `tools` (tool calls), `code` (Python programs against the robot API, run through the `run_program` tool), `action` (one stateless request per action chunk: `abs_eef`, `delta_eef`, `joint_abs`) |
+| Role `act` | Any of `tools`, `code`, `action`; `action` settings (`representation`: `abs_eef`, `delta_eef`, `joint_abs`; `horizon`, `step_limits`, and `history` when acting only through action) |
 | Role `capabilities` | Tool modules, optionally narrowed (`tools`) and configured (`options`); `{id: X, optional: true}` is skipped where missing. `scene` has `segmentation` (SAM3 for `locate`); `hybrid`, the policy tool, has `binding` and `review` |
 | Role `prompt`, `max_turns`, `brain` | Method instructions, turn budget, an optional model preset or effort for this role |
 | `loop` | Entry role; `episodes.repeat`, `carry: [skills]` or `[programs]`, `keep: success\|always` |
@@ -147,6 +160,7 @@ for one run with `--set` and the value's dotted path; capabilities are addressed
 by id and values are read as YAML:
 
 ```bash
+--set 'roles.main.act=[tools,action]'
 --set 'roles.main.action.horizon=[16,32]'
 --set 'roles.main.capabilities.gripper.tools=[move,hold]'
 --set inputs.depth=false
@@ -155,7 +169,7 @@ by id and values are read as YAML:
 **Your own tools.** A Python function marked `@tool` is an agent tool: the
 docstring is the description the model sees, type hints are the arguments, and
 the first parameter, `robot`, calls the episode's other tools. Select the file
-with the `user_tools` capability; it works with any environment and channel.
+with the `user_tools` capability; it works with any environment and way of acting.
 
 ```python
 from evoab import tool
@@ -178,7 +192,7 @@ A tool returns text, a dict, a PIL image or `(text, [images])`; a failing inner
 call reaches the model as this tool's error. See `examples/tools/lift.py`.
 
 `delegate` exposes other roles as `delegate_<role>(instruction)`: the role runs
-with its own brain, channel and tools against the same episode and returns a
+with its own brain, ways of acting and tools against the same episode and returns a
 report. Validation is offline and strict: unknown fields, unreachable roles and
 missing capabilities fail before anything starts.
 
@@ -233,7 +247,7 @@ from evoab import AgentConfig, SessionConfig, run
 
 result = run(SessionConfig(
     integration="robodojo", env_url="http://127.0.0.1:18760",
-    recipe="agent_policy", recipe_overrides={"roles.main.capabilities.hybrid.options.binding": "robodojo_direct_eef"},
+    recipe="code", recipe_overrides={"roles.main.act": ["tools", "code"]},
     agent=AgentConfig(model="my-model"),
 ))
 print(result.task_success)
@@ -243,18 +257,19 @@ print(result.task_success)
 `setup()` and `deploy()` prepare and start benchmark containers. Examples are in
 [`examples/sdk/`](../examples/sdk/).
 
-## Replace `planner_direct` with `actor_act`
+## The model itself as the policy tool
 
 On RoboDojo, select **Direct** on the Planner card in Studio. The Planner calls
-`actor_act` with a sub-goal and the arms to use. Direct reads the current camera
-frames and arm poses and proposes an action chunk. The tool executes the
-requested steps and returns the result to the Planner. This uses one Agent and
-an in-process policy.
+`actor_act` with a sub-goal and the arms to use; Direct reads the current camera
+frames and arm poses, proposes an action chunk and the tool executes it.
 
-On the CLI, select the existing `agent_policy` recipe and its Direct binding:
+On the CLI, use the policy recipe with its Direct binding:
 
 ```bash
-evoab run --integration robodojo --task stack_bowls --deploy local \
-  --recipe agent_policy --model my-preset \
+evoab run --integration robodojo --task stack_bowls \
+  --recipe examples/recipes/policy.yaml --model my-preset \
   --set roles.main.capabilities.hybrid.options.binding=robodojo_direct_eef
 ```
+
+Without a policy tool, `--set 'roles.main.act=[tools,action]'` lets the agent
+emit chunks itself among its tool calls.

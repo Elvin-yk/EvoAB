@@ -132,7 +132,7 @@ vlm_config = "/path/to/SmolVLM2-500M-Video-Instruct"
 device = "cuda"
 ```
 
-Use the `agent_policy` recipe with `--integration metaworld`, the actor URL and
+Use the policy recipe (`--recipe examples/recipes/policy.yaml`) with `--integration metaworld`, the actor URL and
 checkpoint SHA-256. Select `active_groups=["arm"]` and pass the policy's task
 instruction. The adapter captures a 480 × 480 policy view using LeRobot's
 `corner2` pose. The binding applies the training image orientation and passes
@@ -157,7 +157,7 @@ Three separate images; stock LIBERO and its forks never share an interpreter.
 
 ```bash
 evoab run --integration libero_pro --runtime-profile libero_object \
-  --task pick_up_the_cream_cheese_and_place_it_in_the_basket --recipe direct_action --model my-model
+  --task pick_up_the_cream_cheese_and_place_it_in_the_basket --recipe action --model my-model
 ```
 
 Stock LIBERO can use `actor_act` with RoboScope's `starvla_libero_policy.py`
@@ -169,7 +169,7 @@ with `backend = "starvla_libero"`.
 
 ```bash
 evoab run --integration libero --env-url http://127.0.0.1:18801 \
-  --recipe agent_policy --model MODEL_PRESET \
+  --recipe examples/recipes/policy.yaml --model MODEL_PRESET \
   --set 'roles.main.capabilities=[scene, hybrid, episode]' \
   --action-model-url http://127.0.0.1:8601 \
   --action-model-checkpoint-sha256 CHECKPOINT_SHA256
@@ -177,7 +177,7 @@ evoab run --integration libero --env-url http://127.0.0.1:18801 \
 
 The binding uses `active_groups=["arm"]` and delivers the agent-view and wrist
 images in the benchmark's training orientation. Each prediction is a chunk of
-native relative OSC actions. Use the default `agent_policy` capabilities for
+native relative OSC actions. Use the policy recipe's default capabilities for
 mixed control. Initial state index and hash are recorded by the native service.
 
 ## RoboTwin 2.0
@@ -214,7 +214,7 @@ For an Agent trial with only `actor_act` available for motion:
 
 ```bash
 evoab run --integration calvin --task open_drawer \
-  --recipe agent_policy --model MY_PRESET \
+  --recipe examples/recipes/policy.yaml --model MY_PRESET \
   --set 'roles.main.capabilities=[scene, hybrid, episode]' \
   --action-model-url http://127.0.0.1:8601 \
   --action-model-checkpoint-sha256 CHECKPOINT_SHA256
@@ -223,7 +223,7 @@ evoab run --integration calvin --task open_drawer \
 When delegating a CALVIN subtask, use `active_groups=["arm"]`. The binding
 sends the original static and wrist RGB and native robot state. It executes
 the policy's relative actions through CALVIN's controller, using one full
-model chunk by default. Use the default `agent_policy` capabilities to enable
+model chunk by default. Use the policy recipe's default capabilities to enable
 both `actor_act` and the motion tools. The CALVIN binding runs without a chunk
 reviewer.
 
