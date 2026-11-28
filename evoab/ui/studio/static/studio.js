@@ -144,8 +144,7 @@ async function loadRuns() {
 async function loadBenchmarks() {
   const integrations = await api("/api/benchmarks");
   // Only benchmarks Studio can deploy in one step (plus registered custom ones) are listed.
-  S.benchmarks = integrations.filter((b) => b.kind === "simulation"
-    && ((PROJECT_SOURCES[b.integration] && b.deploy) || b.integration === "custom"));
+  S.benchmarks = integrations.filter((b) => b.kind === "simulation" && (b.deploy || b.integration === "custom"));
   return S.benchmarks;
 }
 async function loadTasks(bench, profile, force = false) {
@@ -165,6 +164,7 @@ let runRefreshTimer;
 function route() {
   const hash = location.hash.slice(1) || "new";
   const [section, ...rest] = hash.split("/");
+  if (section === "openarm") { location.replace("#new"); return; }
   if (section === "running") { location.replace("#history"); return; }
   const page = section === "launch" ? "run" : section;
   const arg = section === "launch" ? hash : rest.join("/");
@@ -370,6 +370,9 @@ function episodeChoice(tasks) {
 
 function chooseTask(task) {
   const w = S.wizard;
+  if (w.bench.entry_prompt_as_task && w.team && w.team[0].instructions === w.task?.instruction) {
+    w.team[0].instructions = task.instruction;
+  }
   w.task = task;
   if (task.layouts_per_seed) w.layoutId = Math.min(w.layoutId, task.layouts_per_seed - 1);
   w.step = 3;
@@ -419,7 +422,7 @@ async function stepTask(body) {
       (!q || taskName(t.task).toLowerCase().includes(q) || t.task.toLowerCase().includes(q) || (t.instruction || "").toLowerCase().includes(q)));
     put(list, ...(shown.length ? shown.map((t) => h("div", {
       class: `list-item${w.task && w.task.task === t.task ? " selected" : ""}`,
-      onclick: () => { w.task = t; w.step = 3; route(); },
+      onclick: () => chooseTask(t),
     },
       h("div", { class: "t", title: t.task }, taskName(t.task)),
       h("span", {}, t.difficulty ? h("span", { class: "tag" }, t.difficulty) : null, " ", h("span", { class: "tag" }, suiteLabel(t.suite))),
@@ -463,7 +466,7 @@ function stepCategorizedTask(body, tasks) {
 const TOOL_GROUP_LABELS = { gripper: "机械臂", action_policy: "动作策略", scene: "场景观测", skills: "技能", episode: "任务", jobs: "后台作业", hybrid: "动作模型" };
 const TOOL_LABELS = {
   [DIRECT_TOOL]: "Direct 控制（按子目标生成动作）", move: "移动机械臂", grasp: "闭合夹爪", release: "打开夹爪", hold: "保持姿态",
-  view_env_state: "读取场景状态", capture_scene: "拍摄场景", locate: "定位物体（视相机能力而定）",
+  view_env_state: "读取场景状态", get_status: "读取机械臂状态", capture_scene: "拍摄场景", locate: "定位物体（视相机能力而定）",
   list_skills: "列出技能", read_skill: "读取技能", finish: "提交整个任务的结果",
   get_tool_result: "查询作业结果", wait_for_tool: "等待一个作业", wait_for_tools: "等待多个作业",
   list_tool_jobs: "列出作业", cancel_tool: "取消作业", queue_status: "查看队列", flush_queue: "清空队列",
@@ -609,9 +612,11 @@ function commandPreview() {
   const method = selectedMethod();
   const agent = selectedAgent();
   const {runtime_profile: profile, native_task: task} = w.task;
+  const instruction = entryTaskPrompt(w);
   const parts = [
     "evoab run", `--integration ${w.bench.integration}`, "--deploy local", ...(profile ? [`--runtime-profile ${profile}`] : []),
     `--task ${shellQuote(task)}`, method.external_evaluator ? `--recipe ${shellQuote(method.id)}` : "--recipe team.recipe.json",
+    ...(instruction ? [`--instruction=${shellQuote(instruction)}`] : []),
     ...(agent.id !== method.agent ? [`--agent ${agent.id}`] : []),
     `--model ${shellQuote(w.model)}`, `--reasoning-effort ${method.fixed_effort || w.effort}`,
     ...agent.cli_flags,
@@ -633,15 +638,18 @@ function stepConfirm(body) {
   const method = selectedMethod();
   const agent = selectedAgent();
   const options = w.agentOptions.get(agent.id) || {};
+  const instruction = entryTaskPrompt(w);
   const rows = [
     ["环境", `${benchmarkName(w.bench, w.bench.profile)}（${KINDS[w.kind]}）`], ...(w.task.category ? [["类别", (TASK_CATEGORIES.find(([id]) => id === w.task.category) || [, w.task.category])[1]]]
       : [["套件", `${suiteLabel(w.task.suite)}（${w.task.suite}）`]]), ["任务", taskName(w.task.task)],
     ...(w.task.variant ? [["布局版本", VARIANT_LABEL[w.task.variant]]] : []),
     ...(w.task.seeds ? [["评测场景", `种子 ${w.seed} · 布局 ${w.layoutId}（该任务每组 ${w.task.layouts_per_seed} 个布局）`]] : []),
-    ["说明", w.task.instruction || "—"], ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
+    [w.bench.entry_prompt_as_task ? "任务描述" : "说明", instruction || w.task.instruction || "—"],
+    ...(instruction ? [["评测集评分目标", w.task.instruction]] : []),
+    ["本体", w.task.embodiment], ["步数上限", w.task.max_steps || "—"],
     ["方法", `${method.label}（${method.id}）`], ["推理强度", effortLabel(method.fixed_effort || w.effort)],
     ...(method.external_evaluator ? [["评测器", agent.label]] : []),
-    ...(method.external_evaluator ? [["模型", w.model]] : w.team.map((card, i) => [`Agent ${i + 1} · ${TEAM_ROLE[card.role]}`, [`模型 · ${card.model_preset || w.model}`, card.tools.map((name) => name === DIRECT_TOOL ? "Direct" : name).join("、") || "无工具", card.delegate_to.length ? "可委托给 " + card.delegate_to.map((n) => "Agent " + n).join("、") : "", card.instructions].filter(Boolean).join(" · ")])),
+    ...(method.external_evaluator ? [["模型", w.model]] : w.team.map((card, i) => [`Agent ${i + 1} · ${TEAM_ROLE[card.role]}`, [`模型 · ${card.model_preset || w.model}`, card.tools.map((name) => name === DIRECT_TOOL ? "Direct" : name).join("、") || "无工具", card.delegate_to.length ? "可委托给 " + card.delegate_to.map((n) => "Agent " + n).join("、") : "", i === 0 && instruction ? "" : card.instructions].filter(Boolean).join(" · ")])),
     ...agent.options.filter((option) => option.name in options).map((option) => [option.label, options[option.name]]),
   ];
   body.append(
@@ -814,7 +822,7 @@ function projectLinks(bench) {
 
 function selectBenchmark(bench, p) {
   Object.assign(S.wizard, { kind: bench.kind, bench: { integration: bench.integration, profile: p.profile,
-    title: bench.title }, team: null, task: null, suite: "all", query: "" });
+    title: bench.title, entry_prompt_as_task: bench.entry_prompt_as_task }, team: null, task: null, suite: "all", query: "" });
   selectMethod(availableMethods().find((m) => m.id === TEAM_METHOD), S.wizard.agent);
   loadMethods(bench.integration).then(() => {
     if (S.wizard.bench?.integration !== bench.integration) return;

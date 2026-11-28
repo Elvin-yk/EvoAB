@@ -197,7 +197,8 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
     args.direct_config = entry.direct
     args.prompt_append = entry.prompt_text
     selections = [item for role in compiled.roles.values() for item in role.modules]
-    args.segmentation = any(item.name == "scene" and item.selection.options.segmentation for item in selections)
+    args.segmentation = any(item.name == "scene" and getattr(item.selection.options, "segmentation", False)
+                            for item in selections)
     policy = next((item.selection.options for item in selections if item.name == "hybrid"), None)
     args.action_model_binding = policy.binding if policy else None
     args.vla_review = policy.review if policy else None

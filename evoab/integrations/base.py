@@ -50,6 +50,8 @@ class IntegrationSpec:
     # The environment publishes extra task clarifications a recipe may append (inputs.task_supplements).
     task_supplements: bool = False
     direct_policy_binding: str | None = None
+    # Fixed benchmarks supply their own episode instruction.
+    accepts_task_instruction: bool = True
 
 
 @dataclass(frozen=True)

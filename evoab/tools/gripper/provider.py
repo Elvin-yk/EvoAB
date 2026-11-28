@@ -30,7 +30,7 @@ def tool_policies():
 
 
 def tool_specs(arms, *, opening_models=None, profiles=MOTION_PROFILES, normalized_opening_tolerance=None,
-               execution="stepwise"):
+               execution="stepwise", fixed_gripper=False):
     opening_models = opening_models or {}
     wholepath = execution == "wholepath"
     when = "once after the path" if wholepath else "within the same max_steps budget"
@@ -69,6 +69,11 @@ def tool_specs(arms, *, opening_models=None, profiles=MOTION_PROFILES, normalize
         return {"type": "array", "minItems": 1, "maxItems": len(arms),
                 "items": schema({"arm": arm, **(properties or {})}, ("arm", *required))}
 
+    move_targets = targets({"pose": POSE6, "translation_m": {
+        "type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3,
+        "description": "Relative [dx,dy,dz] in control-frame metres. Keeps the measured wrist orientation.",
+    }, **({} if fixed_gripper else {opening_key: opening})})
+    move_targets["items"]["oneOf"] = [{"required": ["pose"]}, {"required": ["translation_m"]}]
     budget = {"type": "integer", "minimum": 1, "maximum": 24, "default": 24}
     position_tolerance = {"type": "number", "minimum": .001, "maximum": .1}
     orientation_tolerance = {"type": "number", "minimum": .02, "maximum": .5}
@@ -78,20 +83,24 @@ def tool_specs(arms, *, opening_models=None, profiles=MOTION_PROFILES, normalize
     )
     specs = [
         ToolSpec("move",
-            "Move coordinated arms to absolute world grasp-site poses [x,y,z,roll,pitch,yaw], in metres and fixed-axis XYZ radians (R=Rz(yaw)@Ry(pitch)@Rx(roll)). All six values are required; both position and orientation are checked against the original goal and its tolerances. Copy the measured orientation to translate without reorienting, or the measured position to rotate in place. Omitted gripper preserves the previous command; a supplied opening applies during motion, not after arrival. "
+            ("For a displacement, pass translation_m=[dx,dy,dz] in control-frame metres. The wrist keeps its "
+             "orientation. For an absolute pose use pose=[x,y,z,roll,pitch,yaw] in metres and "
+             f"fixed-axis XYZ radians. The gripper is fixed. Profiles: {profiles}. Inspect targets_reached, "
+             "the measured pose errors and stop_reason.") if fixed_gripper else
+            "Move coordinated arms. Use translation_m=[dx,dy,dz] in control-frame metres to translate with the measured orientation, or an absolute pose=[x,y,z,roll,pitch,yaw] in metres and fixed-axis XYZ radians (R=Rz(yaw)@Ry(pitch)@Rx(roll)). For a pose all six values are required; both position and orientation are checked against the original goal and its tolerances. Copy the measured orientation to translate without reorienting, or the measured position to rotate in place. Omitted gripper preserves the previous command; a supplied opening applies during motion, not after arrival. "
             f"Profiles: {profiles}. Profiles add no offset. Tolerances define final arrival around the original goal. {waypoint_recovery}Position and orientation interpolate together; one goal does not express 'move then rotate'. Use separate calls and inspect completed feedback before dependent actions. {rotation_budget}These are target bounds, not collision guarantees. Unlisted arms hold; target list order is not a sequence. Inspect feedback.pose_reached, targets_reached, per-arm opening_reached, steps_executed and stop_reason. {tracking}{after_arrival} opening_stalled/opening_unavailable are not target completion or contact evidence. Omitted opening retains the complete drive intent without requiring a held object to close to zero. Pose arrival is not object contact. Returns state, feedback, snapshot_id and final RGB images from the first scene camera and participating arms' wrists when available." + path,
             schema({"profile": {"type": "string", "enum": list(MOTION_PROFILES), "default": "standard"},
-                    "targets": targets({"pose": POSE6, opening_key: opening}, ("pose",)),
+                    "targets": move_targets,
                     "max_steps": budget, "position_tolerance_m": position_tolerance,
                     "orientation_tolerance_rad": orientation_tolerance}, ("targets",))),
         *[ToolSpec(name,
             f"{verb} selected grippers while {holding}. Reports executed control steps and measured opening; object attachment or release must be verified from observations. Returns snapshot_id and final RGB images from the first scene camera and participating arms' wrists when available; inspect the object effect. Shared control-step budget 1..12; unlisted arms hold.",
             schema({"targets": targets({"opening_m": opening} if opening_models and name == "release" else {}), "steps": {"type": "integer", "minimum": 1, "maximum": 12, "default": 6}}, ("targets",)))
-          for name, verb in (("grasp", "Close"), ("release", "Open"))],
+          for name, verb in (("grasp", "Close"), ("release", "Open")) if not fixed_gripper],
         ToolSpec("hold",
             ("Hold every arm joint at its measured angle and existing gripper commands, in one command lasting steps "
              "control periods. steps=1..40; native" if wholepath else
-             "Advance physics holding measured arm poses and existing gripper commands. steps=1..40; native")
+             "Hold retained arm targets when available, otherwise measured arm poses, and keep the gripper command. steps=1..40; native")
             + " termination stops early. Returns snapshot_id and the first scene camera RGB image when available. Inspect completed feedback and images; this consumes action steps.",
             schema({"steps": {"type": "integer", "minimum": 1, "maximum": 40, "default": 1}})),
     ]
@@ -129,7 +138,7 @@ class GripperTools(ToolProvider):
             "Environment state uses arms[arm].control_pose, joints, gripper (normalized measured opening) and gripper_command (complete normalized drive intent, retained across accepted actions). "
             "When metric calibration is available, arm metadata.gripper_opening_m is the actual signed pad gap in metres; gripper_target_opening_m describes the retained intent, and gripper_applied_target_opening_m describes the native slew-limited target. "
             "To preserve grip, omit the gripper argument; copying measured opening changes the command. "
-            "control_pose and feedback.actual_position measure the registered grasp site. State control_pose keeps its position and wxyz quaternion; move inputs and feedback.arms[arm].target_pose/actual_pose use six values in metres and XYZ radians. Grasp-site arrival does not establish object attachment. "
+            "control_pose and feedback.actual_position measure the registered grasp site. State control_pose keeps its position and wxyz quaternion; absolute move poses and feedback.arms[arm].target_pose/actual_pose use six values in metres and XYZ radians. A relative translation_m is resolved once from the measured wrist when execution starts. Grasp-site arrival does not establish object attachment. "
             "Direct action snapshot_id identifies the returned RGB observation. camera_calibration contains same-frame intrinsic_K and T_world_from_optical for calibrated cameras; disabled or unsupported cameras have no metric calibration. An artifact_error means observation delivery failed, not that acknowledged motion failed; do not repeat an action to recover its images."
         ), source="tools/gripper"),)
 
@@ -138,7 +147,9 @@ class GripperTools(ToolProvider):
 
     def _bind_tools(self):
         metadata = self.episode.description.environment.metadata
-        specs = tool_specs([arm.name for arm in self.episode.description.environment.arms],
+        arms = self.episode.description.environment.arms
+        specs = tool_specs([arm.name for arm in arms],
+                           fixed_gripper=all(arm.control and arm.control.gripper == "fixed" for arm in arms),
                            opening_models=self.opening_models,
                            profiles=motion_profiles(metadata.get("motion_profiles")),
                            normalized_opening_tolerance=normalized_opening_tolerance(metadata),

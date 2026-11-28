@@ -84,7 +84,7 @@ checked against:
   | Module | Tools | Options |
   |---|---|---|
   | `gripper` | `move`, `grasp`, `release`, `hold` | |
-  | `scene` | `view_env_state`, `capture_scene`, `locate` | `segmentation` (SAM3) |
+  | `scene` | `view_env_state`, `capture_scene`, `locate` and optional `get_status` | `segmentation` (SAM3) |
   | `skills` | `list_skills`, `read_skill`, optional `write_skill` | `write` |
   | `episode` | `finish` | |
   | `hybrid` | `actor_act`: run a policy (VLA/WAM or Direct) from the actor service | `binding`, `review` |
@@ -117,10 +117,17 @@ check stopping conditions; there are no server-side `move` or `grasp` routes.
   snapshot, so it can run while the arm moves.
 - **Receipts** settle every command. A lost acknowledgement is reconciled, never
   replayed. Model-request retries never authorize physical retries.
+- **Task instructions** come from the selected benchmark episode. OpenArm Gazebo
+  declares `accepts_task_instruction` so the operator can supply an episode task.
+  Studio passes the entry card's task text through the same CLI and SDK contract.
+  Subordinate roles receive their caller's instruction and retain their own role prompt.
 - **Metadata** in the environment description adjusts shared tools without new
   schemas: `finish_statuses` (default `["success"]`; also `failure`, `give_up`),
   `motion_profiles`, `physical_hardware`, `motion_execution` (`stepwise` or
   `wholepath`), `normalized_opening_tolerance`.
+  Arm state may publish the last accepted `metadata.joint_position_command` in
+  radians. Stepwise motion retains those joint targets during a hold or gripper
+  action. Arms without a recorded target hold their measured pose.
 - **Outcomes**: tool success, agent completion and task success are separate.
   `finish` returns an acknowledgement; the official outcome is recorded for
   evaluation only.

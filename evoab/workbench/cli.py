@@ -198,6 +198,8 @@ def _runs_launch(bench, args) -> None:
     }
     if agent is not None:
         payload["agent"] = agent
+    if args.instruction is not None:
+        payload["instruction"] = args.instruction
     if params:
         payload["params"] = params
     result = bench.launch(payload)
@@ -381,6 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--integration", default="libero_pro")
     p.add_argument("--profile", default="default", help="Prepared runtime profile")
     p.add_argument("--task", required=True, help="Task ID as listed by `evoab benchmarks tasks`, e.g. libero_object/pick_up_...")
+    p.add_argument("--instruction", help="Set the task description for a benchmark that accepts it (OpenArm Gazebo)")
     p.add_argument("--model", help="Model preset (default: the last one launched)")
     p.add_argument("--effort", help="Reasoning effort (default: settings.default_effort or low)")
     p.add_argument("--method", help="Method id from `evoab methods list` (default: the last one launched)")

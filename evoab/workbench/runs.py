@@ -23,6 +23,7 @@ USAGE_CACHE = "studio_usage.json"
 #: Launch records and logs written by Studio under the runs root.
 STUDIO_DIR = ".studio"
 _RUN_DIR_LINE = re.compile(r"--run-dir (\S+)")
+_REPLAY_DIR_LINE = re.compile(r"^Replay later: evoab replay (.+)$", re.MULTILINE)
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -165,7 +166,7 @@ def load_launches(root: Path) -> list[dict[str, Any]]:
             text = log.read_text(encoding="utf-8", errors="replace")
         except OSError:
             text = ""
-        match = _RUN_DIR_LINE.search(text)
+        match = _REPLAY_DIR_LINE.search(text) or _RUN_DIR_LINE.search(text)
         record["run_dir"] = Path(match.group(1)).name if match else None
         record["log_tail"] = "\n".join(text.strip().splitlines()[-6:])
         record["alive"] = jobs.is_running(record)

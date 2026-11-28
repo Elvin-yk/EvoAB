@@ -45,6 +45,8 @@ def resolve_config(args, parser, integration_spec, argv=()):
 
 def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True):
     """Resolve one runtime configuration without parsing arguments or exiting."""
+    if getattr(args, "instruction", None) is not None and not integration_spec.accepts_task_instruction:
+        raise ValueError(f"{integration_spec.name} supplies a fixed task instruction")
     explicit = set(explicit)
     from evoab.agents.registry import get_agent_backend
     # One debug switch: verbose logs and raw model requests; the agent's inputs and tools are unchanged.

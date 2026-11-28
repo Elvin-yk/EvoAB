@@ -22,7 +22,7 @@ class LiveMonitor:
         self.args = args
         self.record = dict(state='starting', started_at=time.time(), heartbeat_at=time.time(), integration=args.integration,
             model=args.model, task=getattr(args, 'task', None) or args.integration,
-            episode_timeout_s=args.episode_timeout_s)
+            instruction=getattr(args, 'instruction', None), episode_timeout_s=args.episode_timeout_s)
         self.collection = Collection([self.root])
         self.server = HttpServer(create_monitor_app(self.collection), args.monitor_host, args.monitor_port)
         self.stop_event = threading.Event()
@@ -64,7 +64,8 @@ class LiveMonitor:
                             reader = SnapshotReader(self.url, self.root, on_preview=run_reader.update_preview)
                         info = reader.poll(self.stop_event)
                         if info is not None and not self.stop_event.is_set():
-                            self.update(max_episode_steps=info.environment.max_episode_steps, instruction=info.task)
+                            self.update(max_episode_steps=info.environment.max_episode_steps,
+                                        instruction=getattr(self.args, 'instruction', None) or info.task)
                         warned = False
                     except Exception as error:
                         if not warned:

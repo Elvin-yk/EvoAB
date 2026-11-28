@@ -147,7 +147,8 @@ def build_parser(integration_spec=None) -> argparse.ArgumentParser:
     run.add_argument("--verifier-url", help="Submit the completed run to this verification service")
     run.add_argument("--verifier-timeout-s", type=float, default=30, help="Verification acknowledgement timeout")
     for command, timeout in ((run, 10800),):
-        command.add_argument("--instruction", help="Override the environment's task instruction")
+        command.add_argument("--instruction", help="Override the environment's task instruction"
+                             if integration_spec is None or integration_spec.accepts_task_instruction else argparse.SUPPRESS)
         command.add_argument("--episode-timeout-s", type=_nonnegative, default=timeout,
                              help="Episode wall-clock budget; excludes environment startup; 0 disables")
         # Kept for scripts; without --env-url EvoAB always starts its own environment.

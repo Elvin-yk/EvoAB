@@ -1,0 +1,20 @@
+dockerfile = "Dockerfile"
+python = "/opt/openarm/service/bin/python"
+gpu = false
+# Gazebo Classic transport looks up the runtime UID in /etc/passwd.
+root = true
+
+[[sources]]
+path = "RuboClaw"
+url = "https://github.com/Ru-hulu/RuboClaw.git"
+ref = "b94399b5a7ce9d13e69a6e46bf46b2b6ac7ff42c"
+
+[[sources]]
+path = "openarm_description"
+url = "https://github.com/enactic/openarm_description.git"
+ref = "e36b9fda795ecaad8c0ef8c71a34f2fd4dd9f532"
+
+[[sources]]
+path = "rosbot_ros"
+url = "https://github.com/husarion/rosbot_ros.git"
+ref = "1.2.1"

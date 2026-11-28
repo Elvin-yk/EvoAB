@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from evoab.services.environment.contracts import (
     Contract,
@@ -22,8 +22,15 @@ Profile = Literal["standard", "approach", "precision"]
 
 class MoveTarget(Contract):
     arm: str
-    pose: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
+    pose: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat] | None = None
+    translation_m: tuple[FiniteFloat, FiniteFloat, FiniteFloat] | None = None
     gripper: FiniteFloat | None = Field(default=None, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def one_goal(self):
+        if (self.pose is None) == (self.translation_m is None):
+            raise ValueError("Supply exactly one of pose or translation_m")
+        return self
 
 
 class MotionParameters(Contract):

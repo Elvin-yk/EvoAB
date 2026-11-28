@@ -1,5 +1,6 @@
 """Read and localize immutable scenes without owning motion or lifecycle."""
 from dataclasses import replace
+import time
 
 from evoab.context.prompt import PromptContribution
 from evoab.execution.scheduler import ToolExecutionPolicy
@@ -24,6 +25,10 @@ def tool_policies():
 
 def tool_specs(cameras, *, segmentation_enabled=True, depth_cameras=None, calibrated_cameras=None,
                scene_geometry=False, device_episode=False):
+    if not cameras:
+        return [ToolSpec("view_env_state",
+                         "Read a measured state record. Use step=-1 for the latest or 0 for the initial record.",
+                         schema({"step": {"type": "integer", "minimum": -1, "default": -1}}), True)]
     calibrated_cameras = list(cameras) if calibrated_cameras is None else list(calibrated_cameras)
     depth_cameras = list(cameras) if depth_cameras is None else list(depth_cameras)
     depth_cameras = [name for name in depth_cameras if name in calibrated_cameras]
@@ -118,7 +123,7 @@ class SceneTools(ToolProvider):
     def __init__(self, episode, *, perception=None, names=NAMES):
         self.episode = episode
         self.perception = perception
-        if not names or len(set(names)) != len(names) or not set(names) <= set(NAMES):
+        if not names or len(set(names)) != len(names) or not set(names) <= {*NAMES, "get_status"}:
             raise ValueError("Select distinct supported scene tools")
         self.names = tuple(names)
 
@@ -138,6 +143,11 @@ class SceneTools(ToolProvider):
                 "RGB is attached; the returned snapshot reference points to readable immutable JSON. "
                 "Calibration, when available, belongs to each returned image grid."))
                 if spec.name == "capture_scene" else spec for spec in specs]
+        if "get_status" in self.names:
+            specs.append(ToolSpec("get_status",
+                "Read the latest published joint angles (rad), wrist pose, normalized gripper opening and "
+                "controller status without taking a step. Null means telemetry is unavailable. "
+                "Stale readings retain their capture time and values.", schema({}), True))
         return specs
 
     @property
@@ -157,7 +167,24 @@ class SceneTools(ToolProvider):
 
     def get_tools(self):
         return bind_tools(self._specs(), provider_id=self.provider_id,
-                          handlers={name: getattr(self, name) for name in NAMES}, invoke=self.episode.invoke)
+                          handlers={name: getattr(self, name) for name in self.names}, invoke=self.episode.invoke)
+
+    def get_status(self):
+        snapshot = self.episode.env.latest_snapshot()
+        state = snapshot["state"]
+        age = max(0.0, time.time() - snapshot["captured_at"])
+        stale = (age > 5.0 or state["state_version"] < snapshot["source_current_state_version"]
+                 or bool(snapshot["publication_error"]))
+        arms = {name: {"joints_rad": arm["joints"] or None, "wrist_pose": arm["control_pose"],
+                       "gripper_opening": arm["gripper"] if arm["metadata"].get("gripper_opening_measured") else None,
+                       "gripper_target": arm["gripper_command"]}
+                for name, arm in state["arms"].items()}
+        return ToolOutput(extra={"arms": arms, "controller": state["metadata"].get("controller"),
+                                 "native_steps": state["native_steps"], "state_version": state["state_version"],
+                                 "current_state_version": snapshot["source_current_state_version"],
+                                 "publication_error": snapshot["publication_error"],
+                                 "captured_at": snapshot["captured_at"], "age_s": round(age, 3),
+                                 "freshness": "stale" if stale else "fresh"})
 
     def robot_reference(self):
         metadata = self.episode.description.environment.metadata

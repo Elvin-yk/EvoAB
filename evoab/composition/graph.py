@@ -106,7 +106,7 @@ def annotate_with_trace(graph: dict[str, Any], run_dir: Path) -> dict[str, Any]:
 
 
 _OWNERS = {"move": "gripper", "grasp": "gripper", "release": "gripper", "hold": "gripper",
-           "view_env_state": "scene", "capture_scene": "scene", "locate": "scene",
+           "view_env_state": "scene", "capture_scene": "scene", "locate": "scene", "get_status": "scene",
            "list_skills": "skills", "read_skill": "skills", "write_skill": "skills",
            "finish": "episode", "actor_act": "hybrid"}
 

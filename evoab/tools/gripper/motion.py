@@ -38,6 +38,7 @@ from evoab.tools.gripper.contracts import (
     HoldRequest,
     MotionParameters,
     MoveRequest,
+    MoveTarget,
     motion_profiles,
 )
 from evoab.tools.gripper.pose import (
@@ -190,6 +191,13 @@ def _pose_values(pose: Pose) -> np.ndarray:
     return np.array([*pose.position, *pose.quaternion], dtype=float)
 
 
+def _move_goal(target: MoveTarget, measured: Pose) -> Pose:
+    if target.translation_m is not None:
+        position = tuple(a + b for a, b in zip(measured.position, target.translation_m))
+        return Pose(position=position, quaternion=measured.quaternion)
+    return Pose(position=target.pose[:3], quaternion=rpy_to_quaternion(target.pose[3:]))
+
+
 def _pose(values) -> Pose:
     return Pose(position=tuple(values[:3]), quaternion=tuple(values[3:]))
 
@@ -228,11 +236,13 @@ class MotionExecutor:
             raise RuntimeError("Environment state does not match its arm description")
         return state
 
-    def _held(self, state: EnvironmentState) -> dict[str, ArmCommand]:
-        return {
-            name: ArmCommand(pose=arm.control_pose, gripper=arm.gripper_command)
-            for name, arm in state.arms.items()
-        }
+    def _held(self, state: EnvironmentState) -> dict[str, ArmCommand | JointTarget]:
+        arms = {}
+        for name, arm in state.arms.items():
+            joints = arm.metadata.get("joint_position_command")
+            arms[name] = (JointTarget(joints=joints, gripper=arm.gripper_command) if joints is not None
+                          else ArmCommand(pose=arm.control_pose, gripper=arm.gripper_command))
+        return arms
 
     def _held_joints(self, state: EnvironmentState, grippers: dict[str, float] | None = None) -> dict[str, JointTarget]:
         """Every arm at its measured joints; only the named grippers change."""
@@ -295,9 +305,10 @@ class MotionExecutor:
         trackers, openings = {}, {}
         for name in participants:
             target, arm = targets[name], state.arms[name]
+            goal = _move_goal(target, arm.control_pose)
             trackers[name] = PoseTracker(
-                initial_pose=_pose_values(arm.control_pose), target_xyz=target.pose[:3],
-                target_quaternion=rpy_to_quaternion(target.pose[3:]),
+                initial_pose=_pose_values(arm.control_pose), target_xyz=goal.position,
+                target_quaternion=goal.quaternion,
                 gripper=arm.gripper_command if target.gripper is None else target.gripper,
                 rotation_radius_m=self.arms[name].rotation_radius_m,
                 profile=profile,
@@ -430,9 +441,10 @@ class MotionExecutor:
         trackers, openings = {}, {}
         for name in participants:
             target, arm = targets[name], start.arms[name]
+            goal = _move_goal(target, arm.control_pose)
             trackers[name] = PoseTracker(
-                initial_pose=_pose_values(arm.control_pose), target_xyz=target.pose[:3],
-                target_quaternion=rpy_to_quaternion(target.pose[3:]),
+                initial_pose=_pose_values(arm.control_pose), target_xyz=goal.position,
+                target_quaternion=goal.quaternion,
                 gripper=arm.gripper_command if target.gripper is None else target.gripper,
                 rotation_radius_m=self.arms[name].rotation_radius_m, profile=profile)
             if target.gripper is not None and (opening := opening_tracker(target.gripper, name, metadata)):
@@ -527,7 +539,7 @@ class MotionExecutor:
                 break
             arms = self._held(state)
             for name, opening in grippers.items():
-                arms[name] = ArmCommand(pose=arms[name].pose, gripper=opening)
+                arms[name] = arms[name].model_copy(update={"gripper": opening})
             receipt = self._advance(PoseCommand(arms=arms))
             if receipt.accepted or receipt.execution_outcome in {"partial", "unknown"}:
                 no_execution = False

@@ -42,6 +42,9 @@ class BenchmarkInfo:
 
 
 REGISTRY: tuple[BenchmarkInfo, ...] = (
+    BenchmarkInfo("openarm_gazebo", "OpenArm Gazebo", "simulation", "Gazebo Classic", "OpenArm 2.0",
+                  "container", "Single-arm wrist reach with measured poses and RuboClaw IK",
+                  requirements="Local Docker build with Gazebo Classic and ROS 2 Humble", task_selector="task"),
     BenchmarkInfo("robodojo", "RoboDojo", "simulation", "Isaac Sim 5.1", "Dual ARX X5",
                   "container", "Bimanual tasks with frozen evaluation layouts",
                   requirements="Local Docker build of the pinned upstream checkout (Isaac Sim EULA); NVIDIA GPU",
@@ -76,6 +79,14 @@ REGISTRY: tuple[BenchmarkInfo, ...] = (
 
 
 _BY_INTEGRATION = {info.integration: info for info in REGISTRY}
+
+
+def entry_prompt_as_task(integration: str) -> bool:
+    from evoab.integrations import load_integration
+    info = _BY_INTEGRATION.get(integration)
+    if info is None or info.kind != "simulation":
+        return False
+    return load_integration(integration).get_integration_spec().accepts_task_instruction
 
 
 def launch_target(integration: str, profile: str, task: str) -> tuple[str | None, str]:
@@ -342,6 +353,7 @@ def overview(runs_root: Path) -> list[dict[str, Any]]:
             "embodiment": info.embodiment,
             "setup": info.setup,
             "description": info.description,
+            "entry_prompt_as_task": entry_prompt_as_task(info.integration),
             "requirements": info.requirements,
             "profiles": entries,
         })

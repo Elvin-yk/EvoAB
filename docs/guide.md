@@ -70,6 +70,18 @@ a command (`evoab runs launch|list|trace|stop`, `evoab benchmarks list|tasks`,
 add `--json`); the HTTP API is at `/openapi.json`. Studio is frozen while new
 capabilities land in the CLI, recipes and SDK first.
 
+In **发起任务**, choose **仿真 → OpenArm Gazebo**, then select `reach_right` or
+`reach_left`. Studio starts with one Actor. Its editable **任务描述** is prefilled
+with the selected wrist task and becomes the episode's user message. For a team,
+change the first role to Planner and add an Actor.
+The Planner receives the task description and delegates a subtask to the Actor.
+Choose a model preset for each role or let a delegated role follow the entry model.
+A blank description uses the benchmark instruction. Other built-in simulations use
+the task selected with `--task` in Studio, the CLI and the SDK. Their role prompts
+give role-specific guidance. The confirmation screen shows the actual instruction.
+OpenArm scores the benchmark's fixed 40 mm upward target. Inspect the measured
+pose in the tool results when requesting other motions.
+
 ## Run from the command line
 
 One `evoab run` is one episode. The split is strict:
@@ -95,7 +107,8 @@ evoab run --integration robodojo --task stack_bowls --recipe agentic --model my-
 | Flag | Selects |
 |---|---|
 | `--integration`, `--recipe`, `--set` | The environment adapter, the method (id, directory or file), recipe overrides |
-| `--task`, `--seed`, `--layout-id`, `--layout`, `--instruction` | The episode and scene |
+| `--task`, `--seed`, `--layout-id`, `--layout` | The episode and scene |
+| `--instruction` | Operator-supplied task text on integrations that accept it, including OpenArm Gazebo |
 | `--env-gpu` | Which GPU the environment's container uses |
 | `--sam3-url`, `--action-model-url`, `--action-model-checkpoint-sha256` | Where perception and policy services run, and which checkpoint |
 | `--model`, `--reasoning-effort` | Which model preset, and its effort |
@@ -151,6 +164,12 @@ by id and values are read as YAML:
 --set 'roles.main.capabilities.gripper.tools=[move,hold]'
 --set inputs.depth=false
 ```
+
+Each arm target in the shared gripper `move` accepts either an absolute
+`pose=[x,y,z,roll,pitch,yaw]` or a relative `translation_m=[dx,dy,dz]`.
+A translation uses the control-frame axes and retains the wrist orientation
+measured when the command starts. Submitting a second translation requests
+another displacement.
 
 **Your own tools.** A Python function marked `@tool` is an agent tool: the
 docstring is the description the model sees, type hints are the arguments, and

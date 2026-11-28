@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-def build_simulation_spec(name, *, binding_factory=None):
+def build_simulation_spec(name, *, binding_factory=None, include_initial_state=True, accepts_task_instruction=False):
     from evoab.context.prompt import environment_for_model, state_json_for_model, Prompt, register_prompt_builder
     from evoab.integrations.gripper import (
         DIRECT_TOOL_MODULES, HYBRID_TOOL_MODULES, build_gripper_spec, create_session, validate_gripper_cli,
@@ -27,16 +27,18 @@ def build_simulation_spec(name, *, binding_factory=None):
             "Observe the effects of actions; submitting finish does not determine task success."
         ))
         if episode:
-            result = result.append(system="Environment description:\n" + environment_for_model(episode.description.environment),
-                                   user=None if context.initial_observation else "Initial measured state:\n" + state_json_for_model(episode.state))
+            result = result.append(system="Environment description:\n" + environment_for_model(episode.description.environment))
+            if include_initial_state and not context.initial_observation:
+                result = result.append(user="Initial measured state:\n" + state_json_for_model(episode.state))
         return result
 
     def session(context):
         return create_session(context, binding_factory=binding_factory)
 
     modules = DIRECT_TOOL_MODULES if binding_factory is None else HYBRID_TOOL_MODULES
-    return build_gripper_spec(name=name, create_session=session, tool_modules=modules,
-                              validate_cli=validate)
+    spec = build_gripper_spec(name=name, create_session=session, tool_modules=modules, validate_cli=validate)
+    spec.accepts_task_instruction = accepts_task_instruction
+    return spec
 
 
 def materialized_asset(path: Path) -> bool:

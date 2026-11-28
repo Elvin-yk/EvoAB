@@ -13,6 +13,7 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 | `libero_pro` | LIBERO-PRO suites | Public | Motion | `_env`, `_object`, `_swap`, `_task`, `_lan` variants |
 | `robotwin` | RoboTwin 2.0 aloha-agilex | Local build | Motion | `demo_clean`, `demo_randomized` |
 | `calvin` | CALVIN Panda | Public | Motion, policy (StarVLA) | One task per episode |
+| `openarm_gazebo` | OpenArm 2.0, Gazebo Classic and ROS 2 Humble | Local Docker build, CPU | Wrist motion, pinch gripper and measured status | Single-arm reach on either side |
 | `custom` | Your Gym-style benchmark | Your image | Motion | See [custom benchmarks](#custom-benchmarks) |
 | `arx_one`, `piper_x` | Real dual-arm robots | Operator setup | Motion | See [real robots](#real-robots) |
 
@@ -230,6 +231,55 @@ reviewer.
 
 Each integration's `SOURCE.md` pins the sources, assets and weights it was
 validated with.
+
+## OpenArm in Gazebo
+
+`reach_right` and `reach_left` use the OpenArm 2.0 `default_bimanual` model with
+pinch grippers, Gazebo Classic 11.10.2 and ROS 2 Humble. Each episode controls
+one wrist and its finger on the simulated robot. The world frame is the torso's
+`arm_origin` and the wrist frame is `openarm_<side>_ee_base_link`. The fixed RGB
+camera faces the selected arm. Depth, localization, base motion and the other
+arm are excluded from this configuration.
+
+`move` sends Cartesian waypoints through RuboClaw IK. The ROS 2
+`openarm_joint_trajectory_controller` accepts a partial `FollowJointTrajectory`
+goal for the seven arm joints and `finger_joint1`. `grasp` closes the pinch
+gripper, `release` opens it, and `hold` retains the last joint and gripper
+targets. The measured opening is normalized between closed (0) and open (1).
+The reach score uses the final measured wrist pose against the fixed 40 mm
+upward target, with 5 mm position and 0.05 rad orientation tolerances.
+
+`get_status` reads the latest published state without sending a command,
+recording a snapshot or advancing the episode. It returns joint angles in
+radians, wrist position in metres and quaternion in wxyz order, finger opening,
+controller action-server readiness, capture time and age. A controller rejection
+or abort supplies the reported fault. Null denotes unavailable telemetry.
+A sample older than five seconds, behind the current state version, or affected
+by a publication error is marked stale and retains its measured values.
+
+From an EvoAB checkout, setup downloads the pinned simulator, description and
+meshes, builds the ROS 2 workspace and prepares the environment service image.
+The build requires Docker on Linux and network access for the first setup.
+[RuboClaw IK and Gazebo](https://github.com/Ru-hulu/RuboClaw/tree/b94399b5a7ce9d13e69a6e46bf46b2b6ac7ff42c/robot_runtime),
+[OpenArm description](https://github.com/enactic/openarm_description/tree/e36b9fda795ecaad8c0ef8c71a34f2fd4dd9f532),
+[ROSbot description](https://github.com/husarion/rosbot_ros/tree/1.2.1/rosbot_description).
+
+```bash
+evoab setup --integration openarm_gazebo
+python examples/sdk/openarm_reach.py right
+python examples/sdk/openarm_reach.py left
+```
+
+The SDK smoke runs `move`, `grasp`, `hold` and `release`, reads `get_status`
+after each command, checks the measured lift and finger opening, then verifies
+that the last sample becomes stale at the same step and submits `finish`.
+To run the same environment with an image-capable model and review its trace:
+
+```bash
+evoab run --integration openarm_gazebo --task reach_right --recipe agentic \
+  --model <preset> --instruction 'Raise the right wrist by 4 cm' --monitor
+evoab replay <run-directory>
+```
 
 ## Custom benchmarks
 

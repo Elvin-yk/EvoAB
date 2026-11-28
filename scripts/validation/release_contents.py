@@ -19,7 +19,7 @@ SOURCE_FILES = ('README.md', 'CHANGELOG.md', 'AGENTS.md',
 SOURCE_SUFFIXES = {'.py', '.md', '.toml', '.json', '.sh', '.txt', '.png', '.pdf',
                    '.html', '.css', '.js', '.ts', '.urdf', '.npz', '.npy', '.typed', '.yml',
                    # Native driver sources an integration builds on the robot host (C++, ROS 2).
-                   '.yaml', '.cpp', '.hpp', '.h', '.msg', '.srv', '.xml'}
+                   '.yaml', '.cpp', '.hpp', '.h', '.msg', '.srv', '.xml', '.sdf'}
 # Files without a suffix that travel with vendored native sources.
 SOURCE_NAMES = {'UPSTREAM_LICENSE', 'LICENSE', 'NOTICE', 'SHA256SUMS', 'Dockerfile'}
 STUDIO_MODEL_ASSETS = Path('evoab/ui/studio/static/model-assets')

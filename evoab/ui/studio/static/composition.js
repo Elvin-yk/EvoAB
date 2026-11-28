@@ -100,14 +100,14 @@ const DIRECT_TOOL = "actor_act";
 const TEAM_ROLE = { planner: "Planner（规划）", actor: "Actor（执行）" };
 const teamCatalogs = new Map();
 
-function teamPresets(role, groups) {
+function teamPresets(role, groups, entryTask = false) {
   const available = Object.values(groups).flat();
   const ordinary = (names) => names.filter((name) => name !== DIRECT_TOOL);
   const presets = role === "planner" ? {
     "常用工具": available.filter((name) => !groups.gripper?.includes(name) && !groups.action_policy?.includes(name)),
     "观察与规划": [...(groups.skills || []), ...(groups.scene || []), "finish"],
   } : {
-    "常用工具": ordinary([...(groups.scene || []), ...(groups.gripper || []), ...groups.jobs]),
+    "常用工具": ordinary([...(groups.scene || []), ...(groups.gripper || []), ...(entryTask ? groups.episode || [] : groups.jobs)]),
     "基础执行": ["capture_scene", "move", "grasp", "release", "hold"],
     "Direct 执行": ["capture_scene", DIRECT_TOOL],
   };
@@ -116,8 +116,14 @@ function teamPresets(role, groups) {
     .map(([label, names]) => [label, names.filter((name) => available.includes(name))]));
 }
 
-function newAgentCard(role, groups) {
-  return { role, delegate_to: [], instructions: "", tools: teamPresets(role, groups)["常用工具"] };
+function newAgentCard(role, groups, entryTask = false) {
+  return { role, delegate_to: [], instructions: "", tools: teamPresets(role, groups, entryTask)["常用工具"] };
+}
+
+function entryTaskPrompt(w) {
+  const first = w.team?.[0];
+  return w.bench?.entry_prompt_as_task && !selectedMethod()?.external_evaluator && first?.instructions.trim()
+    ? first.instructions : null;
 }
 
 function configuredTeam(w) {
@@ -159,10 +165,11 @@ function collaborationFields(team, number) {
 }
 
 function roleCard(card, index, groups, team, updateGraph) {
-  const presets = teamPresets(card.role, groups);
+  const entryTask = index === 0 && S.wizard.bench.entry_prompt_as_task;
+  const presets = teamPresets(card.role, groups, entryTask);
   const select = h("select", { class: "input", "aria-label": "角色", onchange: (e) => {
     card.role = e.target.value;
-    card.tools = teamPresets(card.role, groups)["常用工具"];
+    card.tools = teamPresets(card.role, groups, entryTask)["常用工具"];
     route();
   } }, Object.entries(TEAM_ROLE).map(([value, label]) => h("option", { value, selected: value === card.role }, label)));
   const toolGroup = (key, names) => h("fieldset", {disabled: card.role === "planner" && key === "gripper"}, h("legend", {}, TOOL_GROUP_LABELS[key] || key),
@@ -188,8 +195,8 @@ function roleCard(card, index, groups, team, updateGraph) {
     card.role === "planner" && !card.delegate_to.length ? h("div", {class: "toolbar"},
       h("small", {class: "muted"}, "需要其他 Agent 配合时，可添加执行 Actor。"),
       h("button", {class: "btn small", onclick: () => addActor(team, card, groups)}, "添加执行 Actor")) : null,
-    h("label", { class: "field" }, "角色指令（可选）", h("textarea", { class: "input", rows: 2, maxlength: 8192,
-      placeholder: index ? "例如：根据腕部画面调整抓取位置。" : "例如：每次移动前先观察目标。",
+    h("label", { class: "field" }, entryTask ? `任务描述（${TEAM_ROLE[card.role].split("（")[0]}）` : "角色指令（可选）", h("textarea", { class: "input", rows: 2, maxlength: 8192,
+      placeholder: entryTask ? "输入本轮任务，留空使用评测集指令。" : index ? "例如：根据腕部画面调整抓取位置。" : "例如：每次移动前先观察目标。",
       oninput: (e) => { card.instructions = e.target.value; updateGraph(); } }, card.instructions)),
     h("div", { class: "toolbar" }, h("b", {}, card.role === "planner" ? "Planner 工具预设" : "Actor 工具预设"),
       Object.entries(presets).map(([label, tools]) => h("button", { class: "btn small", onclick: () => {
@@ -312,7 +319,12 @@ async function stepMethod(body) {
       return;
     }
     const groups = teamCatalogs.get(integration);
-    if (!w.team) w.team = [newAgentCard("planner", groups)];
+    if (!w.team) {
+      const editable = w.bench.entry_prompt_as_task;
+      const entry = newAgentCard(editable ? "actor" : "planner", groups, editable);
+      if (editable) entry.instructions = w.task.instruction;
+      w.team = [entry];
+    }
     const method = selectedMethod();
     if (!method) throw new Error("当前环境没有可用的方法");
     const diagram = harnessPreview(w, selectedAgent().label);

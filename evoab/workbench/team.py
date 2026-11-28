@@ -66,6 +66,16 @@ def team_roles(integration: str, cards: list[dict]) -> dict:
             capabilities.append(Capability(id="delegate", options={"roles": targets}))
         duty = ("Plan the task and verify results." if card.role == "planner"
                 else "Execute the assigned task using the available tools and report the result.")
+        if index == 0 and benchmarks.entry_prompt_as_task(integration):
+            if card.role == "actor":
+                duty = "Choose the action and its arguments using the user instruction."
+            elif targets:
+                duty = "Plan the task, delegate the requested motion to the appropriate role and inspect its report."
+            if "view_env_state" in selected:
+                duty = ("Read the starting measurement with view_env_state before moving. " + duty
+                        + " Verify the final measurement against your starting measurement.")
+            if "finish" in selected:
+                duty += " Submit your conclusion and evidence with finish."
         instructions = "\n".join(filter(None, (duty, card.instructions.strip())))
         role = Role(description=instructions, prompt=PromptSpec(append=instructions),
                     job_tools=[name for name in groups["jobs"] if name in selected],

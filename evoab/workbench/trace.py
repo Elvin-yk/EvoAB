@@ -535,12 +535,14 @@ def build_trace(run_dir: Path) -> dict[str, Any]:
     end_at = monitor.get("finished_at") or next((e.get("timestamp") for e in reversed(events)
                                                   if e.get("type") == "SessionClosed"), None)
     ending = _ending(run_dir, result, rounds, calls, monitor.get("max_episode_steps"))
+    instruction = (result or {}).get("instruction") or next(
+        (e["instruction"] for e in events if e.get("type") == "SessionOpened" and e.get("instruction")), None)
     return {
         "agent": agent, "model": model,
         "t0": t0,
         "t_end": end_at,
         "live": result is None,
-        "instruction": monitor.get("instruction"),
+        "instruction": instruction or monitor.get("instruction"),
         "max_steps": monitor.get("max_episode_steps"),
         "stages": _stages(run_dir, events, spans, frames, rounds[0]["started_at"] if rounds else None),
         "rounds": rounds,

@@ -19,6 +19,7 @@ def get_integration_spec():
     spec = build_gripper_spec(name="robodojo", create_session=create_session,
                               tool_modules=HYBRID_TOOL_MODULES)
     spec.task_supplements = True
+    spec.accepts_task_instruction = False
     spec.direct_policy_binding = "robodojo_direct_eef"
     spec.deployment_module = "evoab.integrations.robodojo.deployment"
     return spec

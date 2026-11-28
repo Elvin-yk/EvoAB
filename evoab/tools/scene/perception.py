@@ -22,6 +22,8 @@ from evoab.tools.scene.triangulation import triangulate
 
 def snapshot_images(client, manifest, cameras=None, *, mirror):
     available = manifest["cameras"]
+    if not available and cameras is None:
+        return []
     selected = list(available) if cameras is None else cameras
     if not selected or len(set(selected)) != len(selected) or not set(selected) <= set(available):
         raise RequestRejected("Requested cameras must be distinct and available in the recorded snapshot")

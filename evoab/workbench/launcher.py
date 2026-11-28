@@ -41,6 +41,7 @@ class LaunchRequest:
     # Evaluation set and frozen layout index, for benchmarks whose tasks declare them (RoboDojo).
     seed: int | None = None
     layout_id: int | None = None
+    instruction: str | None = None
 
 
 def _agent_choice(name: str, launch: AgentLaunch) -> dict:
@@ -129,6 +130,17 @@ def resolve_selection(request: LaunchRequest) -> tuple[LaunchRequest, dict, Agen
     agent = agent_launch(chosen)
     if agent is None:
         raise ValueError(f"Agent {chosen!r} has no Studio launch configuration")
+    custom_task = benchmarks.entry_prompt_as_task(request.integration)
+    if request.instruction is not None and not custom_task:
+        raise ValueError("This benchmark supplies a fixed task instruction")
+    if custom_task and isinstance(request.team, list) and request.team:
+        from evoab.workbench.team import AgentCard
+        entry = AgentCard.model_validate(request.team[0])
+        if entry.instructions.strip():
+            if request.instruction is not None and request.instruction != entry.instructions:
+                raise ValueError("The entry prompt and the explicit episode instruction must agree")
+            request = replace(request, instruction=entry.instructions,
+                              team=[{**request.team[0], "instructions": ""}, *request.team[1:]])
     return replace(request, method=method_id, agent=agent_id,
                    reasoning_effort=method["fixed_effort"] or request.reasoning_effort), method, agent
 
@@ -205,6 +217,7 @@ def _build_command(request: LaunchRequest, method: dict, agent: AgentLaunch, out
         "--env-port", str(free_port()),
         *(["--runtime-profile", profile] if profile is not None else []),
         "--task", task,
+        *([f"--instruction={request.instruction}"] if request.instruction is not None else []),
         "--recipe", str(recipe_path) if recipe_path else method["id"],
         "--model", request.model,
         "--reasoning-effort", request.reasoning_effort,
@@ -245,6 +258,10 @@ def validate(request: LaunchRequest) -> dict:
     task = benchmarks.task_info(request.integration, request.profile, request.task)
     if task is None:
         raise ValueError(f"task {request.task!r} is not prepared in {request.integration}/{request.profile}")
+    if request.instruction is not None:
+        text = request.instruction
+        if not isinstance(text, str) or not text.strip() or "\x00" in text or len(text) > 8192:
+            raise ValueError("instruction must be 1–8192 characters of nonblank text without NUL")
     if request.reasoning_effort not in REASONING_EFFORTS:
         raise ValueError(f"reasoning effort must be one of {REASONING_EFFORTS}")
     _check_episode_choice(request, task)
@@ -346,7 +363,7 @@ def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
         profile=request.profile,
         simulated=True,
         benchmark=task["suite"],
-        instruction=task.get("instruction"),
+        instruction=request.instruction if request.instruction is not None else task.get("instruction"),
         embodiment=task["embodiment"],
         max_steps=task.get("max_steps"),
         task=request.task,

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="evoab_scene_camera">
+    <static>true</static>
+    <link name="camera_link">
+      <sensor type="camera" name="scene">
+        <always_on>true</always_on>
+        <update_rate>10</update_rate>
+        <camera>
+          <horizontal_fov>0.70</horizontal_fov>
+          <image><width>800</width><height>600</height><format>R8G8B8</format></image>
+          <clip><near>0.05</near><far>8</far></clip>
+        </camera>
+        <plugin name="scene_camera_ros" filename="libgazebo_ros_camera.so">
+          <ros><namespace>/evoab</namespace></ros>
+          <camera_name>scene</camera_name>
+          <frame_name>evoab_scene_camera</frame_name>
+        </plugin>
+      </sensor>
+    </link>
+  </model>
+</sdf>
