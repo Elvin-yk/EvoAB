@@ -101,13 +101,13 @@ hybrid = SessionConfig(integration='calvin', env_url='http://127.0.0.1:18760',
     recipe_overrides={'roles.main.capabilities': ['skills', 'scene', 'gripper',
                                                   {'id': 'hybrid', 'options': {'review': False}}, 'episode']}).resolve()
 assert hybrid.tool_modules == ('skills', 'scene', 'gripper', 'hybrid', 'episode')
-try:
-    SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools',
-                  recipe_overrides={'roles.main.capabilities': ['scene', 'hybrid', 'episode']}).resolve()
-except ValueError as error:
-    assert "no capability 'hybrid'" in str(error)
-else:
-    raise AssertionError('A method needing an unavailable capability was accepted')
+pro_policy = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18782',
+    recipe='tools', action_model_url='http://127.0.0.1:18769',
+    integration_options={'action_model_checkpoint_sha256': 'a' * 64},
+    recipe_overrides={'roles.main.capabilities': [
+        'scene', {'id': 'hybrid', 'options': {'review': False}}, 'episode']}).resolve()
+assert pro_policy.tool_modules == ('scene', 'hybrid', 'episode')
+assert 'actor_act' in pro_policy.selected_tools and 'move' not in pro_policy.selected_tools
 assert {'tools', 'code', 'action'} == {
     m.id for m in __import__('evoab.recipe.methods', fromlist=['x']).list_methods()}
 for resource in ('methods/tools/method.yaml', 'methods/action/CARD.md', 'resources/prompts/runtime/tools_and_code.md'):

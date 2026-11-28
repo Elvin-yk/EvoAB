@@ -9,7 +9,7 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 | Integration | Kind | Image | Tools | Notes |
 |---|---|---|---|---|
 | `libero` | Original LIBERO | Public | Motion, policy (StarVLA) | Spatial, Object, Goal, Long, 90 |
-| `libero_pro` | LIBERO-PRO suites | Public | Motion | `_env`, `_object`, `_swap`, `_task`, `_lan` variants |
+| `libero_pro` | LIBERO-PRO suites | Public | Motion, policy (StarVLA) | `_env`, `_object`, `_swap`, `_task`, `_lan` variants |
 | `calvin` | CALVIN Panda | Public | Motion, policy (StarVLA) | One task per episode |
 | `custom` | Your Gym-style benchmark | Your image | Motion | See [custom benchmarks](#custom-benchmarks) |
 
@@ -100,7 +100,7 @@ evoab run --integration libero_pro --runtime-profile libero_object \
   --task pick_up_the_cream_cheese_and_place_it_in_the_basket --recipe action --model my-model
 ```
 
-Stock LIBERO can use `actor_act` with RoboScope's `starvla_libero_policy.py`
+LIBERO and LIBERO-PRO can use `actor_act` with RoboScope's `starvla_libero_policy.py`
 and `StarVLA/Qwen2.5-VL-OFT-LIBERO-4in1`. Prepare the checkpoint with the
 RoboScope LIBERO configuration and start its policy socket. Run
 `python -m evoab.servers.actor.server --config ACTOR.toml` with the RoboScope
@@ -119,6 +119,10 @@ The binding uses `active_groups=["arm"]` and delivers the agent-view and wrist
 images in the benchmark's training orientation. Each prediction is a chunk of
 native relative OSC actions. Use the policy recipe's default capabilities for
 mixed control. Initial state index and hash are recorded by the native service.
+For LIBERO-PRO, select `--integration libero_pro`. Managed launches use
+`--runtime-profile` to select the exact suite and `--init-state-index` to select
+the official starting state. The episode instruction comes from the selected
+BDDL problem, including language variants.
 
 ## CALVIN
 

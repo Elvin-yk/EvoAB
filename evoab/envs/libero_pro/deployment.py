@@ -48,4 +48,7 @@ def verify(runtime):
 
 
 def plan(args, runtime, output, run_id):
-    return episode_plan(args, runtime, output, run_id, "libero_pro", 18782)
+    index = getattr(args, "init_state_index", 0)
+    if index < 0:
+        raise ValueError("--init-state-index must be nonnegative")
+    return episode_plan(args, runtime, output, run_id, "libero_pro", 18782, init_state_index=index)

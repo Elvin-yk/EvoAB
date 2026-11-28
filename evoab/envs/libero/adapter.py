@@ -1,4 +1,4 @@
-"""Expose stock LIBERO's native OSC step alongside the shared motion tools."""
+"""Expose the LIBERO family's native OSC step alongside the shared motion tools."""
 
 import numpy as np
 

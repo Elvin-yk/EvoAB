@@ -12,6 +12,9 @@ from PIL import Image
 from evoab.envs.libero.action_binding import LiberoBinding
 from evoab.envs.libero.adapter import LiberoPolicyAdapter
 from evoab.envs.libero.relative_action import ACTION_BINDING, native_action
+from evoab.envs.libero_pro.action_binding import LiberoProBinding, create_binding as create_pro_binding
+from evoab.envs.libero_pro.adapter import LiberoProPolicyAdapter
+from evoab.envs.libero_pro.deployment import plan as plan_pro_episode
 from evoab.servers.actor.contracts import NumericChunk
 from evoab.servers.actor.images import decode_image
 from evoab.servers.actor.libero_profile import CAMERAS, PROPRIOCEPTION, actor_profile
@@ -19,14 +22,45 @@ from evoab.envs.protocol.contracts import RequestRejected
 
 
 class LiberoActorChecks(unittest.TestCase):
-    def make_binding(self):
+    def describe_episode(self, integration):
         environment = SimpleNamespace(
             action_binding=ACTION_BINDING, arms=[SimpleNamespace(name="arm")],
             cameras=[SimpleNamespace(name=name) for name in CAMERAS], control_frequency_hz=20,
         )
-        episode = SimpleNamespace(integration="libero", capabilities=["pose", "native"],
-                                  environment=environment)
-        return LiberoBinding(episode, SimpleNamespace(profile=actor_profile(2)))
+        return SimpleNamespace(integration=integration, capabilities=["pose", "native"],
+                               environment=environment)
+
+    def make_binding(self):
+        return LiberoBinding(self.describe_episode("libero"), SimpleNamespace(profile=actor_profile(2)))
+
+    def test_pro_accepts_the_shared_policy_profile_for_native_episodes(self):
+        episode = self.describe_episode("libero_pro")
+        actor = SimpleNamespace(profile=actor_profile(2))
+        binding = create_pro_binding(ACTION_BINDING, None, episode, actor)
+        self.assertIsInstance(binding, LiberoProBinding)
+        self.assertEqual(binding.profile, actor.profile)
+        with self.assertRaisesRegex(ValueError, "prepared episode"):
+            create_pro_binding(ACTION_BINDING, None, self.describe_episode("libero"), actor)
+        episode.capabilities = ["pose"]
+        with self.assertRaisesRegex(ValueError, "native actions"):
+            create_pro_binding(ACTION_BINDING, None, episode, actor)
+
+    def test_pro_uses_the_bddl_instruction_for_perturbed_tasks(self):
+        env = SimpleNamespace(language_instruction="lift the bowl and set it on the plate")
+        observation = {}
+        with patch.object(LiberoPolicyAdapter, "__init__", return_value=None) as init:
+            LiberoProPolicyAdapter(env, observation, instruction="pick up the bowl")
+        init.assert_called_once_with(env, observation, instruction=env.language_instruction)
+
+    def test_pro_launch_preserves_nonzero_initial_state_index(self):
+        args = SimpleNamespace(runtime_profile="libero_spatial_lan", task="task", seed=7,
+                               init_state_index=2, host="127.0.0.1", port=None, depth=False)
+        runtime = SimpleNamespace(python="python", environment={},
+                                  data={"native_root": "/libero-pro", "tasks": {"libero_spatial_lan/task": {}}})
+        launch = plan_pro_episode(args, runtime, Path("/output"), "episode")
+        index = launch.command.index("--init-state-index")
+        self.assertEqual(launch.command[index + 1], "2")
+        self.assertEqual(launch.expected["metadata.init_state_index"], 2)
 
     def test_actor_inputs_match_the_native_worker_rotation(self):
         binding = self.make_binding()
