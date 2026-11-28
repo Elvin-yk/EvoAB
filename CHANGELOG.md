@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Session verification can call a hosted multimodal model API through an EvoAB
+  preset for evidence-based verdicts and failure diagnosis.
+
 - Add an opt-in HTTP verifier stub for Session runs. The trajectory records
   sampled camera paths, and the worker writes a placeholder verdict to
   `result.json` before acknowledging completion.

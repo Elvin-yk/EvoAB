@@ -141,6 +141,13 @@ session within its shared runs root. The worker atomically updates only the
 `verification` field and replies with the request ID and completed status.
 Repeating the request with the same ID acknowledges the existing result.
 The stub records the four output fields and labels its response with its backend.
+For model-based verification the worker reads evidence from shared storage
+and sends selected event details and all archived camera views to the hosted
+model API configured by its preset. For multi-request episodes, each call sees
+the next image batch and cited observations from the preceding review. The
+worker writes the verdict after the last batch succeeds. It accepts a JSON verdict only when its event citations resolve
+to records presented to the model and it agrees with any native task verdict.
+Model and response errors leave the request pending for retry.
 The client uses a bounded wait and leaves result-file ownership with the worker
 after submission.
 
