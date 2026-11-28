@@ -1,16 +1,13 @@
+# Code across episodes: keep the program library and promote it after successful episodes (as in RAX).
 id: code_iterate
 label: Code iteration across episodes
 summary: A coding agent keeps a program library across episodes and promotes it only after successes.
-paradigms: [code]
-status: experimental
 references:
   - {title: "RAX: scaling online exploration for robot agents", url: "https://arxiv.org/abs/2610.22496"}
   - {title: "RAX code", url: "https://github.com/robot-agent-exploration/rax", kind: code}
-  - {title: "AdaRSI: on-demand recursive self-improvement for embodied agents", url: "https://arxiv.org/abs/2610.20474"}
 roles:
   main:
-    description: Reuses and improves programs kept from earlier successful episodes.
-    channel: code
+    act: [code]
     capabilities: [skills, scene, gripper, episode]
     prompt:
       append: >-
@@ -19,5 +16,4 @@ roles:
         next attempt: re-localize objects instead of hard-coding poses, and verify critical steps.
 loop:
   entry: main
-  # repeat: episodes in the sequence | carry: what moves forward | keep: success (promote only after a success) or always
   episodes: {repeat: 5, carry: [programs], keep: success, stop_on_success: false}

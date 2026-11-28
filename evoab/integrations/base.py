@@ -39,7 +39,7 @@ class IntegrationSpec:
     # Every tool module this integration can assemble; recipe roles select among them.
     tool_modules: tuple[ToolModule, ...] = ()
     # Method used when a run names no recipe (see evoab/methods/).
-    default_recipe: str = "agentic"
+    default_recipe: str = "tools"
     validate_cli: Callable[[Any], None] = _validate_no_cli_args
     allow_automatic_retry: bool = True
     # Execution mode used when the run does not choose one (see execution.EXECUTION_MODES).

@@ -217,8 +217,8 @@ def _methods(bench, args) -> None:
         if args.json:
             _print_json(items)
             return
-        _table([[m["id"], m["channel"], len(m["roles"]), m["label"], m["file"]] for m in items],
-               ["ID", "CHANNEL", "ROLES", "LABEL", "RECIPE"])
+        _table([[m["id"], "+".join(m["act"]), len(m["roles"]), m["label"], m["file"]] for m in items],
+               ["ID", "ACT", "ROLES", "LABEL", "RECIPE"])
     elif action == "components":
         catalog = bench.components(args.integration)
         if args.json:
@@ -237,7 +237,7 @@ def _methods(bench, args) -> None:
         compiled = compile_recipe(method.recipe, load_integration(args.integration).get_integration_spec(),
                                   base_dir=method.root)
         for name, role in compiled.roles.items():
-            print(f"{name:12} {role.channel:7} tools={', '.join(role.selected_tools) or '—'}"
+            print(f"{name:12} {'+'.join(role.act):18} tools={', '.join(role.selected_tools) or '—'}"
                   + (f" delegates={', '.join(role.delegates)}" if role.delegates else ""))
         print(f"{method.id}: valid for {args.integration}")
 
@@ -390,7 +390,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(handler=_runs_launch)
 
     me = sub.add_parser("methods", help="The method library and its components").add_subparsers(dest="action")
-    p = me.add_parser("list", parents=[common], help="Methods, their channels, paradigms and agents")
+    p = me.add_parser("list", parents=[common], help="Methods and how they act")
     p.add_argument("--integration", help="Only methods usable on this integration")
     p.set_defaults(handler=_methods)
     p = me.add_parser("components", parents=[common], help="Building blocks a recipe can name")

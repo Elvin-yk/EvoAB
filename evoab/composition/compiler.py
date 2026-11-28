@@ -1,8 +1,8 @@
 """Compile a recipe against one integration into resolved run settings.
 
 The compiler is the only place where a recipe becomes runtime settings. It
-checks every role against the integration's module catalog and the agent's
-channels, then writes the entry role's settings onto the run namespace that
+checks every role against the integration's module catalog and the ways it
+acts, then writes the entry role's settings onto the run namespace that
 ``session.py`` assembles. Other roles are compiled too and reached through the
 delegate capability.
 """
@@ -31,8 +31,12 @@ class CompiledRole:
     prompt_text: str = ""
 
     @property
-    def channel(self) -> str:
-        return self.role.channel
+    def act(self) -> tuple[str, ...]:
+        return tuple(self.role.act)
+
+    @property
+    def stateless(self) -> bool:
+        return self.role.stateless
 
     @property
     def tool_modules(self) -> tuple[str, ...]:
@@ -73,8 +77,8 @@ def compile_recipe(recipe: Recipe, spec: Any, *, base_dir: Path | None = None) -
         if role.observation_profile != "none" and name != recipe.loop.entry:
             raise ValueError("the observation capability is available to the loop entry role only")
         for target in role.delegates:
-            if roles[target].channel != "action" and recipe.execution.resource_scheduling == "global-serial":
-                raise ValueError(f"role {name!r} delegates to the {roles[target].channel} role {target!r}, whose "
+            if not roles[target].stateless and recipe.execution.resource_scheduling == "global-serial":
+                raise ValueError(f"role {name!r} delegates to the agent role {target!r}, whose "
                                  "tool calls would wait behind the delegation under global-serial scheduling")
     return CompiledRecipe(recipe, roles, base_dir)
 
@@ -110,7 +114,7 @@ def _compile_role(name: str, role: Role, catalog: dict, spec: Any, base_dir: Pat
         modules.append(module.select(capability.tools, options, role.style))
     if role.initial_observation and not any(item.name == "scene" for item in modules):
         raise ValueError(f"{where}: initial_observation requires the scene capability")
-    direct = _direct_config(role, base_dir) if role.channel == "action" else None
+    direct = _direct_config(role, base_dir) if "action" in role.act else None
     return CompiledRole(name, role, tuple(modules), delegates, observation, direct,
                         _prompt_text(role, base_dir))
 
@@ -132,7 +136,9 @@ def _direct_config(role: Role, base_dir: Path | None):
     robot = None
     if action.robot_prompt_file:
         robot = _resolve(action.robot_prompt_file, base_dir).read_text(encoding="utf-8")
-    custom = "\n\n".join(part for part in (action.custom_prompt, _prompt_text(role, base_dir)) if part)
+    # A stateless role has no agent prompt; its method text joins the action prompt instead.
+    method_text = _prompt_text(role, base_dir) if role.stateless else ""
+    custom = "\n\n".join(part for part in (action.custom_prompt, method_text) if part)
     return DirectConfig(
         representation=action.representation, min_horizon=action.horizon[0], max_horizon=action.horizon[1],
         history_length=action.history[0], history_stride=action.history[1], blocks=blocks,
@@ -186,7 +192,7 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
     args.recipe_id = recipe.id
     args.recipe_dir = str(compiled.base_dir) if compiled.base_dir else None
     args.compiled_recipe = compiled
-    args.channel = entry.channel
+    args.act = entry.act
     args.tool_style = entry.role.style
     args.initial_observation = entry.role.initial_observation
     args.selected_modules = entry.modules
@@ -214,8 +220,8 @@ def apply_to_args(args: Any, compiled: CompiledRecipe, *, explicit: set[str] = f
         # The compact style is the four-tool baseline contract: completed results only.
         if execution.return_mode != "immediate":
             raise ValueError("the compact tool style requires execution.return_mode: immediate")
-        if args.observation_profile != "none" or args.skill_writing or entry.channel != "tools":
-            raise ValueError("the compact tool style requires the tools channel without observation "
+        if args.observation_profile != "none" or args.skill_writing or entry.act != ("tools",):
+            raise ValueError("the compact tool style requires act: [tools] without observation "
                              "or skill writing")
 
 

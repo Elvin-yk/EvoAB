@@ -9,7 +9,7 @@ from evoab.composition.compiler import CompiledRole
 
 
 def role_namespace(args: Any, role: CompiledRole) -> Any:
-    """A copy of the run namespace with one role's brain and channel applied.
+    """A copy of the run namespace with one role's brain and ways of acting applied.
 
     A role without its own model preset uses the run's model.
     """
@@ -19,7 +19,7 @@ def role_namespace(args: Any, role: CompiledRole) -> Any:
     namespace.model = brain.model or brain.model_preset or args.model
     if brain.reasoning_effort is not None:
         namespace.reasoning_effort = brain.reasoning_effort
-    namespace.channel = role.channel
+    namespace.act = role.act
     namespace.direct_config = role.direct
     namespace.max_turns = role.role.max_turns
     namespace.skill_writing = role.skill_writing

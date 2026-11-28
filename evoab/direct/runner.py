@@ -202,20 +202,17 @@ class DirectPolicy:
             return JointRow(tuple(proprio["joints"]), closure)
         return Target(tuple(proprio["ee_pos"]), tuple(proprio["ee_quat"]), closure)
 
-    def run(self) -> DirectResult:
-        started = time.time()
-        result = DirectResult()
+    def _blocks(self) -> tuple[str, dict]:
+        """Capture the current frame and assemble the action prompt from it."""
         self._capture()
-        initial = self.frames[-1]
-        start_step = initial["step"]
         snapshot = self.episode.latest_snapshot
-        system, blocks = prompts.assemble(
+        return prompts.assemble(
             description=self.description, representation=self.representation,
             horizon=self.horizon, limits=self.limits, blocks=self.config.blocks,
-            initial_state=initial["proprio"], cameras=snapshot.get("cameras", {}),
+            initial_state=self.frames[-1]["proprio"], cameras=snapshot.get("cameras", {}),
             robot_text=self.config.robot_prompt, custom_prompt=self.config.custom_prompt)
-        tools = [self.representation.schema(self.horizon, self.arm_names)]
-        (self.root / "prompt.md").write_text(system + "\n", encoding="utf-8")
+
+    def _write_policy(self, blocks: dict, tools: list[dict], started: float) -> None:
         (self.root / "policy.json").write_text(json.dumps({
             "policy": "direct", "integration": self.integration, "arms": self.arm_names,
             "representation": self.representation.name,
@@ -227,10 +224,19 @@ class DirectPolicy:
                        "joint_rad": self.limits.joint_rad},
             "repair_attempts": self.config.repair_attempts, "control_hz": self.description.control_frequency_hz,
             "max_episode_steps": self.description.max_episode_steps, "cameras": self.cameras,
-            "instruction": self.instruction, "model": self.model.describe(), "blocks": blocks,
-            "tools": tools, "started_at": started,
+            "instruction": self.instruction, "model": self.model.describe() if self.model else None,
+            "blocks": blocks, "tools": tools, "started_at": started,
         }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
+    def run(self) -> DirectResult:
+        """Stateless loop: every inference is one request that must return an action chunk."""
+        started = time.time()
+        result = DirectResult()
+        system, blocks = self._blocks()
+        start_step = self.frames[-1]["step"]
+        tools = [self.representation.schema(self.horizon, self.arm_names)]
+        (self.root / "prompt.md").write_text(system + "\n", encoding="utf-8")
+        self._write_policy(blocks, tools, started)
         index = 0
         while not self.cancelled.is_set():
             current = self.frames[-1]
@@ -273,12 +279,7 @@ class DirectPolicy:
         request_build_s = time.perf_counter() - build_started
         request_path = self.root / "requests" / f"call_{index:04d}.json"
         attempts, arguments, targets, error = [], None, None, None
-        proprio = current["proprio"]
-        if len(self.arm_names) == 1:
-            name, = self.arm_names
-            measured = {name: self._target(proprio)}
-        else:
-            measured = {name: self._target(proprio["arms"][name]) for name in self.arm_names}
+        measured = self._measured_targets(current["proprio"])
         for attempt in range(1 + self.config.repair_attempts):
             completion = self.model.complete(messages, tools=tools, tool_choice="required")
             for key in ("input_tokens", "output_tokens", "total_tokens"):
@@ -308,10 +309,7 @@ class DirectPolicy:
                                             "model": self.model.describe()}, ensure_ascii=False, indent=1),
                                 encoding="utf-8")
         targets = targets or []
-        target_rows = [{name: target.row() for name, target in row.items()} for row in targets]
-        if len(self.arm_names) == 1:
-            target_rows = [next(iter(row.values())) for row in target_rows]
-        clamped = [any(t.clamped for t in row.values()) for row in targets]
+        target_rows, clamped = self._rows(targets)
         record = {
             "index": index, "start_step": current["step"], "observed_steps": [f["step"] for f in history],
             "requested_at": attempts[0]["started_at"], "request_build_s": round(request_build_s, 4),
@@ -322,6 +320,23 @@ class DirectPolicy:
             "targets": target_rows, "clamped": clamped,
             "safety_clamped": any(clamped), "executed": [],
         }
+        self._execute(targets, record)
+        return record
+
+    def _measured_targets(self, proprio: dict) -> dict:
+        if len(self.arm_names) == 1:
+            name, = self.arm_names
+            return {name: self._target(proprio)}
+        return {name: self._target(proprio["arms"][name]) for name in self.arm_names}
+
+    def _rows(self, targets) -> tuple[list, list[bool]]:
+        rows = [{name: target.row() for name, target in row.items()} for row in targets]
+        if len(self.arm_names) == 1:
+            rows = [next(iter(row.values())) for row in rows]
+        return rows, [any(t.clamped for t in row.values()) for row in targets]
+
+    def _execute(self, targets, record: dict) -> None:
+        """Run a decoded chunk one row per control step; stop at the first failure."""
         execution_started = time.perf_counter()
         for row, target in enumerate(targets):
             if self.cancelled.is_set() or self.episode.state.ended:
@@ -336,7 +351,43 @@ class DirectPolicy:
                                        "measured": frame["proprio"]})
         record["horizon"] = len(record["executed"])
         record["execution_s"] = round(time.perf_counter() - execution_started, 3) if targets else 0.0
+
+    # -- agent sessions ---------------------------------------------------------
+
+    def guidance(self) -> str:
+        """The action contract for an agent that may also emit chunks among its other calls."""
+        _, parts = self._blocks()
+        self._write_policy(parts, [self.representation.schema(self.horizon, self.arm_names)], time.time())
+        parts.pop("robot", None)  # the agent's environment prompt already describes the robot
+        return (f"ACTION CHUNKS\nYou can also move the robot directly by calling {self.representation.tool} "
+                "with a chunk of action rows; the controller executes them one row per control step and the "
+                "result reports the measured state and current camera images afterwards.\n\n"
+                + "\n\n".join(parts.values()))
+
+    def execute(self, arguments: dict) -> dict:
+        """Decode one chunk emitted as a tool call against the current measured state, then run it.
+
+        A chunk that does not decode raises OutputError before anything moves.
+        """
+        self._capture()  # other tools may have moved the robot since the last frame
+        current = self.frames[-1]
+        targets = self.representation.decode_chunk(arguments, self._measured_targets(current["proprio"]),
+                                                   self.horizon, self.limits)
+        rows, clamped = self._rows(targets)
+        self._calls = getattr(self, "_calls", 0) + 1
+        record = {"index": self._calls, "start_step": current["step"], "tool": self.representation.tool,
+                  "arguments": arguments, "note": arguments.get("note", ""), "targets": rows,
+                  "clamped": clamped, "safety_clamped": any(clamped), "executed": []}
+        self._execute(targets, record)
+        _jsonl(self.root / "calls.jsonl", record)
         return record
+
+    def latest_images(self) -> dict[str, bytes]:
+        """JPEG bytes of the most recent frame, resized as for model requests."""
+        frame = self.frames[-1]
+        return {camera: base64.b64decode(_data_url(self._absolute(path), self.config.image_max_side,
+                                                   self.config.jpeg_quality).split(",", 1)[1])
+                for camera, path in frame["images"].items()}
 
     def cancel(self) -> None:
         self.cancelled.set()

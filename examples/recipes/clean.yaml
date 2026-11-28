@@ -1,12 +1,10 @@
+# A minimal harness baseline: four tools, compact results, an RGB observation in the first message.
 id: clean
 label: Clean baseline
-summary: Four tools with compact results and an initial RGB observation, for minimal-harness comparisons.
-paradigms: [orchestrate]
-status: builtin
+summary: Four tools with compact results and an initial RGB observation.
 roles:
   main:
-    description: Uses only move, hold, capture_scene and finish with compact results.
-    channel: tools
+    act: [tools]
     style: compact
     initial_observation: true
     capabilities:

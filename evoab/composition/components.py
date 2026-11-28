@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Literal
 
-Slot = Literal["brain", "channel", "capability", "action", "context", "loop"]
+Slot = Literal["brain", "act", "capability", "action", "context", "loop"]
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class Component:
     slot: Slot
     label: str
     description: str
-    # Free-form facts shown to users: required environment capabilities, compatible channels, ...
+    # Free-form facts shown to users: required environment capabilities, compatible ways of acting, ...
     requires: tuple[str, ...] = ()
     channels: tuple[str, ...] = ()
     tools: tuple[str, ...] = ()
@@ -45,15 +45,16 @@ def register_component(component: Component) -> Component:
 
 
 for _component in (
-    Component("tools", "channel", "Tool calls",
-              "The agent calls robot tools natively and reads each result before deciding.",
+    Component("tools", "act", "Tool calls",
+              "The agent calls registered tools and reads each result before deciding.",
               channels=("tools",)),
-    Component("code", "channel", "Code",
-              "The agent writes ordinary Python programs against a generated robot API, runs them, "
+    Component("code", "act", "Code",
+              "The agent writes Python programs that call the same tools, runs them with run_program, "
               "inspects receipts and images, and writes the next program.", channels=("code",)),
-    Component("action", "channel", "Direct action",
-              "Each inference is one stateless request that must return exactly one action chunk; "
-              "the environment controller executes it row by row.", channels=("action",)),
+    Component("action", "act", "Action chunks",
+              "The agent emits action chunks that the environment controller executes row by row. "
+              "Alone, every inference is one stateless request; next to tools or code, the chunk is one "
+              "more call in the agent's session.", channels=("action",)),
     Component("abs_eef", "action", "Absolute EEF",
               "Absolute grasp-site poses [x, y, z, qw, qx, qy, qz, gripper], solved by the environment's IK.",
               requires=("pose control",), channels=("action",)),
@@ -64,12 +65,13 @@ for _component in (
               "Absolute joint positions per arm plus gripper closure; bypasses IK.",
               requires=("joint control",), channels=("action",)),
     Component("identity", "context", "Full history",
-              "Keep the complete transcript, text and images.", channels=("tools", "code")),
+              "Keep the complete transcript, text and images.", channels=("tools", "code", "action")),
     Component("stateless_window", "context", "Stateless frames",
-              "No transcript; each request carries a sampled window of recent frames.", channels=("action",)),
+              "No transcript; each request carries a sampled window of recent frames (act: [action] only).",
+              channels=("action",)),
     Component("delegate", "capability", "Delegate to role",
               "Expose other roles as tools: the caller hands a sub-goal to a role, which runs with its own "
-              "brain, channel and capabilities against the same episode and returns a report.",
+              "brain, ways of acting and capabilities against the same episode and returns a report.",
               channels=("tools", "code"), options={"roles": "list of role names"}),
     Component("observation", "capability", "Observation sidecar",
               "Integration observation profile: snapshots, freshness and observer insights.",

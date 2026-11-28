@@ -76,7 +76,8 @@ class Resource:
         self.closed = True
 
 
-PROFILE_METHODS = {"direct": "agentic", "hybrid": "agent_policy", "clean": "clean"}
+EXAMPLES = Path(__file__).resolve().parents[2] / "examples" / "recipes"
+PROFILE_METHODS = {"direct": "tools", "hybrid": str(EXAMPLES / "policy.yaml"), "clean": str(EXAMPLES / "clean.yaml")}
 OVERRIDES = {"tool_return_mode": "execution.return_mode", "observation_profile": "execution.observation_profile"}
 
 
@@ -307,7 +308,7 @@ class CompositionChecks(unittest.TestCase):
             parser = build_parser(spec)
             argv = ["run", "--integration", integration, "--model", "fixture",
                     "--task", "validation-task", "--env-url", "http://fixture.invalid",
-                    "--recipe", "clean", "--set", "roles.main.max_turns=7"]
+                    "--recipe", str(EXAMPLES / "clean.yaml"), "--set", "roles.main.max_turns=7"]
             args = resolve_settings(parser.parse_args(argv), spec, agent_enabled=False)
             self.assertEqual((args.recipe_id, args.tool_style, args.tool_return_mode), ("clean", "compact", "immediate"))
             self.assertEqual(args.max_turns, 7)
@@ -355,6 +356,29 @@ class CompositionChecks(unittest.TestCase):
         spec = load_integration("robodojo").get_integration_spec()
         with self.assertRaisesRegex(ValueError, "Duplicate tool module"):
             validate_modules((spec.tool_modules[0], spec.tool_modules[0]))
+
+    def test_act_combinations(self):
+        """tools, code and action combine in one session: one chunk tool, both prompts, never partial chunks."""
+        chunk = "emit_eef_actions"
+        cases = {("tools",): (False, False, False), ("code",): (False, True, False),
+                 ("tools", "code"): (False, True, True), ("tools", "action"): (True, False, False),
+                 ("code", "action"): (True, True, False), ("tools", "code", "action"): (True, True, True)}
+        for act, (has_chunk, code_prompt, both) in cases.items():
+            with self.subTest(act=act), assembled(config(overrides={"roles.main.act": list(act)},
+                                                         tool_return_mode="immediate"), self.directory) as (assembly, *_):
+                self.assertEqual(chunk in surface(assembly), has_chunk)
+                self.assertTrue(BASE_TOOLS <= surface(assembly))
+                prompt = assembly.build_prompt("Fixture").flatten()
+                self.assertEqual("generated Robot API" in prompt, code_prompt)
+                self.assertEqual("You can act in both ways" in prompt, both)
+                self.assertEqual("ACTION CHUNKS" in prompt, has_chunk)
+                self.assertEqual("Use the structured tools" in prompt, "tools" in act or "code" not in act)
+                if has_chunk:
+                    rejected = assembly.executor.call(chunk, {"actions": [[0, 0, 0]] * 3, "note": "bad rows"}).output
+                    self.assertFalse(rejected.success)
+                    self.assertTrue(rejected.extra["no_execution"])
+        with self.assertRaisesRegex(ValueError, "require action in act"):
+            config(overrides={"roles.main.action": {"horizon": [1, 4]}}).resolve()
 
     def test_clean_method_is_the_compact_four_tool_contract(self):
         observation = patch("evoab.integrations.prepared_episode.Episode.observation", return_value={})

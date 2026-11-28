@@ -1,12 +1,13 @@
 """EvoAB's built-in agent, the only agent EvoAB runs.
 
 ``--model`` names a model preset from :mod:`evoab.provider.catalog`, which owns
-provider connections, request APIs, retries and usage accounting. Two modes:
+provider connections, request APIs, retries and usage accounting. Two loops:
 
-``tools`` channel   an agent loop with only EvoAB's robot tools registered, with
-                    transcript consolidation for long episodes (run-local storage)
-``action`` channel  each inference is one stateless request that must return an
-                    action chunk (see :mod:`evoab.direct.runner`)
+``run``         an agent session over the role's calls: tools, ``run_program``
+                (act: code) and the action-chunk tool (act: action next to tools
+                or code), with transcript consolidation for long episodes
+``run_direct``  act: [action] alone: each inference is one stateless request that
+                must return an action chunk (see :mod:`evoab.direct.runner`)
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ class NativeAgent:
 
     @classmethod
     def add_cli_arguments(cls, parser) -> None:
-        """Action-channel settings live in the recipe (``roles.<name>.action``)."""
+        """Action settings live in the recipe (``roles.<name>.action``)."""
 
     @classmethod
     def validate_config(cls, args, explicit: set[str]) -> None:

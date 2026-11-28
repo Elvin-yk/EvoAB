@@ -85,8 +85,8 @@ class PromptContext:
     episode: Any | None = None
     session_dir: Path | None = None
     observation_profile: str = "none"
-    # How the role reaches the robot: "tools" (native calls) or "code" (programs).
-    channel: str = "tools"
+    # How the role acts: any of "tools" (calls), "code" (programs) and "action" (chunks).
+    act: tuple[str, ...] = ("tools",)
     # "compact" is the minimal four-tool baseline presentation.
     style: str = "full"
     # The first user message already carries a calibrated RGB observation.
@@ -124,12 +124,16 @@ def assemble_prompt(
         raise ValueError(f"Invalid tool return mode: {context.tool_return_mode}")
     if context.resource_scheduling not in {"per-resource", "global-serial"}:
         raise ValueError(f"Invalid resource scheduling: {context.resource_scheduling}")
-    if context.channel not in {"tools", "code"}:
-        raise ValueError(f"Invalid prompt channel: {context.channel}")
+    if not context.act or set(context.act) - {"tools", "code", "action"}:
+        raise ValueError(f"Invalid ways of acting: {context.act}")
     prompt = _append_resource(prompt, prompts / "runtime" / "process_control.md")
-    resources = ("code_as_policy.md",) if context.channel == "code" else (
-        "tool_calling.md", "batch.md", f"resource_{context.resource_scheduling}.md", f"return_{context.tool_return_mode}.md",
-    )
+    calls = ("tool_calling.md", "batch.md", f"resource_{context.resource_scheduling}.md",
+             f"return_{context.tool_return_mode}.md")
+    if "code" in context.act:
+        resources = (calls + ("code_as_policy.md", "tools_and_code.md") if "tools" in context.act
+                     else ("code_as_policy.md",))
+    else:
+        resources = calls
     if compact:
         resources = ("tool_calling.md", "return_immediate.md")
     for name in resources:
@@ -253,7 +257,7 @@ def _default_prompt(context: PromptContext) -> Prompt:
             + (
                 "Do not inspect simulator internals or service implementation sources. "
                 "Use your own scripts to call the registered robot API."
-                if context.channel == "code" else
+                if "code" in context.act else
                 "Do not inspect source code, scripts, processes, servers, or simulator internals. "
                 "Do not use shell/exec or bypass the registered tools."
             )

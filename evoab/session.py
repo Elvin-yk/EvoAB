@@ -64,6 +64,8 @@ class SessionAssembly:
     role_tools: dict[str, frozenset[str]] = field(default_factory=dict)
     delegation: "RoleDispatch | None" = None
     obs_proxy: Any | None = None
+    # The action-chunk tool agent roles call when they also act through action.
+    chunk_tool: str | None = None
 
 
 class RoleDispatch:
@@ -162,7 +164,7 @@ def assemble_session(args) -> SessionAssembly:
             agent_backend=args.agent_backend,
             model=args.model,
             recipe=args.recipe_id,
-            channel=args.channel,
+            act=list(args.act),
             tool_return_mode=args.tool_return_mode,
             resource_scheduling=args.resource_scheduling,
             tool_modules=args.tool_modules,
@@ -180,13 +182,23 @@ def assemble_session(args) -> SessionAssembly:
             for name in role.delegates:
                 target = compiled.roles[name]
                 from evoab.tools.delegation.provider import DelegateTarget
-                targets[name] = DelegateTarget(name, target.role.description, target.channel,
-                                               "native")
+                targets[name] = DelegateTarget(name, target.role.description, target.act, "native")
         if targets:
             from evoab.tools.delegation.provider import DelegationTools, tool_policies as delegation_policies
             dispatch = RoleDispatch()
             tools.extend(DelegationTools(targets, dispatch).get_tools())
             policies.update(delegation_policies(targets))
+        # Agent roles that also act through action chunks share one chunk tool.
+        action_tools = None
+        chunk_roles = [role for role in compiled.roles.values() if "action" in role.act and not role.stateless]
+        if chunk_roles:
+            if len({repr(role.direct) for role in chunk_roles}) > 1:
+                raise ValueError("roles that emit action chunks in an agent session must share one action setting")
+            from evoab.tools.action.provider import ActionTools
+            action_tools = ActionTools(session.episode, chunk_roles[0].direct, integration=args.integration,
+                                       output_dir=session_dir)
+            tools.extend(action_tools.get_tools())
+            policies.update(action_tools.policies())
 
         profile_name = getattr(args, "observation_profile", "none")
         if profile_name != "none":
@@ -208,13 +220,15 @@ def assemble_session(args) -> SessionAssembly:
                 provided = module_tools.get(item.name, set())
                 names |= provided if item.selection.tools is None else provided & set(item.selection.tools)
             names |= {tool_name(target) for target in role.delegates}
+            if action_tools is not None and "action" in role.act:
+                names.add(action_tools.name)
             names.update(role.role.job_tools or ())
             return frozenset(names)
 
         role_tools = {name: visible(role) for name, role in compiled.roles.items()}
         entry_name = compiled.recipe.loop.entry
         extra_entry = {tool.name for tool in tools} - set().union(*module_tools.values()) - {
-            f"delegate_{name}" for name in targets}
+            f"delegate_{name}" for name in targets} - ({action_tools.name} if action_tools else set())
         # Workspace (TUI) and observation-profile tools belong to the entry role.
         role_tools[entry_name] = role_tools[entry_name] | frozenset(extra_entry)
 
@@ -253,7 +267,7 @@ def assemble_session(args) -> SessionAssembly:
         prompt_builder = get_prompt_builder(prompt_integration)
         prompt_context = PromptContext(
             integration_name=prompt_integration,
-            channel=args.channel if args.channel != "action" else "tools",
+            act=args.act if not compiled.entry.stateless else ("tools",),
             task="",
             action_model_name=session.action_model_name,
             episode=session.episode,
@@ -288,6 +302,14 @@ def assemble_session(args) -> SessionAssembly:
             (session_dir / "initial_observation.json").write_text(
                 json.dumps(initial_metadata, indent=2, allow_nan=False) + "\n")
 
+        guidance_text = []
+
+        def action_guidance() -> str:
+            # Assembled once, from the frame measured when the first agent prompt is built.
+            if not guidance_text:
+                guidance_text.append(action_tools.guidance())
+            return guidance_text[0]
+
         def build_prompt(task: str, role: str | None = None):
             compiled_role = compiled.roles[role or entry_name]
             is_entry = compiled_role.name == entry_name
@@ -295,7 +317,7 @@ def assemble_session(args) -> SessionAssembly:
                 context = replace(prompt_context, task=task)
             else:
                 context = replace(
-                    prompt_context, task=task, channel=compiled_role.channel, style=compiled_role.role.style,
+                    prompt_context, task=task, act=compiled_role.act, style=compiled_role.role.style,
                     initial_observation=False, session_dir=None, observation_profile="none",
                     tool_return_mode="immediate" if waits_for_output(compiled_role.role.job_tools) else args.tool_return_mode,
                     tool_names=tuple(sorted(role_tools[compiled_role.name])),
@@ -318,7 +340,9 @@ def assemble_session(args) -> SessionAssembly:
                 base_prompt = base_prompt.append(
                     system=contribution.system, user=contribution.user, source=contribution.source,
                 )
-            if compiled_role.prompt_text and compiled_role.channel != "action":
+            if action_tools is not None and "action" in compiled_role.act:
+                base_prompt = base_prompt.append(system=action_guidance(), source="act:action")
+            if compiled_role.prompt_text and not compiled_role.stateless:
                 base_prompt = base_prompt.append(system=compiled_role.prompt_text,
                                                  source=f"recipe:{args.recipe_id}:{compiled_role.name}")
             if is_entry and getattr(args, "programs_dir", None):
@@ -345,6 +369,7 @@ def assemble_session(args) -> SessionAssembly:
             role_tools=role_tools,
             delegation=dispatch,
             obs_proxy=obs_proxy,
+            chunk_tool=action_tools.name if action_tools else None,
         )
     except BaseException as exc:
         # Stop producers and finish persistence before publishing even a failed startup.
@@ -504,11 +529,11 @@ class Session:
             if assembly.delegation is not None:
                 assembly.delegation.bind(self._run_role)
             with assembly.telemetry.tracer.span("agent.run", agent_backend=args.agent_backend, model=args.model,
-                                                recipe=args.recipe_id, channel=args.channel):
-                if args.channel == "action":
+                                                recipe=args.recipe_id, act=",".join(args.act)):
+                if args.compiled_recipe.entry.stateless:
                     self._agent_result = _run_direct(self._agent, args, assembly, self.events)
                 else:
-                    self._agent_result = _run_agent(self._agent, channel=args.channel,
+                    self._agent_result = _run_agent(self._agent, act=args.act, chunk_tool=assembly.chunk_tool,
                         artifacts=assembly.artifacts, tracer=assembly.telemetry.tracer,
                         prompt=assembly.build_prompt(args.instruction), task=args.instruction,
                         toolkit=assembly.toolkit, executor=assembly.entry_executor, max_turns=args.max_turns,
@@ -551,8 +576,8 @@ class Session:
             self._role_agents.add(agent)
         try:
             with assembly.telemetry.tracer.span("role.run", role=role, agent_backend=agent_name,
-                                                model=role_args.model, channel=compiled.channel):
-                if compiled.channel == "action":
+                                                model=role_args.model, act=",".join(compiled.act)):
+                if compiled.stateless:
                     try:
                         result = agent.run_direct(episode=assembly.integration_session.episode,
                                                   integration=args.integration, instruction=instruction,
@@ -562,19 +587,20 @@ class Session:
                 else:
                     view = ToolView(assembly.executor, assembly.role_tools[role],
                                     registered=assembly.toolkit.get_tool_names(), job_tools=compiled.role.job_tools, role=role)
-                    result = _run_agent(agent, channel=compiled.channel, artifacts=assembly.artifacts,
+                    result = _run_agent(agent, act=compiled.act, chunk_tool=assembly.chunk_tool,
+                        artifacts=assembly.artifacts,
                         tracer=assembly.telemetry.tracer, prompt=assembly.build_prompt(instruction, role),
                         task=instruction, toolkit=assembly.toolkit, executor=view,
                         max_turns=compiled.role.max_turns, event_bus=self.events, session_dir=run_dir,
                         announce_finish=False)
         except Exception as error:  # noqa: BLE001 - a failed sub-run is a report, not a crashed episode.
             logger.exception("Role %s failed", role)
-            return {"role": role, "channel": compiled.channel, "error": f"{type(error).__name__}: {error}",
+            return {"role": role, "act": list(compiled.act), "error": f"{type(error).__name__}: {error}",
                     "run_dir": str(run_dir), "elapsed_s": round(time.time() - started, 3)}
         finally:
             with self._role_lock:
                 self._role_agents.discard(agent)
-        report = {"role": role, "channel": compiled.channel, "success": result.success,
+        report = {"role": role, "act": list(compiled.act), "success": result.success,
                   "message": result.message[:4000], "error": result.error, "stop_reason": result.stop_reason,
                   "turns": result.turns_used, "tool_calls": result.tool_calls, "steps": result.steps_used,
                   "elapsed_s": round(time.time() - started, 3), "run_dir": str(run_dir)}
@@ -883,12 +909,13 @@ def _run_agent(
     agent,
     *,
     artifacts=None,
-    channel="tools",
+    act=("tools",),
+    chunk_tool=None,
     tracer=None,
     announce_finish=True,
     **request,
 ):
-    """Run the built-in agent once; the code channel reaches the robot through run_program."""
+    """Run the built-in agent once; programs (act: code) reach the robot through run_program."""
     session_dir = request.get("session_dir")
     event_bus = request.get("event_bus")
     code_bridge = None
@@ -903,7 +930,7 @@ def _run_agent(
             cleanup_errors.append(f"Cancellation failed: {exc}")
 
     try:
-        if channel == "code":
+        if "code" in act:
             from evoab.context.code_as_policy import prepare_code_policy
             from evoab.execution.code_as_policy.bridge import CodePolicyBridge
             from evoab.execution.code_as_policy.runner import ProgramTools
@@ -918,11 +945,15 @@ def _run_agent(
                    "PYTHONPATH": os.pathsep.join(filter(None, [
                        str(Path(__file__).resolve().parent.parent), os.environ.get("PYTHONPATH"),
                    ]))}
-            # Only knowledge tools stay direct; observations, motion and finish go through programs.
-            knowledge = ToolView(code_bridge, {"list_skills", "read_skill"},
-                denial="Only skill discovery and reading are available directly in the code channel; "
-                       "call robot operations from your programs")
-            request["executor"] = ProgramTools(knowledge, cwd=code_root / "scratch", env=env,
+            direct = request["executor"]
+            if "tools" not in act:
+                # Without tools, only knowledge tools (and the chunk tool) stay direct; observations,
+                # motion and finish go through programs.
+                names = {"list_skills", "read_skill"} | ({chunk_tool} if chunk_tool and "action" in act else set())
+                direct = ToolView(code_bridge, names,
+                    denial="Only skill discovery and reading are available as direct calls; "
+                           "call robot operations from your programs")
+            request["executor"] = ProgramTools(direct, cwd=code_root / "scratch", env=env,
                                                image_dir=code_root / "images" / "code_as_policy")
         result = agent.run(**request)
         if result.stop_reason or result.error:

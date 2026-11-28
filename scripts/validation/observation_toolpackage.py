@@ -633,7 +633,7 @@ class ObservationToolPackageTests(unittest.TestCase):
         from evoab.config import resolve_settings
         from evoab.integrations import load_integration
         spec = load_integration("robodojo").get_integration_spec()
-        argv = ["run", "--integration", "robodojo", "--recipe", "agentic", "--model", "fixture",
+        argv = ["run", "--integration", "robodojo", "--recipe", "tools", "--model", "fixture",
                 "--task", "stack_bowls", "--env-url", "http://127.0.0.1:18760",
                 "--obs-pipeline", str(pipeline_path)]
         with mock.patch("evoab.provider.catalog.presets", return_value=[{"name": "fixture"}]):

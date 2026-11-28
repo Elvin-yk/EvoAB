@@ -30,7 +30,7 @@ class LaunchRequest:
     task: str
     model: str
     reasoning_effort: str = "low"
-    method: str = "agentic"
+    method: str = "tools"
     # Recipe overrides by dotted path, e.g. {"roles.main.action.horizon": [16, 32]}.
     params: dict | None = None
     # Overrides the entry role's agent runtime; None keeps the recipe's.
@@ -78,12 +78,12 @@ def methods(integration: str | None = None) -> tuple[dict, ...]:
         agents = [_agent_choice(name, launch) for name, launch in launches.items()]
         default_agent = "native"
         result.append({
-            "id": recipe.id, "label": recipe.label, "summary": recipe.summary, "paradigms": recipe.paradigms,
+            "id": recipe.id, "label": recipe.label, "summary": recipe.summary,
             "status": recipe.status, "source": method.source, "integrations": recipe.integrations,
             "file": _recipe_file(method),
             "external_evaluator": False,
             "fixed_effort": None,
-            "channel": entry.channel, "agent": default_agent, "roles": list(recipe.roles),
+            "act": list(entry.act), "agent": default_agent, "roles": list(recipe.roles),
             "references": [reference.model_dump(mode="json") for reference in recipe.references],
             "episodes": recipe.loop.episodes.model_dump(mode="json"),
             "agents": agents if unavailable is None else [], "unavailable": unavailable,
@@ -107,13 +107,13 @@ def _recipe_file(method) -> str:
 def preferred_choice(integration: str, method: str | None, agent: str | None) -> tuple[str, str | None]:
     """Pick a usable saved selection for the current benchmark."""
     available = {item["id"]: item for item in methods(integration)}
-    for candidate in dict.fromkeys((method, "agentic", "direct_action", *available)):
+    for candidate in dict.fromkeys((method, "tools", "action", *available)):
         item = available.get(candidate)
         if item is None or not item["agents"]:
             continue
         ids = [choice["id"] for choice in item["agents"]]
         return candidate, agent if candidate == method and agent in ids else None
-    return "agentic", None
+    return "tools", None
 
 
 def resolve_selection(request: LaunchRequest) -> tuple[LaunchRequest, dict, AgentLaunch]:
@@ -161,8 +161,8 @@ def tool_groups(integration: str, method_id: str, agent_id: str) -> dict[str, li
         raise ValueError("Unknown benchmark")
     request = LaunchRequest(integration, "", "", "", method=method_id, agent=agent_id)
     _, method, agent = resolve_selection(request)
-    if method["channel"] == "action" or len(method["roles"]) > 1:
-        raise ValueError("Tool selection applies to one-role tools or code methods")
+    if method["act"] == ["action"] or len(method["roles"]) > 1:
+        raise ValueError("Tool selection applies to one-role methods that act through tools or code")
     entry = get_method(method_id)
     compiled = compile_recipe(entry.recipe, load_integration(integration).get_integration_spec(),
                               base_dir=entry.root).entry
@@ -290,8 +290,8 @@ def resolve_run_recipe(request: LaunchRequest, method: dict) -> Recipe:
         from evoab.workbench.team import team_roles
         if request.params or request.visible_tools is not None:
             raise ValueError("Agent cards already define the tools and role parameters")
-        if recipe.entry.channel != "tools" or recipe.execution.return_mode != "immediate" or len(recipe.roles) != 1:
-            raise ValueError("Agent cards require a single tool-calling role with immediate results")
+        if recipe.entry.act != ["tools"] or len(recipe.roles) != 1:
+            raise ValueError("Agent cards require a single role that acts through tools")
         roles = team_roles(request.integration, request.team)
         return_mode = "background" if any(role.get("job_tools") for role in roles.values()) else "immediate"
         recipe = with_overrides(recipe, {"roles": roles, "execution.return_mode": return_mode})
@@ -355,7 +355,7 @@ def launch(request: LaunchRequest, task: dict, runs_root: Path) -> str:
         reasoning_effort=request.reasoning_effort,
         method=request.method,
         method_label=method["label"],
-        channel=method["channel"],
+        act=method["act"],
         params=request.params,
         agent_options=request.agent_options,
         visible_tools=request.visible_tools,

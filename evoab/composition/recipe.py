@@ -1,18 +1,19 @@
 """The recipe: one serializable description of how agents control a robot.
 
 A recipe is the single source of truth for a run's method. It names one or more
-roles (each an agent with a brain, a channel, capabilities and a context policy),
-the loop that connects them, and the execution settings shared by their tools.
-Recipes are validated offline, before any environment or model service starts.
+roles (each an agent with a brain, the ways it acts, capabilities and a context
+policy), the loop that connects them, and the execution settings shared by their
+tools. Recipes are validated offline, before any environment or model service starts.
 
-Three orthogonal axes replace a single "interaction mode":
+An agent acts in three ways, in any combination (``act``):
 
-* channel: how a role reaches the robot (``tools`` = native tool calls,
-  ``code`` = programs against a generated Python API, ``action`` = one forced
-  action-chunk call per stateless inference);
-* capabilities: which tool modules the role may use (scene, gripper, skills,
-  delegation to other roles, ...);
-* context: how much history each request carries.
+* ``tools``: call registered tools (motion, perception, a policy, ``@tool`` functions);
+* ``code``: write Python programs that call the same tools (``run_program``);
+* ``action``: emit an action chunk that the environment controller executes row
+  by row. Alone, every inference is one stateless request with a window of recent
+  frames; next to tools or code, the chunk is one more call in the agent's session.
+
+``capabilities`` select the tools that ``tools`` and ``code`` reach.
 
 The loop connects roles: the entry role runs the episode and other roles are
 reachable only through ``delegate`` capabilities. ``loop.episodes`` repeats
@@ -29,7 +30,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-Channel = Literal["tools", "code", "action"]
+Act = Literal["tools", "code", "action"]
 Style = Literal["full", "compact"]
 ROLE_NAME = r"^[a-z][a-z0-9_]{0,31}$"
 
@@ -41,8 +42,8 @@ class Spec(BaseModel):
 class Brain(Spec):
     """The model of one role: a model preset and effort, both optional (the run's by default).
 
-    Every role runs on EvoAB's built-in agent; ``action`` roles have no agent loop:
-    each inference is one request to the role's model.
+    Every role runs on EvoAB's built-in agent; a role that acts only through
+    ``action`` has no transcript: each inference is one request to the role's model.
     """
 
     model: str | None = None
@@ -74,7 +75,7 @@ class Capability(Spec):
 
 
 class ActionSpec(Spec):
-    """The action channel: each inference returns exactly one action chunk."""
+    """Action chunks: representation, size, step limits and, when acting only this way, the frame window."""
 
     representation: str = "abs_eef"
     horizon: tuple[int, int] = (3, 15)
@@ -110,7 +111,7 @@ class PromptSpec(Spec):
 class Role(Spec):
     description: str = ""
     brain: Brain = Field(default_factory=Brain)
-    channel: Channel = "tools"
+    act: list[Act] = Field(default_factory=lambda: ["tools"])
     capabilities: list[Capability] = Field(default_factory=list)
     # None inherits the executor's controls. An empty list requests completed results.
     job_tools: list[str] | None = None
@@ -126,24 +127,37 @@ class Role(Spec):
         """Accept ``- scene`` as shorthand for ``- {id: scene}``."""
         return [{"id": item} if isinstance(item, str) else item for item in (value or [])]
 
+    @field_validator("act")
+    @classmethod
+    def distinct_ways(cls, value):
+        if not value or len(set(value)) != len(value):
+            raise ValueError("act must list one or more of tools, code and action, each once")
+        return [way for way in ("tools", "code", "action") if way in value]
+
+    @property
+    def stateless(self) -> bool:
+        """Acting only through action chunks: no transcript, one request per chunk."""
+        return self.act == ["action"]
+
     @model_validator(mode="after")
-    def channel_requirements(self):
+    def act_requirements(self):
         if self.job_tools is not None:
             from evoab.tools.selection import TOOL_GROUPS
-            if self.channel == "action" or set(self.job_tools) - set(TOOL_GROUPS["@jobs"]):
-                raise ValueError("job_tools must select executor controls for a tools or code role")
+            if self.stateless or set(self.job_tools) - set(TOOL_GROUPS["@jobs"]):
+                raise ValueError("job_tools must select executor controls for a role that acts through tools or code")
         ids = [capability.id for capability in self.capabilities]
         if len(set(ids)) != len(ids):
             raise ValueError("a role selects each capability at most once")
-        if self.channel == "action":
-            if self.capabilities:
-                raise ValueError("an action role emits action chunks only; remove its capabilities")
+        if self.stateless and self.capabilities:
+            raise ValueError("a role that acts only through action has no tools; remove its capabilities "
+                             "or add tools or code to act")
+        if "action" in self.act:
             if self.action is None:
                 self.action = ActionSpec()
         elif self.action is not None:
-            raise ValueError("action settings require channel: action")
-        if self.initial_observation and self.channel == "action":
-            raise ValueError("action roles always observe; initial_observation applies to tool and code roles")
+            raise ValueError("action settings require action in act")
+        if self.initial_observation and self.stateless:
+            raise ValueError("a stateless action role always observes; initial_observation applies to agent sessions")
         return self
 
     def capability(self, name: str) -> Capability | None:
@@ -205,7 +219,6 @@ class Recipe(Spec):
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
     label: str
     summary: str = ""
-    paradigms: list[Literal["orchestrate", "direct", "code", "policy"]] = Field(default_factory=list)
     status: Literal["builtin", "reproduction", "experimental"] = "builtin"
     integrations: list[str] | None = None
     references: list[Reference] = Field(default_factory=list)
@@ -227,8 +240,8 @@ class Recipe(Spec):
         if self.execution.return_mode != "background" and any(role.job_tools for role in self.roles.values()):
             raise ValueError("job tools require execution.return_mode: background")
         entry = self.roles[self.loop.entry]
-        if "programs" in self.loop.episodes.carry and entry.channel != "code":
-            raise ValueError("carrying programs requires a code entry role")
+        if "programs" in self.loop.episodes.carry and "code" not in entry.act:
+            raise ValueError("carrying programs requires code in the entry role's act")
         if "skills" in self.loop.episodes.carry:
             skills = entry.capability("skills")
             if skills is None or not skills.options.get("write"):
@@ -335,7 +348,7 @@ def parse_assignment(text: str) -> tuple[str, str]:
 def with_overrides(recipe: Recipe, assignments: dict[str, Any]) -> Recipe:
     """Return a new validated recipe with values replaced at dotted paths.
 
-    Text values are read as YAML (``--set roles.main.action.horizon=[16,32]``).
+    Text values are read as YAML (``--set roles.main.act=[tools,action]``).
     """
     if not assignments:
         return recipe

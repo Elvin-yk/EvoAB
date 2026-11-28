@@ -595,7 +595,7 @@ async function stepModel(body) {
       h("div", { class: "segmented", role: "group", "aria-labelledby": "effort-label" },
         S.config.reasoning_efforts.map((e) => h("button", { class: w.effort === e ? "active" : "",
           "aria-pressed": String(w.effort === e), onclick: () => { w.effort = e; w.effortPicked = true; route(); } }, effortLabel(e))))),
-    w.model && method.channel === "tools" && agent.probes_presets && modelProbe(agent, w.model, method.fixed_effort || w.effort),
+    w.model && (method.act || []).join("+") === "tools" && agent.probes_presets && modelProbe(agent, w.model, method.fixed_effort || w.effort),
     agentOptions(agent));
 }
 

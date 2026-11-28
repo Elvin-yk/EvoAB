@@ -95,7 +95,7 @@ async function loadMethods(integration) {
   return METHODS_BY_INTEGRATION.get(integration);
 }
 
-const TEAM_METHOD = "tool_team";
+const TEAM_METHOD = "tools";
 const DIRECT_TOOL = "actor_act";
 const TEAM_ROLE = { planner: "Planner（规划）", actor: "Actor（执行）" };
 const teamCatalogs = new Map();

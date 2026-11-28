@@ -16,4 +16,4 @@ exec "${PYTHON:-python}" -m evoab run \
   --integration robodojo --task stack_bowls \
   --env-url "${EVOAB_ENV_URL:-http://127.0.0.1:18760}" \
   --action-model-url "${EVOAB_ACTION_MODEL_URL:-http://127.0.0.1:18761}" \
-  --recipe agent_policy --set inputs.task_supplements=true --output-dir ./runs/robodojo-hybrid "$@"
+  --recipe examples/recipes/policy.yaml --set inputs.task_supplements=true --output-dir ./runs/robodojo-hybrid "$@"

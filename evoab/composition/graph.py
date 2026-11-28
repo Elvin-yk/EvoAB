@@ -1,7 +1,7 @@
 """Project a recipe onto nodes and edges for display (Studio graph view, docs).
 
 The graph has two layers. The assembly layer shows, for every role, its brain,
-channel, context and capabilities, all wired to the body (the environment). The
+ways of acting (``act``), context and capabilities, all wired to the body (the environment). The
 loop layer shows delegation edges between roles and the episode sequence.
 Run traces annotate nodes with call counts (``annotate_with_trace``).
 """
@@ -24,24 +24,26 @@ def recipe_graph(recipe: Recipe) -> dict[str, Any]:
         nodes.append({"id": id_, "kind": kind, "label": label, **extra})
         return id_
 
-    body = node("body", "body", "Environment", detail="Simulation benchmark or real embodiment")
+    body = node("body", "body", "Environment", detail="Simulation benchmark in Docker")
     for name, role in recipe.roles.items():
         role_id = node(f"role:{name}", "role", name, entry=name == recipe.loop.entry,
                        detail=role.description)
         brain = role.brain
-        label = "model" if role.channel == "action" else "agent"
+        label = "model" if role.stateless else "agent"
         edges.append({"from": node(f"{name}:brain", "brain", label,
                                    detail=" · ".join(filter(None, [brain.model_preset or brain.model, brain.reasoning_effort]))),
                       "to": role_id, "kind": "drives"})
         channel_detail = ""
-        if role.channel == "action" and role.action is not None:
-            channel_detail = (f"{role.action.representation}, {role.action.horizon[0]}–{role.action.horizon[1]} rows, "
-                              f"history {role.action.history[0]}:{role.action.history[1]}")
-        channel = node(f"{name}:channel", "channel", role.channel, detail=channel_detail)
+        if role.action is not None:
+            channel_detail = f"{role.action.representation}, {role.action.horizon[0]}–{role.action.horizon[1]} rows"
+            if role.stateless:
+                channel_detail += f", history {role.action.history[0]}:{role.action.history[1]}"
+        # The "channel" node shows the role's ways of acting, e.g. "tools+action".
+        channel = node(f"{name}:channel", "channel", "+".join(role.act), detail=channel_detail, act=list(role.act))
         edges.append({"from": role_id, "to": channel, "kind": "acts through"})
-        context = "stateless_window" if role.channel == "action" else "identity"
+        context = "stateless_window" if role.stateless else "identity"
         edges.append({"from": node(f"{name}:context", "context", context), "to": role_id, "kind": "context"})
-        if role.channel == "action":
+        if "action" in role.act:
             edges.append({"from": channel, "to": body, "kind": "action chunks"})
         if role.job_tools:
             jobs = node(f"{name}:cap:jobs", "capability", "jobs", tools=role.job_tools,

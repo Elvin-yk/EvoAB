@@ -14,7 +14,7 @@ case "$mode" in
   run)
     exec "${PYTHON:-python}" -m evoab run \
       --integration robodojo --deploy local --task stack_bowls \
-      --recipe agentic --output-dir ./runs/robodojo "$@"
+      --recipe tools --output-dir ./runs/robodojo "$@"
     ;;
   -h|--help)
     cat <<'HELP'

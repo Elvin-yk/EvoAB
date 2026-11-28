@@ -55,9 +55,8 @@ print('Installed SDK:', evoab.__file__)
     # Offline method checks: the built-in agent needs no model or credential to validate a recipe.
     for integration in ('robodojo', 'robotwin', 'libero', 'libero_plus',
                         'libero_pro', 'calvin', 'metaworld'):
-        command([python, '-m', 'evoab', 'methods', 'validate', 'agentic', '--integration', integration])
-    for integration in ('robodojo', 'calvin'):
-        command([python, '-m', 'evoab', 'methods', 'validate', 'agent_policy', '--integration', integration])
+        for method in ('tools', 'code', 'action'):
+            command([python, '-m', 'evoab', 'methods', 'validate', method, '--integration', integration])
     command([python, '-I', '-c', """from pathlib import Path
 from importlib.util import find_spec
 import evoab
@@ -94,25 +93,32 @@ except ValueError:
 else:
     raise AssertionError('A model-service setup was accepted')
 assert not any(name in sys.modules for name in ("mujoco", "jax", "openpi", "torch", "scipy"))
-resolved = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='agentic').resolve()
-assert resolved.recipe_id == 'agentic' and resolved.channel == 'tools'
+resolved = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools').resolve()
+assert resolved.recipe_id == 'tools' and resolved.act == ('tools',)
+mixed = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools',
+                      recipe_overrides={'roles.main.act': ['tools', 'code', 'action']}).resolve()
+assert mixed.act == ('tools', 'code', 'action') and mixed.direct_config.representation == 'abs_eef'
 assert resolved.tool_modules == ('skills', 'scene', 'gripper', 'episode')
-clean = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='clean').resolve()
+clean = SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools', recipe_overrides={
+    'roles.main.style': 'compact', 'execution.return_mode': 'immediate', 'roles.main.capabilities': [
+        {'id': 'gripper', 'tools': ['move', 'hold']}, {'id': 'scene', 'tools': ['capture_scene']}, 'episode']}).resolve()
 assert clean.selected_tools == ('move', 'hold', 'capture_scene', 'finish')
 hybrid = SessionConfig(integration='robodojo', env_url='http://127.0.0.1:18760',
-    recipe='agent_policy', action_model_url='http://127.0.0.1:18769',
+    recipe='tools', action_model_url='http://127.0.0.1:18769',
     integration_options={'action_model_checkpoint_sha256': 'a' * 64},
-    recipe_overrides={'roles.main.capabilities.hybrid.options': {'review': False}}).resolve()
+    recipe_overrides={'roles.main.capabilities': ['skills', 'scene', 'gripper',
+                                                  {'id': 'hybrid', 'options': {'review': False}}, 'episode']}).resolve()
 assert hybrid.tool_modules == ('skills', 'scene', 'gripper', 'hybrid', 'episode')
 try:
-    SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='agent_policy').resolve()
+    SessionConfig(integration='libero_pro', env_url='http://127.0.0.1:18760', recipe='tools',
+                  recipe_overrides={'roles.main.capabilities': ['scene', 'hybrid', 'episode']}).resolve()
 except ValueError as error:
     assert "no capability 'hybrid'" in str(error)
 else:
     raise AssertionError('A method needing an unavailable capability was accepted')
-assert {'agentic', 'clean', 'direct_action', 'code_as_policy', 'agent_policy'} <= {
+assert {'tools', 'code', 'action'} == {
     m.id for m in __import__('evoab.composition.methods', fromlist=['x']).list_methods()}
-for resource in ('methods/agentic/method.yaml', 'methods/direct_action/CARD.md'):
+for resource in ('methods/tools/method.yaml', 'methods/action/CARD.md', 'resources/prompts/runtime/tools_and_code.md'):
     assert (root / resource).is_file(), resource
 SetupConfig(integration='robodojo')
 DeploymentConfig(integration='robodojo', task='stack_bowls')

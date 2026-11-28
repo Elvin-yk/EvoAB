@@ -1,4 +1,4 @@
-# Direct Action
+# Action
 
 The model is the controller. Each inference is an independent request (prompt
 blocks, task, a sampled window of recent frames) whose only allowed answer is one
@@ -8,10 +8,13 @@ the answer a schema EvoAB can validate. The chunk is step-limited, then executed
 one row per control step; a malformed answer is re-requested on the unchanged
 observation.
 
+Next to `tools` or `code` (`act: [tools, action]`), the same chunk tool becomes
+one more call in the agent's persistent session: the agent decides when to emit a
+chunk, and the result returns the measured state and current camera images.
+
 | | |
 |---|---|
-| Paradigm | Direct |
-| Channel | `action` |
+| Acts through | `action` alone (stateless) |
 | Context | Stateless; frames t−14, t−7, t by default |
 
 ## Reproduction target: Astranomy (Direct form)

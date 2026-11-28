@@ -1,7 +1,8 @@
-id: code_as_policy
-label: Code as Policy
+# One agent acts by writing Python programs that call the same tools, run with run_program.
+# Combine with tools or action through `act`, e.g. --set 'roles.main.act=[tools,code]'.
+id: code
+label: Code
 summary: The agent writes Python programs against the generated robot API, runs them and reads receipts and images.
-paradigms: [code]
 status: builtin
 references:
   - {title: "Code as Policies", url: "https://arxiv.org/abs/2209.07753"}
@@ -9,7 +10,11 @@ references:
 roles:
   main:
     description: Programs call the same registered tools; image-dependent decisions end the program.
-    channel: code
+    act: [code]                    # without tools, only skill reading stays a direct call
     capabilities: [skills, scene, gripper, episode]   # the robot API the programs call
     prompt: {append: ""}           # extra method instructions
-loop: {entry: main}
+loop:
+  entry: main
+  # Keep programs across episodes and promote them after successes (as in RAX, arXiv 2610.22496):
+  # episodes: {repeat: 5, carry: [programs], keep: success}
+  episodes: {repeat: 1, carry: [], keep: success}

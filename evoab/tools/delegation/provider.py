@@ -1,13 +1,13 @@
 """Expose recipe roles as tools: ``delegate_<role>(instruction)``.
 
 The caller hands a sub-goal to another role. That role runs with its own brain,
-channel and capabilities against the same episode and returns a report when it
+ways of acting and capabilities against the same episode and returns a report when it
 stops. The tool owns only the schema and the report format; running the role
 belongs to the session, which supplies ``run_role``.
 
-Placement: a role that drives the robot directly (action channel) bypasses the
+Placement: a role that acts only through action chunks (stateless) bypasses the
 executor, so its delegation occupies the exclusive ``episode`` resource for the
-whole sub-run. Tool and code roles call tools through the shared executor, so
+whole sub-run. Agent roles call tools through the shared executor, so
 their delegation must not hold any exclusive queue those calls would wait on;
 it runs with parallel placement (and recipes cannot combine it with
 ``global-serial`` scheduling, which serializes every call).
@@ -26,7 +26,7 @@ from evoab.tools.toolkit import ActionOutcome, ToolOutput, ToolProvider, ToolSpe
 class DelegateTarget:
     name: str
     description: str
-    channel: str
+    act: tuple[str, ...]
     agent: str
 
 
@@ -37,7 +37,7 @@ def tool_name(role: str) -> str:
 def tool_policies(targets: Mapping[str, DelegateTarget]) -> dict[str, ToolExecutionPolicy]:
     return {
         tool_name(name): (ToolExecutionPolicy(resource_key="episode", concurrency="exclusive", mutates_world=True)
-                          if target.channel == "action" else
+                          if target.act == ("action",) else
                           ToolExecutionPolicy(resource_key="delegation", concurrency="parallel"))
         for name, target in targets.items()
     }
@@ -46,9 +46,10 @@ def tool_policies(targets: Mapping[str, DelegateTarget]) -> dict[str, ToolExecut
 def tool_specs(targets: Mapping[str, DelegateTarget]) -> list[ToolSpec]:
     specs = []
     for name, target in targets.items():
-        how = {"action": "emits action chunks directly from camera frames",
-               "code": "writes and runs programs against the robot API",
-               "tools": "calls its own robot tools"}[target.channel]
+        ways = {"tools": "calls its own robot tools", "code": "writes and runs programs against the robot API",
+                "action": "emits action chunks"}
+        how = ("emits action chunks directly from camera frames" if target.act == ("action",)
+               else " and ".join(ways[way] for way in target.act))
         description = (f"Hand a sub-goal to the {name!r} role ({target.agent}), which {how} against the "
                        f"current episode and returns a report when it stops. "
                        + (target.description.strip() + " " if target.description.strip() else "")
@@ -74,7 +75,7 @@ class DelegationTools(ToolProvider):
         def delegate(instruction: str) -> ToolOutput:
             report = self.run_role(role, instruction)
             action = None
-            if self.targets[role].channel == "action":
+            if self.targets[role].act == ("action",):
                 # The sub-run stepped the environment itself; report what it executed for replanning.
                 steps = report.get("steps")
                 executed = "unknown" if steps is None else ("some" if steps > 0 else "none")

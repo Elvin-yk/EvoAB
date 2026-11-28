@@ -46,7 +46,7 @@ def build_run_result(
         "resource_scheduling": getattr(args, "resource_scheduling", "per-resource"),
         "observation_profile": getattr(args, "observation_profile", "none"),
         "recipe": getattr(args, "recipe_id", None),
-        "channel": getattr(args, "channel", None),
+        "act": list(getattr(args, "act", ()) or ()),
         "tool_style": getattr(args, "tool_style", None),
         "tool_modules": list(getattr(args, "tool_modules", ())),
         "roles": sorted(getattr(getattr(args, "compiled_recipe", None), "roles", {}) or []),
