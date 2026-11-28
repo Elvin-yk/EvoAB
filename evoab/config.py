@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from evoab.context.prompt import get_prompt_builder
+from evoab.agent.context.prompt import get_prompt_builder
 
 
 def _nonnegative(value: str) -> int:
@@ -46,7 +46,7 @@ def resolve_config(args, parser, integration_spec, argv=()):
 def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True):
     """Resolve one runtime configuration without parsing arguments or exiting."""
     explicit = set(explicit)
-    from evoab.agents.registry import get_agent_backend
+    from evoab.agent.loop import NativeAgent
     # One debug switch: verbose logs and raw model requests; the agent's inputs and tools are unchanged.
     args.debug = bool(getattr(args, "debug", False))
     args.log_level = "DEBUG" if args.debug else "INFO"
@@ -59,7 +59,6 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
         if not getattr(args, "model", None):
             raise ValueError(f"--model is required (or pin roles.{args.recipe.loop.entry}.brain.model "
                              f"in method {args.recipe_id!r})")
-        get_agent_backend(args.agent_backend).resolve_defaults(args)
     # Read environment variables at the entry point; business modules receive resolved values.
     for name in (
         "env_url",
@@ -109,10 +108,10 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
     if not args.env_url and not local:
         raise ValueError("--env-url or EVOAB_ENV_URL is required (or select --deploy local)")
     if local:
-        from evoab.services.deployment.config import validate_deployment
+        from evoab.envs.docker.config import validate_deployment
         validate_deployment(args)
     if getattr(args, "obs_pipeline", None):
-        from evoab.observation.toolpackage.config import load_pipeline_config
+        from evoab.envs.observation.toolpackage.config import load_pipeline_config
 
         obs_path = Path(args.obs_pipeline).expanduser().resolve()
         load_pipeline_config(obs_path)
@@ -126,13 +125,13 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
             raise ValueError(
                 "the observation profile must match --integration or be none"
             )
-        from evoab.observation import load_observation_profile
+        from evoab.envs.observation import load_observation_profile
 
         load_observation_profile(args.observation_profile)
     if agent_enabled:
         # The built-in agent: --model names a model preset (evoab models).
-        get_agent_backend(args.agent_backend).validate_config(args, explicit)
-        from evoab.composition.roles import validate_roles
+        NativeAgent.validate_config(args, explicit)
+        from evoab.agent.team.roles import validate_roles
         validate_roles(args)
     get_prompt_builder(args.integration)
     integration_spec.validate_cli(args)
@@ -145,9 +144,9 @@ def resolve_settings(args, integration_spec, *, explicit=(), agent_enabled=True)
 
 def resolve_recipe(args, integration_spec, *, explicit=()):
     """Load, override and compile the run's method onto ``args`` (no services opened)."""
-    from evoab.composition.compiler import apply_to_args, compile_recipe
-    from evoab.composition.methods import get_method
-    from evoab.composition.recipe import parse_assignment, with_overrides
+    from evoab.recipe.compiler import apply_to_args, compile_recipe
+    from evoab.recipe.methods import get_method
+    from evoab.recipe.schema import parse_assignment, with_overrides
 
     reference = getattr(args, "recipe", None) or integration_spec.default_recipe
     if not isinstance(reference, str):
@@ -234,7 +233,7 @@ class SessionConfig(BaseModel):
 
     def resolve(self):
         """Validate offline and return the internal shared runtime settings."""
-        from evoab.integrations import load_integration
+        from evoab.envs import load_integration
 
         spec = load_integration(self.integration).get_integration_spec()
         options = spec.config_model.model_validate(self.integration_options)

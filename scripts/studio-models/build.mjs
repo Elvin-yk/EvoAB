@@ -90,7 +90,7 @@ const result = await build({
 });
 const files = (Array.isArray(result) ? result[0] : result).output;
 const license = await readFile(path.join(root, "../LICENSE"), "utf8");
-const output = path.join(here, "../../evoab/ui/studio/static");
+const output = path.join(here, "../../evoab/apps/studio/static");
 const assets = path.join(output, "model-assets");
 await mkdir(assets, { recursive: true });
 const filenames = new Set();

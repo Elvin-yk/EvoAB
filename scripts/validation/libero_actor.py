@@ -9,13 +9,13 @@ from unittest.mock import Mock, patch
 import numpy as np
 from PIL import Image
 
-from evoab.integrations.libero.action_binding import LiberoBinding
-from evoab.integrations.libero.adapter import LiberoPolicyAdapter
-from evoab.integrations.libero.relative_action import ACTION_BINDING, native_action
-from evoab.services.actor.contracts import NumericChunk
-from evoab.services.actor.images import decode_image
-from evoab.services.actor.libero_profile import CAMERAS, PROPRIOCEPTION, actor_profile
-from evoab.services.environment.contracts import RequestRejected
+from evoab.envs.libero.action_binding import LiberoBinding
+from evoab.envs.libero.adapter import LiberoPolicyAdapter
+from evoab.envs.libero.relative_action import ACTION_BINDING, native_action
+from evoab.servers.actor.contracts import NumericChunk
+from evoab.servers.actor.images import decode_image
+from evoab.servers.actor.libero_profile import CAMERAS, PROPRIOCEPTION, actor_profile
+from evoab.envs.protocol.contracts import RequestRejected
 
 
 class LiberoActorChecks(unittest.TestCase):

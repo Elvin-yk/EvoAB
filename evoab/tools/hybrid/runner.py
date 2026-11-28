@@ -4,10 +4,10 @@ from __future__ import annotations
 from dataclasses import asdict
 from uuid import uuid4
 
-from evoab.artifacts.actor import ActorArchive
-from evoab.execution import current_execution_id
-from evoab.execution.correlation import current_call, current_role
-from evoab.services.environment.contracts import (
+from evoab.records.artifacts.actor import ActorArchive
+from evoab.runtime import current_execution_id
+from evoab.runtime.correlation import current_call, current_role
+from evoab.envs.protocol.contracts import (
     CaptureRequest,
     RequestRejected,
 )

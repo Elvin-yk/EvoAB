@@ -7,9 +7,9 @@ from io import BytesIO
 import numpy as np
 from PIL import Image, ImageDraw
 
-from evoab.services.environment.contracts import RequestRejected
-from evoab.services.environment.snapshots import CameraFrame
-from evoab.services.perception.contracts import PointQuery, TextQuery
+from evoab.envs.protocol.contracts import RequestRejected
+from evoab.envs.protocol.snapshots import CameraFrame
+from evoab.servers.perception.contracts import PointQuery, TextQuery
 from evoab.tools.presentation import round_physical
 from evoab.tools.scene.geometry import (
     mask_geometry_quality,
@@ -42,10 +42,7 @@ def snapshot_metadata(manifest, cameras, *, mirror):
             "T_world_from_optical": manifest["cameras"][name].get("T_world_from_optical"),
             "image_path": str(mirror.local_path(manifest["cameras"][name]["rgb"])),
             **({"calibration": {key: value for key, value in manifest["cameras"][name]["calibration"].items()
-                                if key in ("status", "source", "reason", "pixel_coordinates")
-                                or (manifest["state"].get("kind") == "devices" and key in (
-                                    "rgb_timestamp_unix", "depth_timestamp_unix", "received_at_unix",
-                                    "synchronized", "calibration_id", "max_pair_skew_s", "distortion_model"))}}
+                                if key in ("status", "source", "reason", "pixel_coordinates")}}
                if manifest["cameras"][name].get("calibration") else {}),
         } for name in cameras},
     }

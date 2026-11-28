@@ -75,13 +75,11 @@ scripts/tmp/
 eval_results/
 
 # Historical external simulator checkout and its deployment-owned link
-/robots/robodojo/resources/
 
 # Deployment-owned native runtime, excluded from the distribution
-/evoab/integrations/robodojo/resources
 
 # Local reference material; excluded from the public project
 /archive/
 
-# Deployment stamp written by deploy scripts (evoab/workbench/build.py)
+# Deployment stamp written by deploy scripts (evoab/apps/workbench/build.py)
 /BUILD.json

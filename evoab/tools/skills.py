@@ -4,8 +4,8 @@ import os
 from uuid import uuid4
 from pathlib import Path
 
-from evoab.execution.scheduler import ToolExecutionPolicy
-from evoab.services.environment.contracts import RequestRejected
+from evoab.runtime.scheduler import ToolExecutionPolicy
+from evoab.envs.protocol.contracts import RequestRejected
 from evoab.tools.toolkit import ToolOutput, ToolProvider, ToolSpec, bind_tools, schema
 
 RESOURCES = Path(__file__).resolve().parents[1] / "resources"

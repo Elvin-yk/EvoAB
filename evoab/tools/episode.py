@@ -1,6 +1,6 @@
 """Submit a completion claim through the shared episode lifecycle."""
-from evoab.execution.scheduler import ToolExecutionPolicy
-from evoab.services.environment.contracts import RequestRejected
+from evoab.runtime.scheduler import ToolExecutionPolicy
+from evoab.envs.protocol.contracts import RequestRejected
 from evoab.tools.toolkit import ToolOutput, ToolProvider, ToolSpec, bind_tools, schema
 
 NAMES = ("finish",)

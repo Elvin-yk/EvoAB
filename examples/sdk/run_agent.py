@@ -8,7 +8,7 @@ def main():
     parser.add_argument('--integration', required=True)
     parser.add_argument('--env-url', required=True)
     parser.add_argument('--model', required=True)
-    parser.add_argument('--recipe', default='agentic', help='Method id (evoab methods list) or recipe file')
+    parser.add_argument('--recipe', default='tools', help='Method id (evoab methods list) or recipe file')
     parser.add_argument('--set', action='append', default=[], metavar='NAME=VALUE')
     args = parser.parse_args()
     overrides = dict(item.split('=', 1) for item in args.set)

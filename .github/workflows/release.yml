@@ -96,8 +96,6 @@ jobs:
         env:
           INSTALLER: ${{ matrix.installer }}
         run: python scripts/validation/sdk_release.py dist/evoab-[0-9]*.whl "$RUNNER_TEMP/sdk-check" --installer "$INSTALLER" --check-uninstall
-      - name: Verify isolated native dependency contract
-        run: python scripts/validation/runtime_release.py dist/evoab_runtime-*.whl "$RUNNER_TEMP/runtime-check" --main-wheel dist/evoab-[0-9]*.whl
       - name: Check isolated uv CLI installation
         if: matrix.installer == 'uv'
         env:
@@ -108,7 +106,7 @@ jobs:
           uv tool install --python "$(command -v python)" dist/evoab-[0-9]*.whl
           cd "$RUNNER_TEMP"
           "$UV_TOOL_BIN_DIR/evoab" --version
-          "$UV_TOOL_BIN_DIR/evoab" methods validate agentic --integration robodojo
+          "$UV_TOOL_BIN_DIR/evoab" methods validate tools --integration libero
 
   publish:
     # No push, pull request, tag creation, or default manual run uploads a package.

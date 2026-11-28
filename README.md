@@ -14,39 +14,43 @@ An open framework for building, reproducing and composing robot-use agents
 </div>
 
 **EvoAB turns any LLM-agent robotics method into a short YAML recipe** that runs
-on any model, in any supported simulator or on a real robot, and composes freely
+on any model, in any supported simulator, and composes freely
 with other methods. What [StarVLA](https://github.com/starVLA/starVLA) is for
 VLAs, EvoAB aims to be for robot agents.
 
 Robot-use agents keep a frozen general-purpose model and differ in the harness
 around it. EvoAB makes that harness out of shared parts:
 
-- **Three ways to act, nothing else.** An agent calls tools, writes programs that
-  call the same tools, or emits action chunks directly.
+- **Three ways to act, in any combination.** An agent calls tools, writes
+  programs that call the same tools, or emits action chunks directly; a recipe
+  enables any mix of the three (`act: [tools, code, action]`).
 - **Everything else is a tool.** Motion, perception, a VLA or world-action
   policy, and your own Python functions (`@tool`) plug in the same way.
-- **The recipe is the method.** Inputs, roles, tools, budgets and experience
-  across episodes live in one file; the command line only picks the run.
-- **Same environments for everyone.** Benchmarks run in Docker with their native
-  scoring; the agent never sees the verdict.
+- **The recipe is the method.** How it acts, inputs, roles, tools, budgets and
+  experience across episodes live in one file; the command line only picks the run.
+- **Same environments for everyone.** Benchmarks run in their published Docker
+  images with native scoring; EvoAB's code is mounted, never baked in, and the
+  agent never sees the verdict.
 
 ```mermaid
 flowchart LR
-    R["method.yaml<br/>(recipe)"] --> A["Built-in agent<br/>+ model preset"]
-    A -- "tools · code · action" --> T["Tools<br/>motion · perception · policy · @tool"]
-    T --> E["Environment<br/>Docker simulator or real robot"]
+    R["recipe<br/>act: tools · code · action"] --> A["Built-in agent<br/>+ model preset"]
+    A -- "tool calls" --> T["Tools<br/>motion · perception · policy · @tool"]
+    A -- "programs" --> T
+    A -- "action chunks" --> E
+    T --> E["Environment<br/>Docker simulator"]
 ```
 
 ## News
 
+- **2026/11** Tools, code and action combine freely in one agent session; the method library is the three of them.
 - **2026/11** One agent: every method runs on the built-in agent over your model presets.
 - **2026/11** Your own tools: decorate a Python function with `@tool` and select it in a recipe.
-- **2026/11** Benchmarks run only in Docker; `evoab run` starts and stops the container itself.
-- **2026/11** RoboDojo: 42 tasks in five capability dimensions, with selectable seeds and layouts.
+- **2026/11** Benchmarks run in published images only (LIBERO, LIBERO-PRO, CALVIN); code changes never rebuild an image.
 
 ## Quickstart
 
-Linux, Python 3.11 and Docker. MetaWorld needs no GPU.
+Linux, Python 3.11, Docker and an NVIDIA GPU with the NVIDIA Container Toolkit.
 
 ```bash
 git clone https://github.com/Elvin-yk/EvoAB.git && cd EvoAB
@@ -57,8 +61,9 @@ export MY_API_KEY=...                                  # any OpenAI-compatible e
 evoab models add-provider "My API" --base-url https://host/v1 --key-env MY_API_KEY
 evoab models add-preset my-model --provider my_api --model MODEL_ID
 
-evoab setup --integration metaworld                    # builds the benchmark image once
-evoab run --integration metaworld --task reach-v3 --recipe agentic --model my-model --output-dir ./runs
+evoab setup --integration libero --runtime-profile libero_spatial   # pulls AllenAI's LIBERO image once
+evoab run --integration libero --runtime-profile libero_spatial --recipe tools --model my-model \
+  --task pick_up_the_black_bowl_between_the_plate_and_the_ramekin_and_place_it_on_the_plate --output-dir ./runs
 evoab replay ./runs                                    # step through what the agent saw, did and spent
 ```
 
@@ -69,42 +74,41 @@ Or paste this into a coding agent on the target machine:
 
 | Command | What it does |
 |---|---|
-| `evoab run --integration robodojo --task stack_bowls --recipe agentic --model my-model` | One agent calls robot tools on a dual-arm RoboDojo task |
-| `… --recipe direct_action` | The model emits action chunks itself, as in Astranomy's Direct form |
-| `… --recipe code_as_policy` | The agent writes and runs Python programs against the robot API |
+| `evoab run --integration calvin --task open_drawer --recipe tools --model my-model` | One agent calls robot tools on a CALVIN task |
+| `… --recipe code` | The agent writes and runs Python programs against the robot API |
+| `… --recipe action` | The model emits action chunks itself, as in Astranomy's Direct form |
+| `… --set 'roles.main.act=[tools,code,action]'` | One agent that may call a tool, run a program or emit a chunk at each step |
 | `… --set inputs.depth=false` | Same method, RGB-only observations |
-| `… --recipe direct_action --set 'roles.main.action.horizon=[16,32]'` | Change any recipe value for one run |
-| `evoab benchmarks tasks robodojo` | Tasks with their dimension, real instruction and step limit |
+| `… --recipe examples/recipes/policy.yaml` | A VLA policy as one more tool (`actor_act`) |
+| `evoab benchmarks tasks calvin` | Tasks with their instruction and step limit |
 | `evoab methods list` | Every method and where its `method.yaml` lives |
 
 ## Methods
 
-Each method is a directory with `method.yaml` (the recipe, commented line by
-line) and `CARD.md` (paper, setting, results).
+An agent acts in three ways. Each is a built-in method (`method.yaml`, commented
+line by line, and `CARD.md`), and a recipe can enable any combination:
 
-| Method | Acts through | Idea |
+| Method | `act` | What the model does |
 |---|---|---|
-| `agentic` | tools | Observe, call tools, decide from feedback |
-| `clean` | tools | Four tools and compact results; a minimal baseline |
-| `direct_action` | action | One stateless request per action chunk ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/)) |
-| `code_as_policy` | code | Programs against the robot API ([Code as Policies](https://arxiv.org/abs/2209.07753)) |
-| `code_iterate` | code | Programs kept across episodes after successes ([RAX](https://arxiv.org/abs/2610.22496)) |
-| `agent_policy` | tools + policy | The agent hands contact-rich motion to a VLA and checks it |
-| `tool_team` | tools | Several roles that delegate sub-goals to each other |
+| `tools` | `[tools]` | Observes, calls tools and decides from their feedback |
+| `code` | `[code]` | Writes programs that call the same tools ([Code as Policies](https://arxiv.org/abs/2209.07753)) |
+| `action` | `[action]` | Emits action chunks, one stateless request each ([Astranomy](https://research.nvidia.com/labs/srl/projects/astranomy/)) |
 
-More reproductions are on the [method roadmap](https://github.com/Elvin-yk/EvoAB/issues/34).
+Everything else is a recipe option over these three: a VLA policy as a tool
+([`policy.yaml`](examples/recipes/policy.yaml)), programs kept across episodes
+as in RAX ([`code_iterate.yaml`](examples/recipes/code_iterate.yaml)), a
+four-tool baseline ([`clean.yaml`](examples/recipes/clean.yaml)), all three ways
+in one session ([`all.yaml`](examples/recipes/all.yaml)), or several roles that
+delegate to each other. More reproductions are on the
+[method roadmap](https://github.com/Elvin-yk/EvoAB/issues/34).
 
 ## Environments
 
 | Environment | Robot | Notes |
 |---|---|---|
-| RoboDojo | Dual-arm ARX X5, Isaac Sim | 42 tasks, 5 capability dimensions, policy tool (Pi0.5) |
-| MetaWorld | Sawyer, MuJoCo | CPU only; fastest check |
-| LIBERO · LIBERO-Plus · LIBERO-PRO | Panda | Standard, perturbed and robustness suites |
-| RoboTwin 2.0 | ALOHA-AgileX | Dual-arm |
-| CALVIN | Panda | Policy tool (StarVLA) |
+| LIBERO · LIBERO-PRO | Panda, MuJoCo | Standard and robustness suites; policy tool (StarVLA) on LIBERO |
+| CALVIN | Panda, PyBullet | One task per episode; policy tool (StarVLA) |
 | Your own | Any | Name your Docker image in a manifest |
-| ARX ONE · Piper-X | Real dual-arm robots | Same tools as simulation |
 
 Policy and SAM3 services are yours to start; pass `--action-model-url` or `--sam3-url`.
 Preparing each environment: [benchmarks](docs/benchmarks.md).

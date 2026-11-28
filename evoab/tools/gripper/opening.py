@@ -1,7 +1,7 @@
 """Model-facing metric openings over an integration-declared drive calibration."""
 import math
 
-from evoab.services.environment.contracts import RequestRejected
+from evoab.envs.protocol.contracts import RequestRejected
 
 
 def native_opening(opening_m, model):
