@@ -32,8 +32,17 @@ current images), and `code` adds `run_program` beside direct tool calls.
 (artifacts, telemetry, events) and `apps/` (console, Studio, replay,
 workbench). There are no compatibility aliases; update imports such as
 `evoab.integrations.X` to `evoab.envs.X` and `evoab.services.environment` to
-`evoab.envs.protocol`. Benchmark images bake the package at setup, so rerun
-`evoab setup --integration X` after upgrading.
+`evoab.envs.protocol`.
+
+### Images no longer contain EvoAB's code
+
+Setup's local layer holds only EvoAB's runtime dependencies and the benchmark's
+`prepare` commands; every container mounts the host's `evoab` package read-only.
+Image tags derive from the recipe, base image, dependencies and pins
+(`evoab/<name>:env-<hash>`), and setup reuses an existing image, so code changes
+never require a rebuild. `--wheel` still bakes a pinned `evoab-runtime`. Runtime
+records move to schema 2: rerun `evoab setup --integration X` once for each
+prepared benchmark.
 
 Removed leftovers: the agent registry and agent protocol (one agent remains),
 the empty SFT export package and the `train_*` result fields.

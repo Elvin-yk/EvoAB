@@ -1,5 +1,5 @@
 # MetaWorld MT50 image, built locally by `evoab setup --integration metaworld`.
-# CPU only: MuJoCo renders through OSMesa. EvoAB adds its runtime in a separate local layer.
+# CPU only: MuJoCo renders through OSMesa. EvoAB adds its dependencies in a separate local layer and mounts its code at run time.
 FROM python:3.11-slim-bookworm
 
 ARG PIP_INDEX_URL

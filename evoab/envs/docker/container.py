@@ -103,7 +103,9 @@ def spec_for(integration: str) -> ContainerSpec | None:
         text = resources.files(package).joinpath("container.toml").read_text(encoding="utf-8")
     except (FileNotFoundError, ModuleNotFoundError):
         return None
-    return spec_from(integration, package, tomllib.loads(text), text)
+    data = tomllib.loads(text)
+    # Identity is the recipe's content, so editing a comment never forces a rebuild.
+    return spec_from(integration, package, data, json.dumps(data, sort_keys=True))
 
 
 def adapter_spec(args, adapter) -> ContainerSpec:

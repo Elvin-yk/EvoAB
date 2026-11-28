@@ -1,5 +1,5 @@
 # LIBERO-Plus has no publicly pullable image, so setup builds `Dockerfile` (in
-# this package) locally, then adds EvoAB's runtime layer. The recipe pins
+# this package) locally, then adds EvoAB's dependency layer. The recipe pins
 # LIBERO-Plus 4976dc30028e805ff8094b55501d532c48fec182 (the revision EvoAB
 # requires) and drops .git, so the local layer records that revision.
 dockerfile = "Dockerfile"

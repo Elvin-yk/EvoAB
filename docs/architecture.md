@@ -215,7 +215,9 @@ validation separately.
 ## Packaging
 
 Two distributions share one version: `evoab` (CLI, SDK, Studio) and
-`evoab-runtime` (installed into every service image). Build both with
+`evoab-runtime` (baked into a service image only with `evoab setup --wheel`;
+otherwise images carry EvoAB's dependencies and every container mounts the host's
+`evoab` package read-only, see `envs/docker/container.py`). Build both with
 `python scripts/release/prepare.py --output-dir DIR` and check them with
 `scripts/validation/release_contents.py` and `scripts/validation/sdk_release.py`;
 `evoab setup --wheel` accepts only the matching runtime wheel.

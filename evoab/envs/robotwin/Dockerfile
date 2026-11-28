@@ -5,7 +5,7 @@
 # CUDA 12.1 PyTorch that cannot run on Blackwell GPUs, so this recipe builds the
 # revision EvoAB pins with PyTorch 2.8 (its PyPI wheels use CUDA 12.8,
 # so mirrors of PyPI serve them) and CuRobo compiled up to SM 12.0.
-# The base image is public. EvoAB adds its runtime in a separate local layer.
+# The base image is public. EvoAB adds its dependencies in a separate local layer and mounts its code at run time.
 FROM ghcr.io/allenai/vla-evaluation-harness/base@sha256:9198417200a2675b436b33e454dc75103c375bfee11b22bba8eb07380674c07c
 
 ARG HF_ENDPOINT

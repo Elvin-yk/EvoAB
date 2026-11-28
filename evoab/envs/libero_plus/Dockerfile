@@ -2,7 +2,7 @@
 #
 # Adapted from docker/Dockerfile.libero_plus in allenai/vla-evaluation-harness
 # (Apache-2.0), whose published image is not publicly pullable. The base image is
-# public. EvoAB adds its runtime in a separate local layer (see container.toml).
+# public. EvoAB adds its dependencies in a separate local layer and mounts its code at run time (see container.toml).
 FROM ghcr.io/allenai/vla-evaluation-harness/base@sha256:9198417200a2675b436b33e454dc75103c375bfee11b22bba8eb07380674c07c
 
 ARG HF_ENDPOINT

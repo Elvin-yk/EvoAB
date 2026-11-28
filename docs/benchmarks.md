@@ -36,11 +36,26 @@ services to use this policy.
 ## Preparing a runtime
 
 Benchmark simulators run in Docker. To prepare a benchmark, `evoab setup` pulls the
-upstream image (pinned by digest) or builds it once from a pinned recipe, adds
-EvoAB's service package in a small local layer, and records the result under
+upstream image (pinned by digest) or builds it once from a pinned recipe, adds a
+small local layer with EvoAB's Python dependencies, and records the result under
 `~/.cache/evoab` (or `--cache-dir`). Each launch then starts one container with
-host networking and the run directory mounted at the same path, and removes it
-afterwards. Nothing is hosted by EvoAB.
+host networking, the run directory mounted at the same path and EvoAB's own code
+mounted read-only from the host, and removes it afterwards. Nothing is hosted by
+EvoAB.
+
+**Images and code are separate.** An image holds the simulator, the benchmark at
+a pinned revision and EvoAB's dependencies, never EvoAB's code, and its tag is
+derived from exactly those inputs (`evoab/<name>:env-<hash>`). Updating or
+editing EvoAB needs no rebuild; setup rebuilds only when a benchmark's recipe or
+EvoAB's dependencies change, and otherwise reuses the image.
+
+| Benchmark | Image |
+|---|---|
+| LIBERO, LIBERO-PRO, CALVIN | AllenAI's published images ([vla-evaluation-harness](https://github.com/allenai/vla-evaluation-harness)), pinned by digest |
+| RoboTwin | Our `Dockerfile`, adapted from AllenAI's: their published image's CUDA 12.1 PyTorch cannot run on Blackwell GPUs |
+| LIBERO-Plus | Our `Dockerfile`, adapted from AllenAI's, which publishes no image |
+| RoboDojo | RoboDojo's own upstream `Dockerfile` (Isaac Sim licence; nobody publishes the image) |
+| MetaWorld | Our small CPU `Dockerfile`; no published image exists |
 
 GPU benchmark containers also need the NVIDIA Container Toolkit. MetaWorld renders on the CPU. Studio: 设置 → 评测集 →
 部署, or:
@@ -57,8 +72,8 @@ override, or `EVOAB_CONTAINER_BUILD_PROXY=1` to forward the host proxy. Pinned
 git sources are fetched on the host, so builds need no access to the forge. An
 image archive made with `docker save` can be imported instead of building
 (`--image-archive`, or Studio). 卸载 removes a Docker deployment. `--wheel`
-installs a matching `evoab-runtime` wheel into the image instead of the running
-package.
+bakes a matching `evoab-runtime` release into the image instead of mounting the
+running package, for pinned, reproducible evaluation images.
 
 `evoab deploy env --integration robodojo --task stack_bowls --gpu 0` runs one
 environment container in the foreground (port 18760) for runs that connect with
@@ -232,8 +247,8 @@ validated with.
 
 ## Custom benchmarks
 
-Bring your own simulator as a Docker image, Harbor-style: EvoAB adds its service
-package on top and starts one container per episode. Register a TOML manifest in
+Bring your own simulator as a Docker image, Harbor-style: EvoAB adds its
+dependencies on top, mounts its code and starts one container per episode. Register a TOML manifest in
 `~/.config/evoab/benchmarks/NAME.toml` naming the image (local or pullable, with
 a Python ≥ 3.10 that has pip), the interpreter inside it, a `make(task_id, seed)`
 function returning a Gym-style environment, its tasks, and how to read

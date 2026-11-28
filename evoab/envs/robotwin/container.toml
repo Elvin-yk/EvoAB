@@ -1,5 +1,5 @@
 # RoboTwin has no publicly pullable image for the revision EvoAB pins, so setup
-# builds `Dockerfile` (in this package) locally, then adds EvoAB's runtime layer.
+# builds `Dockerfile` (in this package) locally, then adds EvoAB's dependency layer.
 # The recipe pins RoboTwin ea8b21121ebb3cd201ff5b3fe361944ac94eda3f and drops .git,
 # so the local layer records that revision.
 dockerfile = "Dockerfile"
