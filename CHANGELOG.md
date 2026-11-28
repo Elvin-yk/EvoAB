@@ -6,6 +6,14 @@
   sampled camera paths, and the worker writes a placeholder verdict to
   `result.json` before acknowledging completion.
 
+### Real robots removed
+
+EvoAB now targets simulated benchmarks in Docker only. Removed, with all their
+code: the ARX ONE and Piper-X integrations, their `arx_one`/`piper_x` extras,
+and the device protocol only they used (`/device-*` and `/interrupts` routes,
+`DeviceEpisodeInfo`, device steps and interrupts in the environment client and
+service). Tool schemas and prompts are unchanged for every simulated environment.
+
 - Removed the built-in `planner_direct` recipe. On RoboDojo, the planner can
   call Direct through `actor_act` using the existing `agent_policy` recipe.
   Standalone `direct_action` remains available.

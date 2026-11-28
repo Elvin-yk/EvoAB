@@ -86,8 +86,6 @@ class EnvironmentService:
         self._next_image_step = 0
         self._current_state_version = 0
         self._publication_error: str | None = None
-        from .interrupts import Interrupts
-        self.interrupts = Interrupts()
         self.primitive = PrimitiveExecutor(backend, on_step=self._on_step)
         if self._image_stride is not None and hasattr(backend, "set_image_recording_callback"):
             backend.set_image_recording_callback(self._record_native_sample)
@@ -141,80 +139,6 @@ class EnvironmentService:
             return self.primitive.step(request.command)
 
         return self._run(identity, execute)
-
-    def _require_devices(self):
-        from .device_contracts import DeviceEpisodeInfo
-        if not isinstance(self._info, DeviceEpisodeInfo):
-            raise RequestRejected("This episode does not declare the device protocol")
-
-    def device_state(self):
-        self._require_devices()
-        return self.backend.read_state().model_dump(mode="json")
-
-    def interrupt(self, request):
-        self._require_devices()
-        if request.episode_id != self._info.episode_id:
-            raise RequestRejected("Interrupt episode mismatch")
-        with self._state_lock:
-            if self._closed:
-                raise RequestRejected("Device episode is closed")
-        return self.interrupts.execute(request, self.backend)
-
-    def device_preview(self, identity, request):
-        self._require_devices()
-        with self._motion_lock:
-            self._begin(identity)
-            try:
-                if self.backend.read_state().state_version != request.expected_state_version:
-                    raise RequestRejected("Preview observation is stale")
-                result = self.backend.preview_device(request.command)
-            except Exception as error:
-                self._fail(identity, error, "not_started")
-                raise
-            self._complete(identity, result)
-            return result
-
-    def device_step(self, identity, request):
-        from .device_contracts import DeviceReply
-        self._require_devices()
-        with self._motion_lock:
-            self._begin(identity)
-            try:
-                before = self.backend.read_state()
-                if before.state_version != request.expected_state_version:
-                    raise RequestRejected("Stale device proposal; read fresh state")
-                self.backend.validate_device(request.command)
-            except Exception as error:
-                self._fail(identity, error, "not_started")
-                raise
-            cancellation = self.interrupts.begin(identity, request.command.device)
-            try:
-                feedback = self.backend.execute_device(request.command, cancellation=cancellation)
-                after = self.backend.read_state()
-            except Exception as error:
-                self._fail(identity, error, "unknown")
-                raise ServiceError("execution_unknown", "Device command needs reconciliation",
-                                   status=500, execution_status="unknown") from error
-            finally:
-                self.interrupts.end()
-            status = feedback.get("execution_status", "completed")
-            if status not in {"completed", "partial", "rejected", "unknown"}:
-                raise RuntimeError("Invalid native execution status")
-            snapshot, publication_error = None, None
-            try:
-                snapshot = self._capture(record=True, sample=True)
-            except Exception as error:
-                publication_error = f"{type(error).__name__}: {error}"
-            trace, archive_error = self._archive({"identity": identity.model_dump(),
-                "state_before": before.model_dump(), "state_after": after.model_dump(), "feedback": feedback})
-            result = DeviceReply(identity=identity, state_before=before, state_after=after,
-                feedback=feedback, snapshot=snapshot, trace=trace, execution_status=status,
-                artifact_error=archive_error or publication_error).model_dump(mode="json")
-            if status == "unknown":
-                self._fail(identity, RuntimeError(feedback.get("error", "Unknown device completion")), "unknown")
-                raise ServiceError("execution_unknown", "Device completion is unknown", execution_status="unknown", details=feedback)
-            self._complete(identity, result)
-            return result
 
     def capture(self, identity: RequestIdentity, request: CaptureRequest) -> dict:
         with self._motion_lock:

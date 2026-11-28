@@ -41,9 +41,6 @@ agent = ["nanobot-ai==0.4.1", "scipy>=1.10"]
 benchmarks = ["scipy>=1.10", "PyYAML>=6,<7"]
 xpolicylab = ["websockets>=14,<18", "msgpack>=1,<2", "msgpack-numpy==0.4.8"]
 dev = ["build>=1", "twine>=6", "tomli-w>=1"]
-# OpenCV 5 removed calibrateHandEye, which the ARX ONE hand-eye solvers use.
-arx_one = ["scipy>=1.10", "opencv-python-headless>=4.8,<5", "pyyaml>=6"]
-piper_x = ["scipy>=1.10", "opencv-python-headless>=4.8,<5", "python-fcl>=0.7,<0.8", "pyrealsense2>=2.55,<3; sys_platform == 'linux'"]
 robodojo = [
     "trimesh>=4,<5",
     "imageio>=2.0",
@@ -72,7 +69,6 @@ namespaces = false
 "evoab" = ["py.typed"]
 "evoab.methods" = ["*/method.yaml", "*/CARD.md", "*/prompts/*.md"]
 "evoab.resources" = ["prompts/**/*.md", "prompts/robodojo/task_requirements.json", "prompts/robodojo/instruction_supplements.json", "skills/**/*.md"]
-"evoab.integrations.piper_x" = ["templates/*.json", "SOURCE.md", "README.md"]
 "evoab.integrations.libero" = ["deployment.toml", "container.toml"]
 "evoab.integrations.libero_plus" = ["deployment.toml", "container.toml", "Dockerfile"]
 "evoab.integrations.libero_pro" = ["deployment.toml", "container.toml", "previews/sources.json", "previews/NOTICE", "previews/LICENSE"]
@@ -81,20 +77,7 @@ namespaces = false
 "evoab.integrations.robotwin" = ["deployment.toml", "container.toml", "Dockerfile"]
 "evoab.integrations.robodojo" = ["deployment.toml", "container.toml", "SOURCE.md", "UPSTREAM_LICENSE", "environment/*.urdf"]
 
-# Native sources, ROS packages, models and templates travel with the integration. Local
-# third-party copies and measured calibration are ignored by Git and excluded below as well.
-"evoab.integrations.arx_one" = [
-    "**/*.md", "**/*.json", "**/*.sh", "**/*.txt", "**/*.urdf", "**/*.toml", "**/*.yaml",
-    "**/*.cpp", "**/*.hpp", "**/*.h", "**/*.msg", "**/*.srv", "**/package.xml", "**/SHA256SUMS",
-    "**/LICENSE", "**/NOTICE",
-]
 "evoab.services.actor" = ["recipes/*.toml"]
-
-[tool.setuptools.exclude-package-data]
-"evoab.integrations.arx_one" = [
-    "deploy/configs/calibration/*/**", "body/drivers/*/sdk/**", "body/drivers/can/**",
-    "body/drivers/third_party/**", "body/drivers/arx_x5/models/arx_x5_2025/meshes/**",
-]
 
 # Native services run in separate environments without planner/UI dependencies.
 [tool.evoab.runtime]

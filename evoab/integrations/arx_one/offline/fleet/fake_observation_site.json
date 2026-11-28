@@ -1,9 +1,0 @@
-{
-  "site": "synthetic-observation-only",
-  "bodies": {
-    "fixture": {"body_id": "fake-observation", "driver": "evoab.integrations.arx_one.body.drivers.fake.driver:observation_driver"}
-  },
-  "robots": {
-    "demo": {"arms": {"left": "fixture/arm"}, "cameras": {"head": {"device": "fixture/camera", "mount": "fixed", "frame_motion": "fixed"}}}
-  }
-}

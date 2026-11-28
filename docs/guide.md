@@ -2,7 +2,7 @@
 
 Install EvoAB, connect models, and run, compose and inspect methods. How it is
 built and extended is in [architecture](architecture.md); preparing each
-simulator or robot is in [benchmarks](benchmarks.md).
+simulator is in [benchmarks](benchmarks.md).
 
 ## Install
 
@@ -19,7 +19,7 @@ evoab doctor
 
 If cloning fails, run `gh auth login` and `gh repo clone Elvin-yk/EvoAB ~/evoab`.
 Extras add harness-side dependencies only (`agent` is required; `robodojo`,
-`benchmarks`, `xpolicylab`, `arx_one`, `piper_x`, `dev`); benchmark images, assets
+`benchmarks`, `xpolicylab`, `dev`); benchmark images, assets
 and model checkpoints are prepared separately ([benchmarks](benchmarks.md)).
 
 **Docker**: Docker Engine and the user in the `docker` group. GPU benchmarks

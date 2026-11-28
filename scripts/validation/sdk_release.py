@@ -54,7 +54,7 @@ print('Installed SDK:', evoab.__file__)
     command([python, '-m', 'evoab', '--version'])
     # Offline method checks: the built-in agent needs no model or credential to validate a recipe.
     for integration in ('robodojo', 'robotwin', 'libero', 'libero_plus',
-                        'libero_pro', 'calvin', 'metaworld', 'arx_one'):
+                        'libero_pro', 'calvin', 'metaworld'):
         command([python, '-m', 'evoab', 'methods', 'validate', 'agentic', '--integration', integration])
     for integration in ('robodojo', 'calvin'):
         command([python, '-m', 'evoab', 'methods', 'validate', 'agent_policy', '--integration', integration])
@@ -85,10 +85,6 @@ for profile, widths in (("robodojo_pi05", (14,14,50)),):
     assert (len(config.profile.observation_fields), len(config.profile.action_fields),
             config.profile.action_horizon) == widths
     assert recipe_settings(profile)["actor"]["model"] == "pi05"
-from evoab.services.environment.device_contracts import CoordinatedDeviceStep, DeviceRequest
-step = CoordinatedDeviceStep(device="robot", joints={"hand": {"finger": .1}})
-assert DeviceRequest.model_validate_json(DeviceRequest(command=step,
-    expected_state_version=0).model_dump_json()).command == step
 SetupConfig(integration="metaworld").resolve()
 DeploymentConfig(integration="metaworld", task="reach-v3", depth=False).resolve()
 try:

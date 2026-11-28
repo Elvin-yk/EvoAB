@@ -289,10 +289,10 @@ def _benchmarks(bench, args) -> None:
         if args.json:
             _print_json(items)
             return
-        # Benchmarks only (real robots are not benchmarks); ready when any profile is prepared.
+        # Ready when any profile is prepared.
         _table([[b["integration"], b["title"],
                  "ready" if any(p["status"] == "ready" for p in b["profiles"]) else "not prepared"]
-                for b in items if b["kind"] != "real"],
+                for b in items],
                ["INTEGRATION", "TITLE", "STATUS"])
     elif args.action == "tasks":
         tasks = bench.tasks(args.integration, args.profile)

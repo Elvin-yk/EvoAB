@@ -401,27 +401,6 @@ def build_proxy_router(service: ObservationProxyService) -> APIRouter:
     async def goal_regions(request: Request):
         return await _proxy(request, "/goal-regions")
 
-    @router.get("/device-state")
-    async def device_state(request: Request):
-        return await _proxy(request, "/device-state")
-
-    @router.post("/device-steps")
-    async def device_steps(request: Request):
-        mode = "reply_snapshot" if service.pipeline.config.enhance_step_snapshots else "none"
-        return await _proxy(request, "/device-steps", enhance_mode=mode)
-
-    @router.post("/device-previews")
-    async def device_previews(request: Request):
-        return await _proxy(request, "/device-previews")
-
-    @router.post("/interrupts")
-    async def interrupts(request: Request):
-        return await _proxy(request, "/interrupts")
-
-    @router.get("/interrupts/{request_id}")
-    async def interrupt_status(request_id: str, request: Request):
-        return await _proxy(request, f"/interrupts/{request_id}")
-
     @router.post("/captures")
     async def captures(request: Request):
         return await _proxy(request, "/captures", enhance_mode="snapshot")

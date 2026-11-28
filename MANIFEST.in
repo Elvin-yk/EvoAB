@@ -11,12 +11,4 @@ prune tests
 
 
 recursive-include evoab/integrations *.toml
-recursive-include evoab/integrations/piper_x *.md *.json
-recursive-include evoab/integrations/arx_one *.md *.json *.sh *.txt *.urdf *.toml *.yaml *.cpp *.hpp *.h *.msg *.srv package.xml SHA256SUMS LICENSE NOTICE
-prune evoab/integrations/arx_one/deploy/configs/calibration
-prune evoab/integrations/arx_one/body/drivers/arx_x5/sdk
-prune evoab/integrations/arx_one/body/drivers/realsense/sdk
-prune evoab/integrations/arx_one/body/drivers/can
-prune evoab/integrations/arx_one/body/drivers/third_party
-prune evoab/integrations/arx_one/body/drivers/arx_x5/models/arx_x5_2025/meshes
 recursive-include evoab/services *.toml

@@ -12,8 +12,9 @@ from evoab.events.core import ObservationSampled
 from evoab.integrations.base import EpisodeOutcome
 from evoab.integrations.composition import assemble_tools
 from evoab.services.environment.client import EnvironmentClient, EnvironmentRequestError
-from evoab.services.environment.contracts import CaptureRequest, FinishRequest, RequestRejected
-from evoab.services.environment.device_contracts import DeviceEpisodeInfo, parse_state, parse_reply
+from evoab.services.environment.contracts import (
+    ActionReply, CaptureRequest, EnvironmentState, FinishRequest, RequestRejected,
+)
 from evoab.telemetry.logging import get_logger
 from evoab.tools.toolkit import ToolOutput
 
@@ -35,7 +36,7 @@ class Episode:
         self.artifact_mirror = env.attach_artifact_store(self.artifacts)
         self.task_requirements = ""
         self.latest_snapshot = env.record(0)
-        self.state = parse_state(self.latest_snapshot["state"], description)
+        self.state = EnvironmentState.model_validate(self.latest_snapshot["state"])
         self.latest_feedback = None
         self.recent_observations = []
         self._sample_cursor = 0
@@ -49,8 +50,6 @@ class Episode:
 
     @property
     def remaining_steps(self):
-        if isinstance(self.description, DeviceEpisodeInfo):
-            return None
         return max(0, self.description.environment.max_episode_steps - self.state.native_steps)
 
     @property
@@ -68,7 +67,6 @@ class Episode:
             if isinstance(error, EnvironmentRequestError):
                 status = error.error.execution_status
                 return ToolOutput(success=False, error=str(error), extra={
-                    **(error.error.details if isinstance(self.description, DeviceEpisodeInfo) else {}),
                     "no_execution": status == "not_started", "execution_uncertain": status == "unknown",
                     "execution_status": status})
             if isinstance(error, (RequestRejected, ValidationError, ValueError)):
@@ -104,8 +102,7 @@ class Episode:
         # Failed image publication cannot replace an acknowledged state with a stale one.
         self.latest_snapshot = reply.snapshot
         self._sync_samples((reply.snapshot or {}).get("sample_count", 0))
-        self.recent_observations.append({**({"command_index": self.state.completed_commands} if isinstance(self.description, DeviceEpisodeInfo)
-                   else {"step_id": self.state.native_steps}),
+        self.recent_observations.append({"step_id": self.state.native_steps,
             "state": self.state.model_dump(mode="json"), "feedback": reply.feedback,
             "snapshot_id": None if reply.snapshot is None else reply.snapshot["snapshot_id"]})
         self.recent_observations = self.recent_observations[-6:]
@@ -250,7 +247,7 @@ class PreparedEpisodeSession:
                     if receipt and receipt.get("status") == "completed":
                         result = receipt["result"]
                         if "state_after" in result:
-                            episode.publish(parse_reply(result, episode.description))
+                            episode.publish(ActionReply.model_validate(result))
                         elif "outcome" in result:
                             episode._record_finish(result)
                 except Exception:

@@ -133,30 +133,6 @@ def build_router(service: EnvironmentService | None = None, *,
     def goal_region(body: Envelope[GoalRegionRequest], current: Current):
         return current.solve_goal_region(body.identity, body.payload)
 
-    from .device_contracts import DeviceRequest, InterruptRequest
-
-    @router.get("/device-state")
-    def device_state(current: Current):
-        return current.device_state()
-
-    @router.post("/device-steps")
-    def device_step(body: Envelope[DeviceRequest], current: Current):
-        return current.device_step(body.identity, body.payload)
-
-    @router.post("/device-previews")
-    def device_preview(body: Envelope[DeviceRequest], current: Current):
-        return current.device_preview(body.identity, body.payload)
-
-    @router.post("/interrupts")
-    def interrupt(body: InterruptRequest, current: Current):
-        return current.interrupt(body)
-
-    @router.get("/interrupts/{request_id}")
-    def interrupt_status(request_id: str, current: Current):
-        current._require_devices()
-        with current.interrupts.lock:
-            return dict(current.interrupts.receipts[request_id])
-
     @router.post("/captures")
     def capture(body: Envelope[CaptureRequest], current: Current):
         return current.capture(body.identity, body.payload)

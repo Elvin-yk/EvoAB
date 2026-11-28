@@ -170,7 +170,6 @@ Tools report what an action did in `ToolOutput.action` (`executed` none/some/unk
 | **A capability** | A `ToolModule` (provider factory `create(session, selection)`, policies, selectable `tools`, typed `options`, label) whose schemas and handlers live in `tools/<family>/`; integrations that support it publish it in `tool_modules`. |
 | **A channel or action representation** | Representations in `direct/actions.py`; channels in `session.py`, and every agent must be able to drive it. |
 | **An environment** | An integration package with `get_integration_spec()`: native execution, observations and outcome in the adapter, an accurate description (arms, frames, units, limits, cameras, calibration), the tool modules it supports, a deployment module with a `container.toml` (a pinned upstream image or a `Dockerfile`; see `services/deployment/container.py`), and a section in [benchmarks](benchmarks.md). Environments run only in containers. It must not define its own model tools. |
-| **A real robot** | As an environment, plus the device process that owns the hardware, physical limits, interruption and operator commands; follow ARX ONE as the reference. The shared IK contract is tracked in [#18](https://github.com/Elvin-yk/EvoAB/issues/18) and [#22](https://github.com/Elvin-yk/EvoAB/issues/22). |
 | **An action model** | An `ActorBackend` registered in `services/actor/registry.py`; environment-specific conversion stays in the integration's binding. |
 | **A model vendor** | Add a provider and preset with `evoab models` (or Studio, 设置 → 模型); no code changes. |
 

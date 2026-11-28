@@ -31,10 +31,10 @@ from evoab.workbench import jobs
 class BenchmarkInfo:
     integration: str
     title: str
-    kind: str  # "simulation" | "real"
+    kind: str  # "simulation"
     simulator: str
     embodiment: str
-    setup: str  # "container" | "custom" | "real"
+    setup: str  # "container" | "custom"
     description: str
     profiles: tuple[str, ...] = field(default_factory=tuple)
     requirements: str = ""
@@ -68,10 +68,6 @@ REGISTRY: tuple[BenchmarkInfo, ...] = (
                   requirements="Small local Docker build (Meta-World 3.1.1); CPU only", task_selector="task"),
     BenchmarkInfo("custom", "Custom benchmark", "simulation", "—", "—", "custom",
                   "User-defined Gym-style benchmark in the user's Docker image", task_selector="profile"),
-    BenchmarkInfo("arx_one", "ARX ONE", "real", "—", "Dual ARX X5 + RealSense D405",
-                  "real", "Physical dual-arm station behind a device process"),
-    BenchmarkInfo("piper_x", "Piper-X", "real", "—", "Dual Piper arms + RealSense",
-                  "real", "Physical dual-arm CAN control"),
 )
 
 

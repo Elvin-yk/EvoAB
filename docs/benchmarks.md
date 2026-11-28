@@ -1,4 +1,4 @@
-# Benchmarks and robots
+# Benchmarks
 
 How to prepare each environment. Running methods on a prepared environment is in
 the [guide](guide.md#run-from-the-command-line); adding a new environment is in
@@ -14,7 +14,6 @@ the [guide](guide.md#run-from-the-command-line); adding a new environment is in
 | `robotwin` | RoboTwin 2.0 aloha-agilex | Local build | Motion | `demo_clean`, `demo_randomized` |
 | `calvin` | CALVIN Panda | Public | Motion, policy (StarVLA) | One task per episode |
 | `custom` | Your Gym-style benchmark | Your image | Motion | See [custom benchmarks](#custom-benchmarks) |
-| `arx_one`, `piper_x` | Real dual-arm robots | Operator setup | Motion | See [real robots](#real-robots) |
 
 ## Simulation image recording
 
@@ -246,18 +245,3 @@ host directories mounted at the same paths; `gpu = true` requests the GPU.
 evoab setup --integration custom --runtime-profile NAME
 evoab run --integration custom --runtime-profile NAME --task TASK …
 ```
-
-## Real robots
-
-Starting a robot controller is a physical action: clear the workspace first.
-Real robots run as an environment service in front of a device process that
-owns the hardware; the agent reaches them through the same tools as simulation.
-
-- **ARX ONE** (two ARX X5 arms, three RealSense D405): operator commands, layout
-  and the new-machine deployment (third-party binaries, site configuration,
-  calibration) are in its [README](../evoab/integrations/arx_one/README.md) and
-  [deployment manual](../evoab/integrations/arx_one/DEPLOYMENT.md).
-- **Piper-X** (CAN arms, RealSense): see its [README](../evoab/integrations/piper_x/README.md).
-
-A shared IK interface for adding arms is tracked in
-[#18](https://github.com/Elvin-yk/EvoAB/issues/18).

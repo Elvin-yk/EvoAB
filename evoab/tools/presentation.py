@@ -1,6 +1,5 @@
 """Compact physical measurements for model-facing tool results."""
 
-from copy import deepcopy
 
 
 def round_physical(value):
@@ -18,9 +17,6 @@ def state_for_model(state):
     """Keep provenance and timing intact while formatting measured robot state."""
     from evoab.context.prompt import without_evaluation_facts
     result = without_evaluation_facts(state)
-    if result.get("kind") == "devices":
-        result["devices"] = round_physical(result["devices"])
-        return result
     for arm in result["arms"].values():
         for key in ("control_pose", "joints", "gripper", "gripper_command"):
             arm[key] = round_physical(arm[key])

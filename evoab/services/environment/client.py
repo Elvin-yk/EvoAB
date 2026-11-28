@@ -51,8 +51,6 @@ class EnvironmentClient:
         self._write_lock = threading.RLock()
         self.uncertain = False
         self._pending_identity: RequestIdentity | None = None
-        self._pending_interrupt = None
-        self._interrupt_lock = threading.RLock()
         self._closed = False
         self._artifact_mirror: RemoteArtifactMirror | None = None
 
@@ -77,8 +75,7 @@ class EnvironmentClient:
     def connect(self) -> EpisodeInfo:
         # Refreshing the sequence must not race a write's acknowledgement.
         with self._write_lock:
-            from .device_contracts import parse_info
-            result = parse_info(self._get("info"))
+            result = EpisodeInfo.model_validate(self._get("info"))
             if self.info is not None and self.info.episode_id != result.episode_id:
                 raise ExecutionUncertain("The episode URL was rebound to another episode")
             self.info = result
@@ -93,50 +90,6 @@ class EnvironmentClient:
         service never receives a ``move`` or ``grasp`` intent.
         """
         return self._post("steps", request, reply_type=ActionReply)
-
-    def device_step(self, request):
-        from .device_contracts import DeviceReply
-        return self._post("device-steps", request, reply_type=DeviceReply)
-
-    def device_preview(self, request):
-        return self._post("device-previews", request)
-
-    def device_state(self):
-        from .device_contracts import DeviceState
-        return DeviceState.model_validate(self._get("device-state"))
-
-    def interrupt_device(self, device, *, target_request_id=None, request_id=None):
-        with self._interrupt_lock:
-            return self._interrupt_device(device, target_request_id=target_request_id, request_id=request_id)
-
-    def _interrupt_device(self, device, *, target_request_id=None, request_id=None):
-        # Independent identity and transport path; the action writer may be blocked.
-        from .device_contracts import InterruptRequest
-        if self.info is None:
-            raise RuntimeError("connect() must precede interrupts")
-        request = InterruptRequest(episode_id=self.info.episode_id, request_id=request_id or uuid4().hex,
-                                   device=device, target_request_id=target_request_id)
-        if self._pending_interrupt is not None:
-            raise ExecutionUncertain("Reconcile the pending interrupt before sending another stop")
-        self._pending_interrupt = request
-        try:
-            result = json.loads(self._request("POST", "interrupts", request.model_dump_json().encode()))
-            if result["request_id"] != request.request_id or result["status"] != "completed":
-                raise ValueError("Interrupt completion is unknown")
-            self._pending_interrupt = None
-            return result
-        except EnvironmentRequestError as error:
-            if not error.execution_uncertain:
-                self._pending_interrupt = None
-                raise
-            self.uncertain = True
-            raise ExecutionUncertain(f"Interrupt {request.request_id} requires receipt inspection") from error
-        except Exception as error:
-            self.uncertain = True
-            raise ExecutionUncertain(f"Interrupt {request.request_id} requires receipt inspection") from error
-
-    def interrupt_status(self, request_id):
-        return self._get("interrupts/" + quote(request_id, safe=""))
 
     def preview(self, request: PreviewRequest) -> dict:
         return self._post("previews", request)
@@ -176,14 +129,6 @@ class EnvironmentClient:
     def reconcile(self) -> dict | None:
         """Read an existing receipt after timeout, without submitting any action."""
         with self._write_lock:
-            if self._pending_interrupt is not None:
-                result = self.interrupt_status(self._pending_interrupt.request_id)
-                if result.get("request") != self._pending_interrupt.model_dump(mode="json"):
-                    raise ExecutionUncertain("Interrupt receipt identity does not match")
-                if result.get("status") != "completed":
-                    return result
-                self._pending_interrupt = None
-                self.uncertain = self._pending_identity is not None
             if self._pending_identity is None:
                 return None
             result = self.request_status(self._pending_identity.request_id)

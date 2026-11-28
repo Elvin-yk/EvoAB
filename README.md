@@ -14,7 +14,7 @@ An open framework for building, reproducing and composing robot-use agents
 </div>
 
 **EvoAB turns any LLM-agent robotics method into a short YAML recipe** that runs
-on any model, in any supported simulator or on a real robot, and composes freely
+on any model, in any supported simulator, and composes freely
 with other methods. What [StarVLA](https://github.com/starVLA/starVLA) is for
 VLAs, EvoAB aims to be for robot agents.
 
@@ -34,7 +34,7 @@ around it. EvoAB makes that harness out of shared parts:
 flowchart LR
     R["method.yaml<br/>(recipe)"] --> A["Built-in agent<br/>+ model preset"]
     A -- "tools · code · action" --> T["Tools<br/>motion · perception · policy · @tool"]
-    T --> E["Environment<br/>Docker simulator or real robot"]
+    T --> E["Environment<br/>Docker simulator"]
 ```
 
 ## News
@@ -104,7 +104,6 @@ More reproductions are on the [method roadmap](https://github.com/Elvin-yk/EvoAB
 | RoboTwin 2.0 | ALOHA-AgileX | Dual-arm |
 | CALVIN | Panda | Policy tool (StarVLA) |
 | Your own | Any | Name your Docker image in a manifest |
-| ARX ONE · Piper-X | Real dual-arm robots | Same tools as simulation |
 
 Policy and SAM3 services are yours to start; pass `--action-model-url` or `--sam3-url`.
 Preparing each environment: [benchmarks](docs/benchmarks.md).
